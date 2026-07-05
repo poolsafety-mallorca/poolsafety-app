@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <meta name="theme-color" content="#0A1E3F" />
+  <title>PoolSafety · Socorrista</title>
+  <link rel="icon" type="image/png" href="assets/logo-blanco.png" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+<div class="phone">
+
+  <!-- ============ HEADER ============ -->
+  <header class="mob-header">
+    <div class="mob-topbar">
+      <div class="mob-topbar-left">
+        <div class="mob-avatar" id="userInitials">MF</div>
+        <div>
+          <div class="mob-hello" id="greetingText">Buenos días</div>
+          <div class="mob-name" id="userName">María Fernández</div>
+        </div>
+      </div>
+      <div class="mob-topbar-right">
+        <button class="icon-btn-dark" title="Notificaciones">
+          <svg class="ic ic-18"><use href="#ic-bell"/></svg>
+          <span class="notif-dot"></span>
+        </button>
+        <button class="icon-btn-dark" id="logoutBtn" title="Salir">
+          <svg class="ic ic-18"><use href="#ic-logout"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="mob-chip-row">
+      <span class="mob-chip">
+        <svg class="ic ic-14"><use href="#ic-pin"/></svg>
+        <span id="puestoName">Hotel Bellamar</span>
+      </span>
+      <span class="mob-chip">
+        <svg class="ic ic-14"><use href="#ic-clock"/></svg>
+        <span id="turnoText">10:00 – 18:00</span>
+      </span>
+      <span class="mob-chip">
+        <svg class="ic ic-14"><use href="#ic-sun"/></svg>
+        <span>28°C · Palma</span>
+      </span>
+    </div>
+  </header>
+
+  <div class="mob-body">
+
+    <!-- ============ VIEW: INICIO ============ -->
+    <main class="view" data-view="inicio">
+
+      <!-- Punch card hero -->
+      <section class="punch">
+        <div class="punch-head">
+          <span class="punch-label">
+            <svg class="ic ic-14"><use href="#ic-clock"/></svg>
+            Turno de hoy
+          </span>
+          <span class="badge badge-dark" id="punchBadge">
+            <span class="dot" style="background: #FCA5A5;"></span>
+            No iniciado
+          </span>
+        </div>
+        <div class="punch-clock" id="punchClock">10:23</div>
+        <div class="punch-when" id="punchWhen">Faltan 37 minutos para el inicio del turno</div>
+
+        <div class="gps-chip" id="gpsChip">
+          <div class="gps-icon">
+            <svg class="ic ic-18"><use href="#ic-signal"/></svg>
+          </div>
+          <div style="flex:1">
+            <div class="gps-title" id="gpsText">Dentro del área del puesto</div>
+            <div class="gps-sub" id="gpsMeta">Precisión ±8 m · Hotel Bellamar</div>
+          </div>
+          <span class="pulse-dot"></span>
+        </div>
+
+        <div id="punchActions">
+          <button class="punch-cta" id="punchInBtn">
+            <svg class="ic ic-18"><use href="#ic-play"/></svg>
+            Fichar entrada
+          </button>
+        </div>
+      </section>
+
+      <!-- Métricas del mes -->
+      <div class="section-eyebrow">
+        <span class="eyebrow">Mi mes · julio</span>
+        <a class="link" href="#" onclick="showView('perfil'); return false;">Ver detalle
+          <svg class="ic ic-14"><use href="#ic-chevron-right"/></svg>
+        </a>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric">
+          <div class="metric-top">
+            <div class="metric-icon ico-sky">
+              <svg class="ic ic-18"><use href="#ic-clock"/></svg>
+            </div>
+            <svg class="ring" viewBox="0 0 46 46">
+              <circle class="ring-bg" cx="23" cy="23" r="19" stroke-width="4" fill="none"/>
+              <circle class="ring-fg" cx="23" cy="23" r="19" stroke="url(#gr1)" stroke-width="4" fill="none"
+                      stroke-dasharray="119" stroke-dashoffset="9.5" stroke-linecap="round" transform="rotate(-90 23 23)"/>
+              <defs><linearGradient id="gr1" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#0EA5E9"/><stop offset="100%" stop-color="#22D3EE"/></linearGradient></defs>
+            </svg>
+          </div>
+          <div class="metric-label">Horas normales</div>
+          <div class="metric-value">148<span class="unit">h</span></div>
+          <div class="metric-sub">de 160 previstas · 92%</div>
+        </div>
+
+        <div class="metric">
+          <div class="metric-top">
+            <div class="metric-icon ico-amber">
+              <svg class="ic ic-18"><use href="#ic-trending-up"/></svg>
+            </div>
+            <span class="badge badge-warn"><span class="dot"></span>+3h esta semana</span>
+          </div>
+          <div class="metric-label">Horas extra</div>
+          <div class="metric-value">12<span class="unit">h</span></div>
+          <div class="metric-sub">este mes</div>
+        </div>
+
+        <div class="metric">
+          <div class="metric-top">
+            <div class="metric-icon ico-emerald">
+              <svg class="ic ic-18"><use href="#ic-calendar"/></svg>
+            </div>
+          </div>
+          <div class="metric-label">Días trabajados</div>
+          <div class="metric-value">22</div>
+          <div class="metric-sub">de 25 laborables</div>
+        </div>
+
+        <div class="metric">
+          <div class="metric-top">
+            <div class="metric-icon ico-slate">
+              <svg class="ic ic-18"><use href="#ic-check-circle"/></svg>
+            </div>
+          </div>
+          <div class="metric-label">Puntualidad</div>
+          <div class="metric-value">98<span class="unit">%</span></div>
+          <div class="metric-sub">últimos 30 días</div>
+        </div>
+      </div>
+
+      <!-- Puesto de hoy con mapa SVG -->
+      <div class="section-eyebrow"><span class="eyebrow">Mi puesto de hoy</span></div>
+      <div class="card map-card">
+        <div class="map-view">
+          <!-- Falso mapa: bloques y calles -->
+          <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice">
+            <defs>
+              <pattern id="waves" x="0" y="0" width="30" height="30" patternUnits="userSpaceOnUse">
+                <path d="M0 15 Q7.5 10 15 15 T30 15" fill="none" stroke="#7EC8E8" stroke-opacity=".3" stroke-width="1"/>
+              </pattern>
+            </defs>
+            <!-- Manzanas -->
+            <rect x="10" y="10" width="90" height="60" fill="#E8F0F7" rx="4"/>
+            <rect x="110" y="10" width="70" height="50" fill="#E8F0F7" rx="4"/>
+            <rect x="190" y="10" width="120" height="55" fill="#E8F0F7" rx="4"/>
+            <rect x="320" y="10" width="70" height="65" fill="#E8F0F7" rx="4"/>
+            <rect x="10" y="130" width="140" height="60" fill="#E8F0F7" rx="4"/>
+            <rect x="160" y="120" width="110" height="70" fill="#E8F0F7" rx="4"/>
+            <rect x="280" y="130" width="110" height="60" fill="#E8F0F7" rx="4"/>
+            <!-- Calles horizontales -->
+            <path d="M0 80 L400 80" stroke="#fff" stroke-width="10"/>
+            <path d="M0 110 L400 110" stroke="#fff" stroke-width="8"/>
+            <!-- Calles verticales -->
+            <path d="M105 0 L105 200" stroke="#fff" stroke-width="8"/>
+            <path d="M275 0 L275 200" stroke="#fff" stroke-width="8"/>
+            <!-- Mar / piscina zona (fondo con waves) -->
+            <rect x="180" y="80" width="90" height="30" fill="url(#waves)" opacity=".6"/>
+          </svg>
+          <div class="map-radius"></div>
+          <svg class="map-pin" viewBox="0 0 32 40">
+            <path d="M16 40 C16 40 2 22 2 14 A14 14 0 0 1 30 14 C30 22 16 40 16 40 Z" fill="#EF4444"/>
+            <circle cx="16" cy="14" r="5" fill="#fff"/>
+          </svg>
+        </div>
+        <div class="map-info">
+          <div class="map-info-left">
+            <div class="map-name">Hotel Bellamar</div>
+            <div class="map-addr">C/ Marbella, 32 · Palma de Mallorca</div>
+          </div>
+          <button class="btn btn-outline">
+            <svg class="ic ic-16"><use href="#ic-compass"/></svg>
+            Cómo llegar
+          </button>
+        </div>
+      </div>
+
+      <!-- Avisos rápidos -->
+      <div class="section-eyebrow"><span class="eyebrow">Pendiente para hoy</span></div>
+      <div class="col gap-2">
+        <div class="notice interactive" onclick="showView('tareas')">
+          <div class="notice-icon amber">
+            <svg class="ic ic-22"><use href="#ic-clipboard"/></svg>
+          </div>
+          <div class="notice-body">
+            <div class="notice-title">3 tareas del coordinador</div>
+            <div class="notice-sub">2 sin hacer · 1 completada</div>
+          </div>
+          <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
+        </div>
+        <div class="notice interactive" onclick="showView('botiquin')">
+          <div class="notice-icon sky">
+            <svg class="ic ic-22"><use href="#ic-medkit"/></svg>
+          </div>
+          <div class="notice-body">
+            <div class="notice-title">Revisar botiquín</div>
+            <div class="notice-sub">Última revisión hace 3 días</div>
+          </div>
+          <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
+        </div>
+      </div>
+    </main>
+
+    <!-- ============ VIEW: TAREAS ============ -->
+    <main class="view hidden" data-view="tareas">
+      <div class="section-eyebrow" style="margin-top: 4px;">
+        <span class="eyebrow">Notas del coordinador</span>
+        <span class="text-muted small" id="notasCount">2 nuevas</span>
+      </div>
+      <div class="col gap-2" id="notasList"></div>
+
+      <div class="section-eyebrow">
+        <span class="eyebrow">Tareas del día</span>
+        <span class="text-muted small" id="tareasProgress">1 de 4 completadas</span>
+      </div>
+      <div class="list" id="tareasList"></div>
+    </main>
+
+    <!-- ============ VIEW: BOTIQUÍN ============ -->
+    <main class="view hidden" data-view="botiquin">
+      <div class="medkit-hero">
+        <div class="head">
+          <div class="icon">
+            <svg class="ic ic-24"><use href="#ic-medkit"/></svg>
+          </div>
+          <div style="flex:1">
+            <h3>Botiquín del puesto</h3>
+            <p>Hotel Bellamar · última revisión hace 3 días</p>
+          </div>
+        </div>
+        <div class="row gap-2 mt-4">
+          <button class="btn btn-lg btn-block" onclick="openReportModal()">
+            <svg class="ic ic-18"><use href="#ic-alert"/></svg>
+            Reportar falta de material
+          </button>
+        </div>
+      </div>
+
+      <div class="section-eyebrow">
+        <span class="eyebrow">Inventario actual</span>
+        <span class="text-muted small">10 artículos</span>
+      </div>
+      <div class="col gap-2" id="inventarioList"></div>
+    </main>
+
+    <!-- ============ VIEW: PERFIL ============ -->
+    <main class="view hidden" data-view="perfil">
+      <div class="profile">
+        <div class="profile-avatar">MF</div>
+        <div class="profile-name">María Fernández</div>
+        <div class="profile-role">Socorrista · en plantilla desde 2022</div>
+        <div class="profile-badges">
+          <span class="badge badge-ok">
+            <svg class="ic ic-14"><use href="#ic-award"/></svg>
+            Titulación al día
+          </span>
+          <span class="badge badge-info">
+            <svg class="ic ic-14"><use href="#ic-heart-pulse"/></svg>
+            RCP 2025
+          </span>
+        </div>
+      </div>
+
+      <div class="section-eyebrow"><span class="eyebrow">Últimos meses</span></div>
+      <div class="metrics-grid">
+        <div class="metric"><div class="metric-label">Julio</div><div class="metric-value">160<span class="unit">h</span></div><div class="metric-sub">148 + 12 extras</div></div>
+        <div class="metric"><div class="metric-label">Junio</div><div class="metric-value">168<span class="unit">h</span></div><div class="metric-sub">160 + 8 extras</div></div>
+        <div class="metric"><div class="metric-label">Mayo</div><div class="metric-value">152<span class="unit">h</span></div><div class="metric-sub">150 + 2 extras</div></div>
+        <div class="metric"><div class="metric-label">Abril</div><div class="metric-value">144<span class="unit">h</span></div><div class="metric-sub">144 + 0 extras</div></div>
+      </div>
+
+      <div class="section-eyebrow"><span class="eyebrow">Ajustes</span></div>
+      <div class="list">
+        <div class="li">
+          <div class="li-icon"><svg class="ic ic-18"><use href="#ic-bell"/></svg></div>
+          <div class="li-body">
+            <div class="li-title">Notificaciones</div>
+            <div class="li-sub">Recordatorios de fichaje activos</div>
+          </div>
+          <div class="li-side"><span class="badge badge-ok"><span class="dot"></span>Activas</span></div>
+        </div>
+        <div class="li">
+          <div class="li-icon"><svg class="ic ic-18"><use href="#ic-phone"/></svg></div>
+          <div class="li-body">
+            <div class="li-title">Contactar coordinador</div>
+            <div class="li-sub">Jaume Ferrer · +34 971 000 000</div>
+          </div>
+          <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
+        </div>
+        <div class="li interactive" onclick="logout()">
+          <div class="li-icon" style="background: var(--danger-bg); color: #B91C1C;">
+            <svg class="ic ic-18"><use href="#ic-logout"/></svg>
+          </div>
+          <div class="li-body">
+            <div class="li-title">Cerrar sesión</div>
+            <div class="li-sub">Volver al inicio</div>
+          </div>
+          <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============ NAV INFERIOR FLOTANTE ============ -->
+<nav class="tabbar">
+  <button data-tab="inicio" class="active">
+    <svg class="ic ic-18"><use href="#ic-home"/></svg>
+    Inicio
+  </button>
+  <button data-tab="tareas">
+    <svg class="ic ic-18"><use href="#ic-clipboard"/></svg>
+    Tareas
+  </button>
+  <button data-tab="botiquin">
+    <svg class="ic ic-18"><use href="#ic-medkit"/></svg>
+    Botiquín
+  </button>
+  <button data-tab="perfil">
+    <svg class="ic ic-18"><use href="#ic-user"/></svg>
+    Perfil
+  </button>
+</nav>
+
+<!-- ============ MODAL REPORTAR ============ -->
+<div class="modal-backdrop" id="reportModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>Reportar falta de material</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;">Se enviará una alerta inmediata al coordinador con puesto, hora y material.</p>
+      </div>
+      <button class="modal-close" onclick="closeReportModal()">
+        <svg class="ic ic-16"><use href="#ic-x"/></svg>
+      </button>
+    </div>
+
+    <div class="field">
+      <label>Material</label>
+      <select id="reportItem">
+        <option>Vendas elásticas</option>
+        <option>Gasas estériles</option>
+        <option>Suero fisiológico 500ml</option>
+        <option>Guantes nitrilo</option>
+        <option>Mascarilla RCP</option>
+        <option>Manta térmica</option>
+        <option>Antiséptico clorhexidina</option>
+        <option>Otro (indicar en notas)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Cantidad que falta</label>
+      <input type="number" id="reportQty" value="1" min="1" />
+    </div>
+
+    <div class="field">
+      <label>Notas (opcional)</label>
+      <textarea id="reportNotes" placeholder="p.ej. Se ha acabado la caja del cajón superior"></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeReportModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitReport()">
+        <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
+        Enviar alerta
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <svg class="ic ic-16"><use href="#ic-check-circle"/></svg>
+  <span id="toastText"></span>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/data.js"></script>
+<script src="js/socorrista.js"></script>
+</body>
+</html>

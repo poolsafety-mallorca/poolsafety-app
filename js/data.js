@@ -1,0 +1,200 @@
+/* ==========================================================================
+   PoolSafety — Datos simulados del prototipo
+   Todo mock. Se persiste ligeramente en localStorage para dar sensación real.
+   ========================================================================== */
+
+const PS = (function () {
+  const STORAGE_KEY = 'poolsafety-mock-v1';
+
+  /* ---------- Puestos (30 de muestra, dashboard dice 80 totales) ---------- */
+  const puestos = [
+    { id: 'p01', nombre: 'Hotel Bellamar', zona: 'Palma', hora: '10:00', duracion: 8 },
+    { id: 'p02', nombre: 'Resort Cala Millor', zona: 'Cala Millor', hora: '10:00', duracion: 8 },
+    { id: 'p03', nombre: 'Residencial Son Vida', zona: 'Palma', hora: '11:00', duracion: 6 },
+    { id: 'p04', nombre: 'Hotel Playa Muro', zona: 'Muro', hora: '10:00', duracion: 8 },
+    { id: 'p05', nombre: 'Aparthotel Illetas', zona: 'Illetes', hora: '10:00', duracion: 8 },
+    { id: 'p06', nombre: 'Club Náutico Alcúdia', zona: 'Alcúdia', hora: '09:30', duracion: 8 },
+    { id: 'p07', nombre: 'Hotel Cala d\'Or', zona: 'Cala d\'Or', hora: '10:00', duracion: 8 },
+    { id: 'p08', nombre: 'Resort Magaluf Bay', zona: 'Magaluf', hora: '10:00', duracion: 9 },
+    { id: 'p09', nombre: 'Hotel Portals Nous', zona: 'Portals Nous', hora: '10:00', duracion: 8 },
+    { id: 'p10', nombre: 'Comunidad Sa Coma', zona: 'Sa Coma', hora: '11:00', duracion: 6 },
+    { id: 'p11', nombre: 'Hotel Puerto Pollença', zona: 'Pollença', hora: '10:00', duracion: 8 },
+    { id: 'p12', nombre: 'Aparthotel Cala Ratjada', zona: 'Cala Ratjada', hora: '10:00', duracion: 8 },
+    { id: 'p13', nombre: 'Hotel Palmanova Beach', zona: 'Palmanova', hora: '10:00', duracion: 9 },
+    { id: 'p14', nombre: 'Resort Santa Ponsa', zona: 'Santa Ponsa', hora: '10:00', duracion: 8 },
+    { id: 'p15', nombre: 'Hotel Es Trenc', zona: 'Campos', hora: '10:00', duracion: 7 },
+    { id: 'p16', nombre: 'Villa Deià Retreat', zona: 'Deià', hora: '11:00', duracion: 6 },
+    { id: 'p17', nombre: 'Hotel Sóller Marina', zona: 'Port de Sóller', hora: '10:00', duracion: 8 },
+    { id: 'p18', nombre: 'Aparthotel Colònia', zona: 'Colònia de Sant Jordi', hora: '10:00', duracion: 8 },
+    { id: 'p19', nombre: 'Resort Andratx', zona: 'Port d\'Andratx', hora: '10:00', duracion: 8 },
+    { id: 'p20', nombre: 'Hotel Can Picafort', zona: 'Can Picafort', hora: '10:00', duracion: 8 },
+    { id: 'p21', nombre: 'Comunidad Bendinat', zona: 'Bendinat', hora: '11:00', duracion: 6 },
+    { id: 'p22', nombre: 'Hotel Camp de Mar', zona: 'Camp de Mar', hora: '10:00', duracion: 8 },
+    { id: 'p23', nombre: 'Aparthotel Costa d\'en Blanes', zona: 'Costa d\'en Blanes', hora: '10:00', duracion: 8 },
+    { id: 'p24', nombre: 'Hotel Peguera Sol', zona: 'Peguera', hora: '10:00', duracion: 8 },
+    { id: 'p25', nombre: 'Resort Palma Nova', zona: 'Palma Nova', hora: '10:00', duracion: 9 },
+    { id: 'p26', nombre: 'Hotel Formentor Vista', zona: 'Formentor', hora: '10:00', duracion: 8 },
+    { id: 'p27', nombre: 'Comunidad Sa Torre', zona: 'Llucmajor', hora: '11:00', duracion: 6 },
+    { id: 'p28', nombre: 'Hotel Portocolom', zona: 'Portocolom', hora: '10:00', duracion: 7 },
+    { id: 'p29', nombre: 'Aparthotel Cales de Mallorca', zona: 'Cales de Mallorca', hora: '10:00', duracion: 8 },
+    { id: 'p30', nombre: 'Hotel Costa Norte', zona: 'Cala Sant Vicenç', hora: '10:00', duracion: 8 }
+  ];
+
+  /* ---------- Socorristas (40 de muestra + estadísticas para 150) ---------- */
+  const nombres = [
+    'María Fernández', 'Joan Ribas', 'Laura Torres', 'Marc Serra', 'Alba Pons',
+    'Nico Martín', 'Carla Vidal', 'Pau Company', 'Elena Reus', 'Óscar Bauzá',
+    'Aina Salom', 'Diego Ramos', 'Cristina Mut', 'Toni Amengual', 'Berta Coll',
+    'Lucía Gómez', 'David Cifre', 'Marta Estelrich', 'Jordi Fiol', 'Sara Bosch',
+    'Rubén Nadal', 'Andrea Palou', 'Iván Barceló', 'Paula Riera', 'Adrià Font',
+    'Núria Alorda', 'Sergi Homar', 'Mireia Vaquer', 'Xavi Roig', 'Judith Sansó',
+    'Álvaro Perelló', 'Clara Bibiloni', 'Guille Vives', 'Nerea Colom', 'Roger Truyol',
+    'Irene Massanet', 'Bruno Rossell', 'Vera Llompart', 'Aleix Segura', 'Marina Adrover'
+  ];
+
+  const initials = (n) => n.split(' ').map(p => p[0]).join('').substring(0, 2).toUpperCase();
+
+  const socorristas = nombres.map((nombre, i) => ({
+    id: `s${String(i + 1).padStart(2, '0')}`,
+    nombre,
+    iniciales: initials(nombre),
+    telefono: `+34 6${Math.floor(10000000 + Math.random() * 89999999)}`,
+    // asignamos puesto rotativo (algunos puestos sin socorrista para simular vacantes)
+    puestoId: i < puestos.length ? puestos[i].id : null,
+    horasNormales: 140 + Math.floor(Math.random() * 40),  // 140-180
+    horasExtra: Math.floor(Math.random() * 22),           // 0-22
+    diasTrabajados: 18 + Math.floor(Math.random() * 6)    // 18-24 del mes
+  }));
+
+  /* ---------- Fichajes de hoy ----------
+     Estados posibles:
+       - ok       : fichó a tiempo y está en el puesto
+       - tarde    : fichó fuera de hora
+       - fuera    : fichó pero fuera del área GPS
+       - pendiente: no ha fichado aún
+       - vacante  : puesto sin socorrista
+  */
+  const estados = ['ok','ok','ok','ok','ok','ok','ok','ok','ok','ok',
+                   'ok','ok','ok','ok','ok','ok','ok','ok','ok',
+                   'tarde','tarde','tarde','tarde',
+                   'fuera','fuera',
+                   'pendiente','pendiente','pendiente'];
+
+  const fichajes = puestos.map((p, i) => {
+    const soc = socorristas.find(s => s.puestoId === p.id);
+    if (!soc) return { puestoId: p.id, estado: 'vacante', socorristaId: null };
+
+    const estado = estados[i % estados.length];
+    let horaFichaje = null;
+    if (estado === 'ok') {
+      const [h, m] = p.hora.split(':');
+      horaFichaje = `${h}:${String(Math.floor(Math.random() * 5)).padStart(2, '0')}`;
+    } else if (estado === 'tarde') {
+      const [h] = p.hora.split(':');
+      horaFichaje = `${h}:${15 + Math.floor(Math.random() * 20)}`;
+    } else if (estado === 'fuera') {
+      horaFichaje = p.hora;
+    }
+    return {
+      puestoId: p.id,
+      socorristaId: soc.id,
+      estado,
+      horaFichaje,
+      gpsOk: estado !== 'fuera'
+    };
+  });
+
+  /* ---------- Notas / tareas del coordinador al socorrista ---------- */
+  const tareas = [
+    { id: 't01', puestoId: 'p01', socorristaId: 's01', titulo: 'Revisar salvavidas de repuesto', descripcion: 'Contar los 4 flotadores adicionales del almacén.', hecha: false, prioridad: 'alta', fecha: 'hoy' },
+    { id: 't02', puestoId: 'p01', socorristaId: 's01', titulo: 'Comprobar cloración a las 12:00', descripcion: 'Anotar valor en el parte diario.', hecha: false, prioridad: 'media', fecha: 'hoy' },
+    { id: 't03', puestoId: 'p01', socorristaId: 's01', titulo: 'Fotografiar puesto al abrir', descripcion: 'Subir foto al parte del día.', hecha: true, prioridad: 'baja', fecha: 'hoy' },
+    { id: 't04', puestoId: 'p01', socorristaId: 's01', titulo: 'Firmar hoja de incidencias', descripcion: 'Revisar y firmar al cierre del turno.', hecha: false, prioridad: 'media', fecha: 'mañana' }
+  ];
+
+  const notas = [
+    { id: 'n01', puestoId: 'p01', socorristaId: 's01', autor: 'Coordinador Jaume', mensaje: 'Recordad que el próximo lunes viene inspección municipal. Botiquín completo obligatorio.', fecha: 'Hoy, 08:14' },
+    { id: 'n02', puestoId: 'p01', socorristaId: 's01', autor: 'Coordinador Marta', mensaje: 'El cliente ha pedido que cerremos el toldo al terminar el turno. Gracias.', fecha: 'Ayer, 18:22' }
+  ];
+
+  /* ---------- Inventario del botiquín ---------- */
+  const inventario = [
+    { id: 'i01', puestoId: 'p01', nombre: 'Vendas elásticas', categoria: 'Vendaje', stock: 6, minimo: 4, unidad: 'ud', ultimaRepo: 'hace 3 días' },
+    { id: 'i02', puestoId: 'p01', nombre: 'Gasas estériles', categoria: 'Vendaje', stock: 12, minimo: 10, unidad: 'sobre', ultimaRepo: 'hace 3 días' },
+    { id: 'i03', puestoId: 'p01', nombre: 'Suero fisiológico 500ml', categoria: 'Lavado', stock: 1, minimo: 3, unidad: 'ud', ultimaRepo: 'hace 12 días' },
+    { id: 'i04', puestoId: 'p01', nombre: 'Guantes nitrilo talla M', categoria: 'Protección', stock: 24, minimo: 20, unidad: 'ud', ultimaRepo: 'hace 5 días' },
+    { id: 'i05', puestoId: 'p01', nombre: 'Mascarilla RCP', categoria: 'Reanimación', stock: 2, minimo: 2, unidad: 'ud', ultimaRepo: 'hace 15 días' },
+    { id: 'i06', puestoId: 'p01', nombre: 'Manta térmica', categoria: 'Emergencia', stock: 0, minimo: 2, unidad: 'ud', ultimaRepo: 'hace 20 días' },
+    { id: 'i07', puestoId: 'p01', nombre: 'Tirita variada', categoria: 'Curas', stock: 30, minimo: 20, unidad: 'ud', ultimaRepo: 'hace 3 días' },
+    { id: 'i08', puestoId: 'p01', nombre: 'Antiséptico clorhexidina', categoria: 'Curas', stock: 1, minimo: 2, unidad: 'ud', ultimaRepo: 'hace 10 días' },
+    { id: 'i09', puestoId: 'p01', nombre: 'Tijeras romas', categoria: 'Herramienta', stock: 1, minimo: 1, unidad: 'ud', ultimaRepo: 'ok' },
+    { id: 'i10', puestoId: 'p01', nombre: 'Bolsa hielo instantáneo', categoria: 'Traumatismo', stock: 3, minimo: 3, unidad: 'ud', ultimaRepo: 'hace 5 días' }
+  ];
+
+  /* ---------- Alertas de inventario del sistema ---------- */
+  const alertas = [
+    { id: 'a01', puestoId: 'p06', puestoNombre: 'Club Náutico Alcúdia', item: 'Manta térmica', reportado: 'hace 15 min', criticidad: 'alta' },
+    { id: 'a02', puestoId: 'p13', puestoNombre: 'Hotel Palmanova Beach', item: 'Suero fisiológico', reportado: 'hace 42 min', criticidad: 'media' },
+    { id: 'a03', puestoId: 'p22', puestoNombre: 'Hotel Camp de Mar', item: 'Vendas elásticas', reportado: 'hace 1 h', criticidad: 'media' },
+    { id: 'a04', puestoId: 'p04', puestoNombre: 'Hotel Playa Muro', item: 'Mascarilla RCP', reportado: 'hace 2 h', criticidad: 'alta' },
+    { id: 'a05', puestoId: 'p18', puestoNombre: 'Aparthotel Colònia', item: 'Antiséptico clorhexidina', reportado: 'hace 3 h', criticidad: 'baja' }
+  ];
+
+  /* ---------- Números globales para el dashboard ---------- */
+  const totales = {
+    puestosCubiertos: 80,
+    puestosOK: 62,
+    puestosTarde: 8,
+    puestosFuera: 5,
+    puestosPendientes: 5,
+    socorristasPlantilla: 150,
+    coordinadores: 2,
+    alertasAbiertas: alertas.length
+  };
+
+  /* ---------- Sesión (rol y usuario actual) ---------- */
+  function getSession() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }
+  function setSession(s) { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
+  function clearSession() { localStorage.removeItem(STORAGE_KEY); }
+
+  /* ---------- Estado dinámico del socorrista logueado (localStorage) ---------- */
+  function getSocorristaState() {
+    const key = 'poolsafety-soc-state';
+    const raw = localStorage.getItem(key);
+    if (raw) return JSON.parse(raw);
+    return {
+      fichado: false,
+      horaEntrada: null,
+      horaSalida: null,
+      tareasHechas: ['t03']
+    };
+  }
+  function setSocorristaState(s) { localStorage.setItem('poolsafety-soc-state', JSON.stringify(s)); }
+
+  /* ---------- Helpers ---------- */
+  function socorristaByPuesto(puestoId) {
+    return socorristas.find(s => s.puestoId === puestoId);
+  }
+  function puestoById(id) { return puestos.find(p => p.id === id); }
+
+  function ahora() {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+  function fechaLarga() {
+    const d = new Date();
+    const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+    return `${dias[d.getDay()]}, ${d.getDate()} de ${meses[d.getMonth()]}`;
+  }
+
+  return {
+    puestos, socorristas, fichajes, tareas, notas, inventario, alertas, totales,
+    getSession, setSession, clearSession,
+    getSocorristaState, setSocorristaState,
+    socorristaByPuesto, puestoById, ahora, fechaLarga
+  };
+})();

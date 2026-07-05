@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <meta name="theme-color" content="#0A1E3F" />
+  <title>PoolSafety · Panel operativo</title>
+  <link rel="icon" type="image/png" href="assets/logo-blanco.png" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+<div class="splash">
+
+  <!-- Wave decorativa inferior -->
+  <svg class="splash-wave" viewBox="0 0 1440 120" preserveAspectRatio="none">
+    <path d="M0,80 C240,40 480,110 720,80 C960,50 1200,110 1440,80 L1440,120 L0,120 Z" fill="#22D3EE" fill-opacity=".08"/>
+    <path d="M0,90 C240,60 480,120 720,90 C960,60 1200,120 1440,90 L1440,120 L0,120 Z" fill="#0EA5E9" fill-opacity=".12"/>
+  </svg>
+
+  <div class="splash-card">
+    <div class="splash-logo-wrap">
+      <img src="assets/logo-blanco.png" alt="PoolSafety" />
+    </div>
+
+    <h1 class="splash-title">Seguridad<br/>acuática, al día.</h1>
+    <p class="splash-sub">Fichaje, control de horas, botiquín y coordinación de puestos. Todo en un solo lugar para el equipo de PoolSafety Mallorca.</p>
+
+    <div class="role-picker">
+
+      <button class="role-btn socorrista" data-role="socorrista">
+        <div class="role-icon">
+          <svg class="ic ic-22"><use href="#ic-lifebuoy"/></svg>
+        </div>
+        <div class="role-body">
+          <div class="role-name">Soy socorrista</div>
+          <div class="role-desc">Fichaje, tareas del turno y botiquín</div>
+        </div>
+        <svg class="ic ic-18 role-arrow"><use href="#ic-arrow-right"/></svg>
+      </button>
+
+      <button class="role-btn coordinador" data-role="coordinador">
+        <div class="role-icon">
+          <svg class="ic ic-22"><use href="#ic-clipboard"/></svg>
+        </div>
+        <div class="role-body">
+          <div class="role-name">Soy coordinador</div>
+          <div class="role-desc">Dashboard, alertas y asignaciones</div>
+        </div>
+        <svg class="ic ic-18 role-arrow"><use href="#ic-arrow-right"/></svg>
+      </button>
+
+      <button class="role-btn dueno" data-role="dueno">
+        <div class="role-icon">
+          <svg class="ic ic-22"><use href="#ic-briefcase"/></svg>
+        </div>
+        <div class="role-body">
+          <div class="role-name">Dirección</div>
+          <div class="role-desc">Vista general, horas y facturación</div>
+        </div>
+        <svg class="ic ic-18 role-arrow"><use href="#ic-arrow-right"/></svg>
+      </button>
+
+    </div>
+  </div>
+
+  <div class="splash-footer">PROTOTIPO v0.2 · Datos simulados · Mallorca</div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/data.js"></script>
+<script>
+  document.querySelectorAll('.role-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const role = btn.dataset.role;
+      if (role === 'socorrista') {
+        PS.setSession({ role, id: 's01', nombre: 'María Fernández' });
+        window.location.href = 'socorrista.html';
+      } else {
+        const label = role === 'coordinador' ? 'Jaume Ferrer' : 'Antonio Ruiz';
+        PS.setSession({ role, nombre: label });
+        window.location.href = 'coordinador.html';
+      }
+    });
+  });
+</script>
+</body>
+</html>

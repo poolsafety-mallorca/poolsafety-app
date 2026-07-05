@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0A1E3F" />
+  <title>PoolSafety · Panel operativo</title>
+  <link rel="icon" type="image/png" href="assets/logo-blanco.png" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+<div class="dash">
+
+  <!-- ============ NAV BAR ============ -->
+  <nav class="dash-nav">
+    <div class="dash-nav-inner">
+      <a href="index.html" class="dash-brand" title="Inicio">
+        <img src="assets/logo-blanco.png" alt="PoolSafety" />
+      </a>
+
+      <div class="dash-nav-right">
+        <label class="search-inline">
+          <svg class="ic ic-16"><use href="#ic-search"/></svg>
+          <input type="text" id="postSearch" placeholder="Buscar puesto o socorrista…" />
+        </label>
+        <button class="btn-icon" title="Notificaciones">
+          <svg class="ic ic-18"><use href="#ic-bell"/></svg>
+        </button>
+        <button class="user-chip" title="Perfil">
+          <span class="user-chip-avatar" id="userAvatar">JF</span>
+          <span class="col">
+            <span class="user-chip-name" id="userName">Jaume Ferrer</span>
+            <span class="user-chip-role" id="userRoleLabel">Coordinador</span>
+          </span>
+        </button>
+        <button class="btn-icon" onclick="logout()" title="Salir">
+          <svg class="ic ic-18"><use href="#ic-logout"/></svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============ HERO ============ -->
+  <section class="dash-hero">
+    <div class="dash-hero-inner">
+      <div class="dash-eyebrow">
+        <svg class="ic ic-14"><use href="#ic-waves"/></svg>
+        <span id="dateText">viernes, 4 de julio</span>
+      </div>
+      <h1 class="dash-title">Panel operativo · Mallorca</h1>
+      <p class="dash-sub">80 puestos activos hoy · 150 socorristas · 2 coordinadores</p>
+    </div>
+  </section>
+
+  <!-- ============ BODY ============ -->
+  <div class="dash-body">
+
+    <!-- KPIs -->
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="kpi-head">
+          <div class="kpi-label">Puestos operativos</div>
+          <div class="kpi-icon emerald">
+            <svg class="ic ic-18"><use href="#ic-check-circle"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpiOk">62<span class="of">/ 80</span></div>
+        <div class="kpi-trend up">
+          <svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg>
+          +4 vs ayer
+        </div>
+        <svg class="kpi-spark" viewBox="0 0 200 40" preserveAspectRatio="none">
+          <path d="M0 30 L20 25 L40 28 L60 20 L80 22 L100 18 L120 15 L140 12 L160 10 L180 8 L200 5" stroke="#10B981" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path d="M0 30 L20 25 L40 28 L60 20 L80 22 L100 18 L120 15 L140 12 L160 10 L180 8 L200 5 L200 40 L0 40 Z" fill="url(#kpi-em)"/>
+          <defs><linearGradient id="kpi-em" x2="0" y2="1"><stop offset="0" stop-color="#10B981" stop-opacity=".3"/><stop offset="1" stop-color="#10B981" stop-opacity="0"/></linearGradient></defs>
+        </svg>
+      </div>
+
+      <div class="kpi">
+        <div class="kpi-head">
+          <div class="kpi-label">Fichaje tarde</div>
+          <div class="kpi-icon amber">
+            <svg class="ic ic-18"><use href="#ic-clock"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpiTarde">8</div>
+        <div class="kpi-trend down">
+          <svg class="ic ic-14"><use href="#ic-trending-up"/></svg>
+          +2 vs ayer
+        </div>
+        <svg class="kpi-spark" viewBox="0 0 200 40" preserveAspectRatio="none">
+          <path d="M0 25 L20 22 L40 20 L60 25 L80 18 L100 22 L120 15 L140 20 L160 12 L180 15 L200 10" stroke="#F59E0B" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+
+      <div class="kpi">
+        <div class="kpi-head">
+          <div class="kpi-label">Fuera de zona</div>
+          <div class="kpi-icon red">
+            <svg class="ic ic-18"><use href="#ic-signal"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpiFuera">5</div>
+        <div class="kpi-trend up">
+          <svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg>
+          -1 vs ayer
+        </div>
+        <svg class="kpi-spark" viewBox="0 0 200 40" preserveAspectRatio="none">
+          <path d="M0 15 L20 20 L40 12 L60 18 L80 15 L100 22 L120 18 L140 15 L160 20 L180 18 L200 22" stroke="#EF4444" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+
+      <div class="kpi">
+        <div class="kpi-head">
+          <div class="kpi-label">Sin fichar</div>
+          <div class="kpi-icon slate">
+            <svg class="ic ic-18"><use href="#ic-alert-circle"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpiPend">5</div>
+        <div class="kpi-trend down">
+          <svg class="ic ic-14"><use href="#ic-trending-up"/></svg>
+          Requiere aviso
+        </div>
+        <svg class="kpi-spark" viewBox="0 0 200 40" preserveAspectRatio="none">
+          <path d="M0 20 L20 22 L40 18 L60 20 L80 18 L100 25 L120 20 L140 22 L160 18 L180 20 L200 15" stroke="#64748B" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Grid principal -->
+    <div class="dash-grid">
+
+      <!-- Puestos -->
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title-wrap">
+            <h3 class="panel-title">Puestos en vivo</h3>
+            <span class="panel-count">Actualizado hace 30 s</span>
+          </div>
+          <div class="row gap-2">
+            <button class="btn btn-outline btn-icon" title="Refrescar">
+              <svg class="ic ic-16"><use href="#ic-refresh"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="filter-chips" id="filterChips">
+            <button class="chip active" data-filter="todos">Todos <span class="count">30</span></button>
+            <button class="chip ok" data-filter="ok">Fichado <span class="count">19</span></button>
+            <button class="chip warn" data-filter="tarde">Tarde <span class="count">4</span></button>
+            <button class="chip danger" data-filter="fuera">Fuera de zona <span class="count">2</span></button>
+            <button class="chip danger" data-filter="pendiente">Pendiente <span class="count">3</span></button>
+            <button class="chip" data-filter="vacante">Vacantes <span class="count">2</span></button>
+          </div>
+          <div class="posts" id="postsGrid"></div>
+        </div>
+      </section>
+
+      <!-- Sidebar -->
+      <aside class="col gap-4">
+
+        <!-- Alertas de botiquín -->
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title-wrap">
+              <div class="kpi-icon red" style="width: 30px; height: 30px;">
+                <svg class="ic ic-16"><use href="#ic-alert"/></svg>
+              </div>
+              <h3 class="panel-title">Alertas de botiquín</h3>
+            </div>
+            <span class="badge badge-danger" id="alertsCount">5 abiertas</span>
+          </div>
+          <div class="panel-body" id="alertsList"></div>
+        </section>
+
+        <!-- Acciones rápidas -->
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title-wrap">
+              <h3 class="panel-title">Acciones rápidas</h3>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="quick-actions">
+              <button class="btn btn-primary btn-lg btn-block" onclick="openTareaModal()">
+                <svg class="ic ic-18"><use href="#ic-plus"/></svg>
+                Asignar tarea o nota
+              </button>
+              <button class="btn btn-outline btn-lg btn-block" onclick="scrollTo({top: document.getElementById('hoursSection').offsetTop - 20, behavior:'smooth'})">
+                <svg class="ic ic-18"><use href="#ic-bar-chart"/></svg>
+                Horas del mes
+              </button>
+              <button class="btn btn-outline btn-lg btn-block" onclick="toast('Exportando parte diario en PDF…')">
+                <svg class="ic ic-18"><use href="#ic-download"/></svg>
+                Exportar parte diario
+              </button>
+            </div>
+          </div>
+        </section>
+
+      </aside>
+    </div>
+
+    <!-- Horas del mes -->
+    <section class="panel hours-panel" id="hoursSection">
+      <div class="panel-head">
+        <div class="panel-title-wrap">
+          <h3 class="panel-title">Horas del mes por socorrista</h3>
+          <span class="panel-count">Julio · 20 mostrados de 150</span>
+        </div>
+        <div class="row gap-2">
+          <select id="hourFilter" style="padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; background: #fff; color: var(--ink-700); font-weight: 500;">
+            <option value="all">Todos (150)</option>
+            <option value="extra">Con horas extra</option>
+            <option value="top">Top 10 más horas</option>
+          </select>
+          <button class="btn btn-outline btn-icon" title="Descargar">
+            <svg class="ic ic-16"><use href="#ic-download"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="panel-body" style="padding: 0; overflow-x: auto;">
+        <table class="hours-table" id="hoursTable">
+          <thead>
+            <tr>
+              <th>Socorrista</th>
+              <th>Puesto</th>
+              <th class="num">Días</th>
+              <th class="num">Normales</th>
+              <th class="num">Extras</th>
+              <th class="num">Total</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- ============ MODAL DETALLE PUESTO ============ -->
+<div class="modal-backdrop" id="postModal">
+  <div class="modal" id="postModalBody"></div>
+</div>
+
+<!-- ============ MODAL ASIGNAR TAREA ============ -->
+<div class="modal-backdrop" id="tareaModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>Asignar tarea o nota</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;">Se envía al socorrista inmediatamente.</p>
+      </div>
+      <button class="modal-close" onclick="closeTareaModal()">
+        <svg class="ic ic-16"><use href="#ic-x"/></svg>
+      </button>
+    </div>
+    <div class="field">
+      <label>Socorrista</label>
+      <select id="taskSocorrista"></select>
+    </div>
+    <div class="field">
+      <label>Tipo</label>
+      <select id="taskType">
+        <option value="tarea">Tarea con checkbox</option>
+        <option value="nota">Nota informativa</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Título / mensaje</label>
+      <input type="text" id="taskTitle" placeholder="p.ej. Revisar cloración a las 12:00" />
+    </div>
+    <div class="field">
+      <label>Detalles (opcional)</label>
+      <textarea id="taskDesc" placeholder="Añade contexto o instrucciones específicas…"></textarea>
+    </div>
+    <div class="field">
+      <label>Prioridad</label>
+      <select id="taskPrior">
+        <option value="baja">Baja</option>
+        <option value="media" selected>Media</option>
+        <option value="alta">Alta</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeTareaModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitTarea()">
+        <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
+        Enviar
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <svg class="ic ic-16"><use href="#ic-check-circle"/></svg>
+  <span id="toastText"></span>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/data.js"></script>
+<script src="js/coordinador.js"></script>
+</body>
+</html>
