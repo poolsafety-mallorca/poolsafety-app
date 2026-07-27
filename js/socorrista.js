@@ -102,16 +102,35 @@
     const img = new Image();
     const reader = new FileReader();
     reader.onload = ev => { img.src = ev.target.result; };
-    img.onload = () => {
+    img.onload = async () => {
       const canvas = document.createElement('canvas');
-      const maxSize = 400;
+      const maxSize = 500;
       const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
       canvas.width = img.width * scale;
       canvas.height = img.height * scale;
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-      guardarMiFoto(canvas.toDataURL('image/jpeg', 0.75));
-      aplicarFotoEnUI();
-      toast('Foto de perfil actualizada');
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+      // Subir a Storage (para que se vea desde cualquier dispositivo)
+      try {
+        if (empleadoReal && window.PSStorage) {
+          toast('Subiendo foto...');
+          const path = `fotos/${empleadoReal.id}.jpg`;
+          const url = await window.PSStorage.subir(path, dataUrl, 'image/jpeg');
+          // Guardamos URL pública en empleados.foto_url
+          await window.sb.from('empleados').update({ foto_url: url }).eq('id', empleadoReal.id);
+          empleadoReal.foto_url = url;
+          guardarMiFoto(url);
+          toast('✓ Foto guardada — visible desde cualquier dispositivo');
+        } else {
+          // Fallback local
+          guardarMiFoto(dataUrl);
+          toast('Foto actualizada (solo en este dispositivo)');
+        }
+        aplicarFotoEnUI();
+      } catch (err) {
+        toast('Error subiendo foto: ' + err.message);
+      }
     };
     reader.readAsDataURL(f);
   });

@@ -803,8 +803,7 @@
     });
   }
 
-  function procesarArchivoHorario(file) {
-    // Mostrar procesando
+  async function procesarArchivoHorario(file) {
     horarioPreview.style.display = 'block';
     horarioPreview.innerHTML = `
       <div class="horario-preview-box">
@@ -818,27 +817,118 @@
         <div class="processing-spinner"></div>
       </div>`;
 
-    setTimeout(() => mostrarPreviewExtraido(file), 1800);
+    try {
+      const extraidos = await parseArchivoHorarios(file);
+      mostrarPreviewExtraido(file, extraidos);
+    } catch (err) {
+      horarioPreview.innerHTML = `<div class="horario-preview-box">
+        <div class="alert-strip warn"><svg class="ic ic-16"><use href="#ic-alert"/></svg>
+        <div><b>No se pudo procesar el archivo</b><br>${err.message}</div></div>
+        <button class="btn btn-outline mt-3" onclick="cancelarImportHorario()">Cerrar</button>
+      </div>`;
+    }
   }
 
-  function mostrarPreviewExtraido(file) {
-    // "Extrae" datos del archivo (mock realista): usa los primeros 20 socorristas con turnos variados
-    const turnos = ['09:30','10:00','10:00','10:30','11:00'];
-    const durs = [7, 8, 8, 8, 9];
-    const diasOpts = ['Lun-Vie','Lun-Sáb','Todos','Lun-Vie','Lun-Sáb'];
+  async function parseArchivoHorarios(file) {
+    const nombre = file.name.toLowerCase();
+    let filas = [];
+    if (nombre.endsWith('.csv')) {
+      const text = await file.text();
+      const rows = text.split(/\r?\n/).filter(r => r.trim()).map(r => r.split(/[,;\t]/));
+      filas = rows;
+    } else if (nombre.endsWith('.xlsx') || nombre.endsWith('.xls')) {
+      if (!window.XLSX) throw new Error('Librería XLSX no cargada');
+      const buf = await file.arrayBuffer();
+      const wb = window.XLSX.read(buf, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      filas = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    } else if (nombre.endsWith('.pdf')) {
+      throw new Error('Los PDFs necesitan procesamiento manual. Sube el mismo cuadrante en Excel o CSV.');
+    } else {
+      throw new Error('Formato no soportado. Usa .xlsx, .xls o .csv');
+    }
 
-    const extraidos = PS.socorristas.slice(0, 25).map((s, i) => {
-      const p = PS.puestos[i % PS.puestos.length];
-      return {
-        socId: s.id,
-        nombre: s.nombre,
-        puestoId: p.id,
-        puesto: p.nombre,
-        hora: turnos[i % turnos.length],
-        dur: durs[i % durs.length],
-        dias: diasOpts[i % diasOpts.length]
-      };
-    });
+    // Detectar columnas en las primeras filas
+    let idxNombre = -1, idxHotel = -1, idxHorario = -1, idxDias = -1;
+    let filaCabecera = -1;
+    for (let r = 0; r < Math.min(filas.length, 5); r++) {
+      const row = filas[r].map(c => String(c || '').toLowerCase());
+      for (let c = 0; c < row.length; c++) {
+        const cell = row[c];
+        if (cell.includes('nombre') || cell.includes('socorrista') || cell.includes('empleado') || cell.includes('establec')) idxNombre = c;
+        if (cell.includes('hotel') || cell.includes('puesto') || cell.includes('establec') || cell.includes('lugar')) idxHotel = c;
+        if (cell.includes('horario') || cell.includes('turno') || cell.includes('hora')) idxHorario = c;
+        if (cell.includes('dia')) idxDias = c;
+      }
+      if (idxNombre >= 0 || idxHotel >= 0) { filaCabecera = r; break; }
+    }
+    if (filaCabecera === -1) filaCabecera = 0;
+
+    // Fallback razonable: 1ª col = hotel, 2ª col = horario si no reconoce
+    if (idxHotel === -1) idxHotel = 0;
+    if (idxHorario === -1) idxHorario = 1;
+    if (idxNombre === -1) idxNombre = -1; // puede no venir
+
+    const extraidos = [];
+    for (let r = filaCabecera + 1; r < filas.length; r++) {
+      const row = filas[r];
+      if (!row || row.every(c => !c || !String(c).trim())) continue;
+      const hotelRaw = String(row[idxHotel] || '').trim();
+      const horarioRaw = String(row[idxHorario] || '').trim();
+      if (!hotelRaw || hotelRaw.toLowerCase().includes('semana') || hotelRaw.toLowerCase() === 'hoteles') continue;
+      if (!horarioRaw) continue;
+
+      // Match hotel con puestos existentes
+      let puesto = PS.puestos.find(p => normaliza(p.nombre).includes(normaliza(hotelRaw))
+        || normaliza(hotelRaw).includes(normaliza(p.nombre.split(' ')[0])));
+      if (!puesto) {
+        // Buscar por grupo hotel
+        puesto = PS.puestos.find(p => p._raw?.grupo_hotel && normaliza(p._raw.grupo_hotel) === normaliza(hotelRaw));
+      }
+      if (!puesto && PS.puestos.length > 0) {
+        // Si no encuentra, usar el primer puesto sin match como fallback
+        continue;
+      }
+
+      // Parse horario "10:00-18:00" o "10:00 - 18:00"
+      const m = horarioRaw.match(/(\d{1,2}[:.]\d{2})\s*[-–—]\s*(\d{1,2}[:.]\d{2})/);
+      let hIni = '10:00', hFin = '18:00', dur = 8;
+      if (m) {
+        hIni = m[1].replace('.', ':');
+        hFin = m[2].replace('.', ':');
+        dur = parseInt(hFin.split(':')[0]) - parseInt(hIni.split(':')[0]);
+        if (dur <= 0) dur = 8;
+      }
+
+      // Match socorrista si viene columna nombre
+      let socId = null, nombreSoc = '';
+      if (idxNombre >= 0 && row[idxNombre]) {
+        nombreSoc = String(row[idxNombre]).trim();
+        const s = empleadosDB.find(e => normaliza(e.nombre).includes(normaliza(nombreSoc.split(' ')[0]))
+          || normaliza(nombreSoc).includes(normaliza(e.nombre.split(' ')[0])));
+        if (s) socId = s.id;
+      }
+      // Si no hay nombre, dejamos vacío (turno sin asignar)
+      extraidos.push({
+        socId,
+        nombre: nombreSoc || '(sin asignar)',
+        puestoId: puesto.id,
+        puesto: puesto.nombre,
+        hora: hIni,
+        dur,
+        dias: idxDias >= 0 ? String(row[idxDias] || 'Lun-Vie') : 'Lun-Vie'
+      });
+    }
+
+    if (extraidos.length === 0) throw new Error('No se detectaron horarios válidos en el archivo. Revisa que tenga columnas de hotel y horario tipo "10:00-18:00".');
+    return extraidos;
+  }
+
+  function normaliza(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+  }
+
+  function mostrarPreviewExtraido(file, extraidos) {
 
     horarioPreview.innerHTML = `
       <div class="horario-preview-box">
@@ -892,21 +982,39 @@
     toast('Importación cancelada');
   };
 
-  window.aplicarImportHorario = function (rows) {
-    const h = getHorarios();
-    rows.forEach(r => {
-      h[r.socId] = { puestoId: r.puestoId, hora: r.hora, duracion: r.dur, dias: r.dias };
-      // Reflejar en el modelo en memoria
-      const s = PS.socorristas.find(x => x.id === r.socId);
-      if (s) s.puestoId = r.puestoId;
-    });
-    saveHorarios(h);
+  window.aplicarImportHorario = async function (rows) {
+    let creados = 0, actualizados = 0, saltados = 0;
+    for (const r of rows) {
+      if (!r.socId) { saltados++; continue; } // sin socorrista asignado
+      try {
+        // Desactivar horarios activos anteriores del empleado
+        await window.sb.from('horarios').update({ activo: false })
+          .eq('empleado_id', r.socId).eq('activo', true);
+        // Crear nuevo horario activo
+        const { error } = await window.sb.from('horarios').insert({
+          empleado_id: r.socId,
+          puesto_id: r.puestoId,
+          hora_inicio: r.hora + ':00',
+          duracion: r.dur,
+          dias: r.dias,
+          activo: true
+        });
+        if (error) throw error;
+        // Actualizar puesto_id en empleados (asignación actual)
+        await window.sb.from('empleados').update({ puesto_id: r.puestoId }).eq('id', r.socId);
+        creados++;
+      } catch (err) {
+        console.warn('horario:', err.message);
+        saltados++;
+      }
+    }
     horarioPreview.style.display = 'none';
     horarioPreview.innerHTML = '';
     uploadInput.value = '';
+    await cargarEmpleadosDB();
     renderHorariosTable();
     renderPosts();
-    toast(`${rows.length} horarios aplicados. Los socorristas ya lo ven en su app.`);
+    toast(`✓ ${creados} horarios aplicados${saltados ? ' · ' + saltados + ' saltados (sin match)' : ''}`);
   };
 
   /* ==========================================================================
@@ -1082,24 +1190,29 @@
     const f = e.target.files[0];
     if (!f) return;
     if (!f.type.startsWith('image/')) { toast('El archivo debe ser una imagen'); return; }
-    // Redimensionar y guardar como base64 comprimido
     const img = new Image();
     const reader = new FileReader();
     reader.onload = ev => { img.src = ev.target.result; };
     img.onload = async () => {
       const canvas = document.createElement('canvas');
-      const maxSize = 400;
+      const maxSize = 500;
       const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
       canvas.width = img.width * scale;
       canvas.height = img.height * scale;
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
       try {
-        await actualizarEmpleado(fichaActualId, { fotoUrl: dataUrl });
+        toast('Subiendo foto...');
+        let urlFinal = dataUrl;
+        if (window.PSStorage) {
+          const path = `fotos/${fichaActualId}.jpg`;
+          urlFinal = await window.PSStorage.subir(path, dataUrl, 'image/jpeg');
+        }
+        await actualizarEmpleado(fichaActualId, { fotoUrl: urlFinal });
         renderFicha();
         renderEmpleadosGrid();
-        toast('Foto actualizada');
-      } catch (err) { /* error ya mostrado */ }
+        toast('✓ Foto guardada en la nube');
+      } catch (err) { toast('Error: ' + err.message); }
     };
     reader.readAsDataURL(f);
   });
@@ -1231,23 +1344,41 @@
         const jornadas = firmasBD.filter(f => f.documento_codigo.startsWith('jornada'));
 
         body.innerHTML = `
-        <div class="ficha-action-row ${kitFirma ? 'ok' : 'warn'}">
-          <div class="icon"><svg class="ic ic-18"><use href="#ic-shield"/></svg></div>
-          <div class="ficha-action-body">
-            <div class="ficha-action-title">Kit Alta Empresa</div>
-            <div class="ficha-action-sub">${kitFirma ? 'Firmado el ' + new Date(kitFirma.fecha_firma).toLocaleString('es-ES') + '<br>Desde: ' + (kitFirma.dispositivo || 'móvil') : 'Pendiente de firma'}</div>
-            ${kitFirma?.firma_imagen ? `<img src="${kitFirma.firma_imagen}" class="firma-imagen" style="max-width:220px;margin-top:8px;" alt="Firma"/>` : ''}
-            ${kitFirma?.ubicacion_lat ? `<div class="small text-muted mt-1">📍 <a href="https://www.google.com/maps?q=${kitFirma.ubicacion_lat},${kitFirma.ubicacion_lng}" target="_blank">${(+kitFirma.ubicacion_lat).toFixed(4)}, ${(+kitFirma.ubicacion_lng).toFixed(4)}</a></div>` : ''}
+        <div class="ficha-action-row ${kitFirma ? 'ok' : 'warn'}" style="flex-direction:column;align-items:stretch;">
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div class="icon"><svg class="ic ic-18"><use href="#ic-shield"/></svg></div>
+            <div class="ficha-action-body">
+              <div class="ficha-action-title">Kit Alta Empresa</div>
+              <div class="ficha-action-sub">${kitFirma ? 'Firmado el ' + new Date(kitFirma.fecha_firma).toLocaleString('es-ES') + '<br>Desde: ' + (kitFirma.dispositivo || 'móvil') : 'Pendiente de firma'}</div>
+              ${kitFirma?.firma_imagen ? `<img src="${kitFirma.firma_imagen}" class="firma-imagen" style="max-width:220px;margin-top:8px;" alt="Firma"/>` : ''}
+              ${kitFirma?.ubicacion_lat ? `<div class="small text-muted mt-1">📍 <a href="https://www.google.com/maps?q=${kitFirma.ubicacion_lat},${kitFirma.ubicacion_lng}" target="_blank">${(+kitFirma.ubicacion_lat).toFixed(4)}, ${(+kitFirma.ubicacion_lng).toFixed(4)}</a></div>` : ''}
+            </div>
+            ${!kitFirma ? `<button class="btn btn-primary btn-sm" onclick="firmarKitEnTablet('${e.id}')">Firmar en tablet</button>` : ''}
           </div>
-          ${!kitFirma ? `<button class="btn btn-primary btn-sm" onclick="firmarKitEnTablet('${e.id}')">Firmar en tablet</button>` : ''}
+          ${kitFirma ? `
+            <div class="row gap-2 mt-3" style="justify-content:flex-end;">
+              <button class="btn btn-primary btn-sm" onclick="descargarPdfFirma('${kitFirma.id}','kit-alta')">
+                <svg class="ic ic-16"><use href="#ic-download"/></svg>
+                Descargar PDF
+              </button>
+              ${kitFirma.archivo_pdf_url ? `<a class="btn btn-outline btn-sm" href="${kitFirma.archivo_pdf_url}" target="_blank">📎 Ver PDF guardado</a>` : ''}
+            </div>` : ''}
         </div>
         ${jornadas.map(j => `
-          <div class="ficha-action-row ok">
-            <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
-            <div class="ficha-action-body">
-              <div class="ficha-action-title">${j.documento_codigo}</div>
-              <div class="ficha-action-sub">Firmado el ${new Date(j.fecha_firma).toLocaleString('es-ES')}</div>
-              ${j.firma_imagen ? `<img src="${j.firma_imagen}" class="firma-imagen" style="max-width:180px;margin-top:8px;" alt="Firma"/>` : ''}
+          <div class="ficha-action-row ok" style="flex-direction:column;align-items:stretch;">
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
+              <div class="ficha-action-body">
+                <div class="ficha-action-title">${j.documento_codigo}</div>
+                <div class="ficha-action-sub">Firmado el ${new Date(j.fecha_firma).toLocaleString('es-ES')}</div>
+                ${j.firma_imagen ? `<img src="${j.firma_imagen}" class="firma-imagen" style="max-width:180px;margin-top:8px;" alt="Firma"/>` : ''}
+              </div>
+            </div>
+            <div class="row gap-2 mt-3" style="justify-content:flex-end;">
+              <button class="btn btn-primary btn-sm" onclick="descargarPdfFirma('${j.id}','jornada')">
+                <svg class="ic ic-16"><use href="#ic-download"/></svg>
+                Descargar PDF
+              </button>
             </div>
           </div>
         `).join('')}
@@ -2286,6 +2417,27 @@
       closeVisitaModal();
       toast('Visita registrada');
       cargarCoordinacion();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  /* ==========================================================================
+     DESCARGA PDF DE FIRMAS
+     ========================================================================== */
+  window.descargarPdfFirma = async function (firmaId, tipo) {
+    try {
+      toast('Generando PDF...');
+      const { data: firma, error } = await window.sb
+        .from('firmas_documentos').select('*').eq('id', firmaId).single();
+      if (error) throw error;
+      const empData = empleadoData(fichaActualId) || { nombre: '—' };
+      const subdocs = (window.PS && PS.kitAltaSubdocs) || [];
+      const nombreArchivo = `PoolSafety-${firma.documento_codigo}-${(empData.nombre||'empleado').replace(/\s+/g,'_')}.pdf`;
+      await window.PSPdf.descargar(empData, firma, subdocs, nombreArchivo);
+      toast('✓ PDF descargado');
+      // Opcional: subir a Storage para tener copia permanente
+      try {
+        await window.PSPdf.generarYSubir(empData, firma, subdocs);
+      } catch(e) { /* ignore */ }
     } catch (err) { toast('Error: ' + err.message); }
   };
 
