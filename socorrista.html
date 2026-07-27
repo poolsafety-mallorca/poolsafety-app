@@ -256,6 +256,38 @@
       <div class="col gap-2" id="inventarioList"></div>
     </main>
 
+    <!-- ============ VIEW: DOCUMENTACIÓN ============ -->
+    <main class="view hidden" data-view="docs">
+      <div class="medkit-hero" style="background: linear-gradient(150deg,#0F2C5F 0%, #0A1E3F 100%);">
+        <div class="head">
+          <div class="icon">
+            <svg class="ic ic-24"><use href="#ic-file-text"/></svg>
+          </div>
+          <div style="flex:1">
+            <h3>Documentación laboral</h3>
+            <p id="docsSummary">Cargando…</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-eyebrow">
+        <span class="eyebrow">Alta con la empresa</span>
+        <span class="text-muted small" id="docAltaBadge"></span>
+      </div>
+      <div id="docsAltaList"></div>
+
+      <div class="section-eyebrow">
+        <span class="eyebrow">Registro mensual de jornada</span>
+        <span class="text-muted small">Firma obligatoria último día trabajado del mes</span>
+      </div>
+      <div id="docsJornadaList"></div>
+
+      <div class="section-eyebrow" id="docsBajaSection" style="display:none;">
+        <span class="eyebrow">Finiquito y baja</span>
+      </div>
+      <div id="docsBajaList"></div>
+    </main>
+
     <!-- ============ VIEW: PERFIL ============ -->
     <main class="view hidden" data-view="perfil">
       <div class="profile">
@@ -321,6 +353,11 @@
     <svg class="ic ic-18"><use href="#ic-medkit"/></svg>
     Botiquín
   </button>
+  <button data-tab="docs">
+    <svg class="ic ic-18"><use href="#ic-file-text"/></svg>
+    Docs
+    <span class="tab-dot" id="docsPendingDot" style="display:none;"></span>
+  </button>
   <button data-tab="perfil">
     <svg class="ic ic-18"><use href="#ic-user"/></svg>
     Perfil
@@ -363,6 +400,57 @@
         Enviar alerta
       </button>
     </div>
+  </div>
+</div>
+
+<!-- ============ MODAL KIT ALTA (aparece al primer login) ============ -->
+<div class="modal-backdrop no-close" id="kitAltaModal">
+  <div class="modal wizard-modal">
+    <div class="wizard-head">
+      <div class="wizard-empresa">
+        <div class="wizard-logo">
+          <svg class="ic ic-22"><use href="#ic-shield"/></svg>
+        </div>
+        <div>
+          <div class="wizard-empresa-name">Pool Safety Des Llevant, S.L.</div>
+          <div class="wizard-empresa-sub">Alta de trabajador · documentación laboral</div>
+        </div>
+      </div>
+      <div class="wizard-progress">
+        <div class="wizard-progress-bar" id="wizardProgressBar"></div>
+      </div>
+      <div class="wizard-step-label" id="wizardStepLabel">Paso 1 de 8</div>
+    </div>
+
+    <div class="wizard-body" id="wizardBody"></div>
+
+    <div class="wizard-actions">
+      <button class="btn btn-outline" id="wizardBackBtn" onclick="wizardBack()" disabled>
+        <svg class="ic ic-16"><use href="#ic-chevron-left"/></svg>
+        Atrás
+      </button>
+      <button class="btn btn-primary" id="wizardNextBtn" onclick="wizardNext()">
+        Siguiente
+        <svg class="ic ic-16"><use href="#ic-chevron-right"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL VER / FIRMAR UN DOCUMENTO ============ -->
+<div class="modal-backdrop" id="docViewModal">
+  <div class="modal doc-modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="docViewTitle">Documento</h3>
+        <p class="small text-muted mt-1" id="docViewSub" style="margin:4px 0 0;"></p>
+      </div>
+      <button class="modal-close" onclick="closeDocView()">
+        <svg class="ic ic-16"><use href="#ic-x"/></svg>
+      </button>
+    </div>
+    <div id="docViewBody" class="doc-body"></div>
+    <div class="modal-actions" id="docViewActions"></div>
   </div>
 </div>
 

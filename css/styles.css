@@ -783,7 +783,7 @@ img, svg { display: block; max-width: 100%; }
   border: 1px solid rgba(255,255,255,.6);
   padding: 6px;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 2px;
   border-radius: var(--r-full);
   box-shadow: 0 10px 30px -8px rgba(11,30,63,.18), 0 4px 12px -4px rgba(11,30,63,.10);
@@ -1119,6 +1119,294 @@ img, svg { display: block; max-width: 100%; }
 @media (max-width: 720px) {
   .bot-admin-row { flex-direction: column; align-items: stretch; gap: 10px; }
   .bot-admin-controls { justify-content: space-between; }
+}
+
+/* ==========================================================================
+   DOCUMENTACIÓN LABORAL — cards, wizard, firma
+   ========================================================================== */
+
+/* Punto rojo en tab con doc pendiente */
+.tab-dot {
+  position: absolute;
+  top: 4px;
+  right: 22%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px #fff;
+}
+.tabbar button { position: relative; }
+
+/* Card de documento */
+.doc-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  margin-bottom: 10px;
+}
+.doc-card.disabled { opacity: .6; }
+.doc-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.doc-card-icon.ok { background: var(--success-bg); color: #047857; }
+.doc-card-icon.warn { background: var(--warning-bg); color: #B45309; }
+.doc-card-icon.neutral { background: var(--ink-100); color: var(--ink-500); }
+.doc-card-body { flex: 1; min-width: 0; }
+.doc-card-title { font-weight: 600; font-size: 14.5px; color: var(--ink-900); }
+.doc-card-sub {
+  font-size: 12.5px;
+  color: var(--ink-500);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+.doc-card-meta {
+  font-size: 11.5px;
+  color: var(--ink-400, var(--ink-500));
+  margin-top: 4px;
+  font-style: italic;
+}
+.doc-card-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.btn-sm {
+  padding: 6px 12px !important;
+  font-size: 12.5px !important;
+  border-radius: 999px !important;
+}
+
+/* ==========================================================================
+   WIZARD (Kit Alta) — modal grande, no cerrable
+   ========================================================================== */
+.modal-backdrop.no-close { cursor: default; }
+.wizard-modal {
+  max-width: 560px;
+  max-height: 90vh;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.wizard-head {
+  padding: 18px 22px 14px;
+  background: linear-gradient(135deg, var(--ocean) 0%, var(--wave) 100%);
+  color: #fff;
+}
+.wizard-empresa {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.wizard-logo {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.15);
+  display: flex; align-items: center; justify-content: center;
+}
+.wizard-empresa-name { font-weight: 700; font-size: 14.5px; }
+.wizard-empresa-sub { font-size: 11.5px; opacity: .85; margin-top: 1px; }
+
+.wizard-progress {
+  height: 4px;
+  background: rgba(255,255,255,.18);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.wizard-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan-400) 0%, var(--laguna, #67E8F9) 100%);
+  transition: width .3s ease;
+  border-radius: 4px;
+}
+.wizard-step-label { font-size: 11.5px; opacity: .85; margin-top: 6px; }
+
+.wizard-body {
+  padding: 22px;
+  overflow-y: auto;
+  flex: 1;
+}
+.wizard-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  color: var(--ink-900);
+  font-weight: 700;
+}
+.wizard-sub {
+  font-size: 12.5px;
+  color: var(--ink-500);
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+
+.wizard-intro { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.wizard-intro-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--foam, #F0F9FF);
+  border-radius: var(--r-2);
+  font-size: 13px;
+  color: var(--ink-700);
+}
+
+.wizard-doc-summary {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-700);
+  padding: 14px;
+  background: var(--ink-50, #F8FAFC);
+  border-left: 3px solid var(--sky-500);
+  border-radius: 0 8px 8px 0;
+  margin-bottom: 12px;
+}
+.wizard-highlight {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  background: var(--warning-bg);
+  color: #92400E;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.wizard-epi-list {
+  margin: 8px 0 12px;
+  padding-left: 22px;
+  font-size: 13px;
+  color: var(--ink-700);
+  line-height: 1.7;
+}
+.wizard-accept-line {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  background: var(--foam, #F0F9FF);
+  border-radius: var(--r-2);
+  border: 1px solid var(--sky-200, #BAE6FD);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-800);
+  cursor: pointer;
+  user-select: none;
+}
+.wizard-accept-line input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  accent-color: var(--sky-500);
+  cursor: pointer;
+}
+
+.wizard-sign-box {
+  padding: 14px;
+  background: linear-gradient(135deg, var(--foam, #F0F9FF), #fff);
+  border-radius: var(--r-3);
+  border: 1px solid var(--sky-200, #BAE6FD);
+}
+.wizard-sign-info {
+  font-size: 12px;
+  color: var(--ink-600);
+  line-height: 1.6;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--ink-200);
+}
+
+.wizard-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--ink-50, #F8FAFC);
+}
+
+/* ==========================================================================
+   Modal ver documento firmado
+   ========================================================================== */
+.doc-modal { max-width: 520px; }
+.doc-body { padding: 14px 0; }
+.doc-signed-list { display: flex; flex-direction: column; gap: 10px; }
+.doc-signed-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  background: var(--ink-50, #F8FAFC);
+  border-radius: 8px;
+}
+.doc-signed-title { font-weight: 600; font-size: 13px; color: var(--ink-900); }
+.doc-signed-sub { font-size: 11.5px; color: var(--ink-500); margin-top: 2px; }
+.doc-signed-meta {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--foam, #F0F9FF);
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--ink-700);
+  line-height: 1.5;
+}
+
+/* ==========================================================================
+   Registro mensual de jornada
+   ========================================================================== */
+.jornada-summary {
+  padding: 16px;
+  background: linear-gradient(135deg, var(--foam, #F0F9FF), #fff);
+  border-radius: var(--r-3);
+  border: 1px solid var(--sky-200, #BAE6FD);
+}
+.jornada-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--ink-200);
+  font-size: 13.5px;
+  color: var(--ink-700);
+}
+.jornada-row:last-child { border-bottom: none; }
+.jornada-row b { font-size: 16px; color: var(--ocean); font-weight: 700; }
+.jornada-row.total {
+  border-top: 2px solid var(--ocean);
+  margin-top: 6px;
+  padding-top: 12px;
+  font-weight: 600;
+}
+.jornada-row.total b { font-size: 22px; }
+.jornada-note {
+  padding: 10px 12px;
+  background: var(--info-bg);
+  color: var(--sky-900);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 10px 0;
+}
+
+@media (max-width: 480px) {
+  .wizard-modal { max-height: 96vh; max-width: 96vw; }
+  .doc-modal { max-width: 96vw; }
 }
 
 /* Perfil */

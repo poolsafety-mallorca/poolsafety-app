@@ -357,6 +357,368 @@
     toastT = setTimeout(() => toastEl.classList.remove('show'), 2600);
   }
 
+  /* ==========================================================================
+     DOCUMENTACIÓN LABORAL — Kit Alta + Jornada + Baja
+     ========================================================================== */
+
+  const docsSummary = document.getElementById('docsSummary');
+  const docsAltaList = document.getElementById('docsAltaList');
+  const docsJornadaList = document.getElementById('docsJornadaList');
+  const docsBajaSection = document.getElementById('docsBajaSection');
+  const docsBajaList = document.getElementById('docsBajaList');
+  const docAltaBadge = document.getElementById('docAltaBadge');
+  const docsPendingDot = document.getElementById('docsPendingDot');
+
+  function misFirmas() { return PS.firmasDeSocorrista(me.id); }
+
+  // Horas del mes actuales (para el registro mensual)
+  // Regla del cliente: solo 40h/semana ordinarias (~160/mes).
+  // Extras SOLO se muestran si el trabajador tiene menos de 40h/semana.
+  function horasMesRegla() {
+    const semanaObj = 40;
+    const semanasMes = 4;
+    const objMes = semanaObj * semanasMes; // 160h
+    const totalOrdi = Math.min(me.horasNormales, objMes);
+    const promedioSemana = me.horasNormales / semanasMes;
+    const mostrarExtras = promedioSemana < semanaObj;
+    const extras = mostrarExtras ? me.horasExtra : 0;
+    return { ordinarias: totalOrdi, extras, mostrarExtras, promedioSemana, objMes };
+  }
+
+  function renderDocsHeader() {
+    const kitOk = PS.haFirmadoKitAlta(me.id);
+    const pend = kitOk ? 0 : 1;
+    const jornadaPend = PS.documentos.filter(d => d.grupo === 'mensual' && !d.yaFirmado && !misFirmas()[d.id]).length;
+    const total = pend + jornadaPend;
+    if (docsSummary) {
+      docsSummary.textContent = total === 0
+        ? `${me.nombre} · toda la documentación al día`
+        : `${me.nombre} · ${total} documento${total>1?'s':''} pendiente${total>1?'s':''} de firmar`;
+    }
+    if (docsPendingDot) docsPendingDot.style.display = total > 0 ? 'inline-block' : 'none';
+    if (docAltaBadge) {
+      docAltaBadge.textContent = kitOk ? 'Firmado' : 'Pendiente';
+    }
+  }
+
+  function docCard(opts) {
+    const { titulo, subtitulo, estado, badge, cta, disabled, onClick, extra } = opts;
+    const el = document.createElement('div');
+    el.className = 'doc-card' + (disabled ? ' disabled' : '');
+    el.innerHTML = `
+      <div class="doc-card-icon ${estado}">
+        <svg class="ic ic-22"><use href="#${estado === 'ok' ? 'ic-check-circle' : estado === 'warn' ? 'ic-alert' : 'ic-file-text'}"/></svg>
+      </div>
+      <div class="doc-card-body">
+        <div class="doc-card-title">${titulo}</div>
+        <div class="doc-card-sub">${subtitulo}</div>
+        ${extra || ''}
+      </div>
+      <div class="doc-card-side">
+        ${badge}
+        ${cta ? `<button class="btn ${disabled?'btn-outline':'btn-primary'} btn-sm" ${disabled?'disabled':''}>${cta}</button>` : ''}
+      </div>
+    `;
+    if (onClick && !disabled) el.querySelector('button')?.addEventListener('click', onClick);
+    return el;
+  }
+
+  function renderDocsLists() {
+    if (!docsAltaList) return;
+    docsAltaList.innerHTML = '';
+    docsJornadaList.innerHTML = '';
+
+    const firmas = misFirmas();
+
+    // 1) Kit alta (agrupa 7 sub-docs)
+    const kitOk = firmas['kit-alta']?.completado === true;
+    const kitCard = docCard({
+      titulo: 'Kit Alta Empresa',
+      subtitulo: 'RGPD · Geolocalización · EPIs · Salud laboral · Desconexión · Imagen · Comunicación electrónica',
+      estado: kitOk ? 'ok' : 'warn',
+      badge: kitOk
+        ? `<span class="badge badge-ok"><span class="dot"></span>Firmado</span>`
+        : `<span class="badge badge-warn"><span class="dot"></span>Pendiente</span>`,
+      cta: kitOk ? 'Ver' : 'Firmar ahora',
+      onClick: () => kitOk ? openKitAltaView() : openKitAltaWizard(),
+      extra: kitOk ? `<div class="doc-card-meta">Firmado el ${new Date(firmas['kit-alta'].fecha).toLocaleDateString('es-ES')}</div>` : ''
+    });
+    docsAltaList.appendChild(kitCard);
+
+    // 2) Jornadas mensuales
+    PS.documentos.filter(d => d.grupo === 'mensual').forEach(d => {
+      const firmado = d.yaFirmado || firmas[d.id];
+      const esActual = d.mes === 'julio'; // simplificación demo
+      const puedeFirmar = esActual; // en real: solo último día trabajado del mes
+      const hr = horasMesRegla();
+      const hrLabel = hr.mostrarExtras
+        ? `${hr.ordinarias}h ordinarias + ${hr.extras}h complementarias`
+        : `${hr.ordinarias}h de ${hr.objMes}h pactadas (40h/sem)`;
+      const card = docCard({
+        titulo: d.titulo,
+        subtitulo: firmado ? d.subtitulo : `Total del mes: ${hrLabel}`,
+        estado: firmado ? 'ok' : (puedeFirmar ? 'warn' : 'neutral'),
+        badge: firmado
+          ? `<span class="badge badge-ok"><span class="dot"></span>Firmado</span>`
+          : puedeFirmar
+          ? `<span class="badge badge-warn"><span class="dot"></span>Pendiente</span>`
+          : `<span class="badge badge-neutral"><span class="dot"></span>Aún no</span>`,
+        cta: firmado ? 'Ver' : (puedeFirmar ? 'Firmar' : 'Bloqueado'),
+        disabled: !firmado && !puedeFirmar,
+        onClick: () => firmado ? openDocView('jornada-view', d) : openJornadaSign(d)
+      });
+      docsJornadaList.appendChild(card);
+    });
+
+    // 3) Baja / finiquito (oculto salvo estado baja)
+    if (docsBajaSection) docsBajaSection.style.display = 'none';
+  }
+
+  /* ---------- Wizard Kit Alta (8 pasos con los 7 sub-docs) ---------- */
+  const wizardBody = document.getElementById('wizardBody');
+  const wizardProgressBar = document.getElementById('wizardProgressBar');
+  const wizardStepLabel = document.getElementById('wizardStepLabel');
+  const wizardBackBtn = document.getElementById('wizardBackBtn');
+  const wizardNextBtn = document.getElementById('wizardNextBtn');
+  let wizardStep = 0;
+  let wizardData = { aceptados: {}, campos: {} };
+
+  function wizardSteps() {
+    return [
+      {
+        titulo: 'Bienvenido al equipo',
+        subtitulo: 'Antes de empezar necesitamos que revises y firmes los documentos laborales obligatorios.',
+        contenido: `
+          <div class="wizard-intro">
+            <div class="wizard-intro-line"><svg class="ic ic-16"><use href="#ic-shield"/></svg> Cumplimos íntegramente el RGPD y la LOPDGDD.</div>
+            <div class="wizard-intro-line"><svg class="ic ic-16"><use href="#ic-signal"/></svg> Necesitamos tu consentimiento para geolocalización desde tu móvil.</div>
+            <div class="wizard-intro-line"><svg class="ic ic-16"><use href="#ic-file-text"/></svg> Vas a firmar 7 documentos. Se guardará una copia visible en tu perfil.</div>
+            <div class="wizard-intro-line"><svg class="ic ic-16"><use href="#ic-clock"/></svg> Tiempo estimado: 3-5 minutos.</div>
+          </div>
+        `,
+        obligatorio: false,
+        soloContinuar: true
+      },
+      ...PS.kitAltaSubdocs.map(sub => ({
+        subdocId: sub.id,
+        titulo: sub.titulo,
+        subtitulo: sub.norma || '',
+        contenido: `
+          <div class="wizard-doc-summary">${sub.resumen}</div>
+          ${sub.resaltado ? '<div class="wizard-highlight"><svg class="ic ic-14"><use href="#ic-alert"/></svg> Este documento habilita el registro digital de tu jornada con GPS. Puedes retirar el consentimiento en cualquier momento.</div>' : ''}
+          ${sub.esListaEpis ? `
+            <ul class="wizard-epi-list">
+              <li>Sudadera roja Roly · 1 ud</li>
+              <li>Camiseta blanca Roly · 3 ud</li>
+              <li>Bañador rojo Roly · 2 ud</li>
+              <li>Pantalón largo negro Roly · 1 ud</li>
+              <li>Gafas de sol negras Roly · 1 ud</li>
+              <li>Gorra roja y blanca Roly · 1 ud</li>
+              <li>Crema solar · 1 ud</li>
+            </ul>` : ''}
+          ${sub.requiereCampos ? `
+            <div class="field mt-3">
+              <label>Correo electrónico personal</label>
+              <input type="email" id="wiz-emailPersonal" placeholder="tu@correo.com" value="${wizardData.campos.emailPersonal || ''}" />
+            </div>
+            <div class="field">
+              <label>Teléfono móvil personal</label>
+              <input type="tel" id="wiz-telefonoPersonal" placeholder="+34 6XX XXX XXX" value="${wizardData.campos.telefonoPersonal || ''}" />
+            </div>` : ''}
+          <label class="wizard-accept-line">
+            <input type="checkbox" id="wiz-accept" ${wizardData.aceptados[sub.id] ? 'checked' : ''} />
+            <span>${sub.obligatorio
+              ? 'He leído y acepto expresamente este documento.'
+              : 'Doy mi consentimiento (opcional, puedo revocarlo en cualquier momento).'}</span>
+          </label>
+        `,
+        obligatorio: sub.obligatorio,
+        requiereCampos: sub.requiereCampos
+      })),
+      {
+        titulo: 'Firma final',
+        subtitulo: 'Escribe tu nombre completo tal como aparece en tu DNI para firmar todos los documentos.',
+        contenido: `
+          <div class="wizard-sign-box">
+            <div class="wizard-sign-info">
+              Firmando en: <b>${new Date().toLocaleString('es-ES')}</b><br>
+              Desde: <b>Dispositivo del empleado</b> · IP registrada por el sistema
+            </div>
+            <div class="field mt-3">
+              <label>Nombre y apellidos</label>
+              <input type="text" id="wiz-firma" placeholder="${me.nombre}" />
+            </div>
+            <div class="field">
+              <label>DNI</label>
+              <input type="text" id="wiz-dni" placeholder="00000000A" />
+            </div>
+          </div>
+        `,
+        esFirma: true
+      }
+    ];
+  }
+
+  function wizardRender() {
+    const steps = wizardSteps();
+    const step = steps[wizardStep];
+    if (!step) return;
+    const total = steps.length;
+    wizardProgressBar.style.width = `${((wizardStep+1)/total)*100}%`;
+    wizardStepLabel.textContent = `Paso ${wizardStep+1} de ${total}`;
+    wizardBody.innerHTML = `
+      <h3 class="wizard-title">${step.titulo}</h3>
+      ${step.subtitulo ? `<div class="wizard-sub">${step.subtitulo}</div>` : ''}
+      ${step.contenido}
+    `;
+    wizardBackBtn.disabled = wizardStep === 0;
+    wizardNextBtn.innerHTML = wizardStep === total - 1
+      ? `<svg class="ic ic-16"><use href="#ic-pen"/></svg> Firmar todo`
+      : `Siguiente <svg class="ic ic-16"><use href="#ic-chevron-right"/></svg>`;
+  }
+
+  window.wizardBack = function () {
+    if (wizardStep > 0) { wizardStep--; wizardRender(); }
+  };
+
+  window.wizardNext = function () {
+    const steps = wizardSteps();
+    const step = steps[wizardStep];
+
+    if (step.subdocId) {
+      const accept = document.getElementById('wiz-accept')?.checked;
+      if (step.obligatorio && !accept) {
+        toast('Debes marcar la casilla para continuar (obligatorio)');
+        return;
+      }
+      wizardData.aceptados[step.subdocId] = accept;
+      if (step.requiereCampos) {
+        const email = document.getElementById('wiz-emailPersonal')?.value.trim();
+        const tel = document.getElementById('wiz-telefonoPersonal')?.value.trim();
+        if (!email || !tel) { toast('Rellena email y teléfono para continuar'); return; }
+        wizardData.campos.emailPersonal = email;
+        wizardData.campos.telefonoPersonal = tel;
+      }
+    }
+
+    if (step.esFirma) {
+      const firma = document.getElementById('wiz-firma')?.value.trim();
+      const dni = document.getElementById('wiz-dni')?.value.trim();
+      if (!firma) { toast('Escribe tu nombre completo para firmar'); return; }
+      if (!dni) { toast('Escribe tu DNI para firmar'); return; }
+      // Firmar todo
+      PS.firmarDocumento(me.id, 'kit-alta', {
+        completado: true,
+        firma, dni,
+        dispositivo: 'móvil empleado',
+        aceptados: wizardData.aceptados,
+        campos: wizardData.campos
+      });
+      document.getElementById('kitAltaModal').classList.remove('open');
+      toast('Kit Alta firmado correctamente ✓');
+      renderDocsHeader();
+      renderDocsLists();
+      return;
+    }
+
+    if (wizardStep < steps.length - 1) { wizardStep++; wizardRender(); }
+  };
+
+  function openKitAltaWizard() {
+    wizardStep = 0;
+    wizardData = { aceptados: {}, campos: {} };
+    wizardRender();
+    document.getElementById('kitAltaModal').classList.add('open');
+  }
+
+  function openKitAltaView() {
+    const f = misFirmas()['kit-alta'];
+    if (!f) return;
+    document.getElementById('docViewTitle').textContent = 'Kit Alta Empresa · firmado';
+    document.getElementById('docViewSub').textContent = `Firmado por ${f.firma} · DNI ${f.dni} · ${new Date(f.fecha).toLocaleString('es-ES')} · ${f.dispositivo}`;
+    document.getElementById('docViewBody').innerHTML = `
+      <div class="doc-signed-list">
+        ${PS.kitAltaSubdocs.map(sub => `
+          <div class="doc-signed-item">
+            <svg class="ic ic-16" style="color:${f.aceptados[sub.id]?'#059669':'#94A3B8'};">
+              <use href="#${f.aceptados[sub.id]?'ic-check-circle':'ic-x'}"/>
+            </svg>
+            <div>
+              <div class="doc-signed-title">${sub.titulo}</div>
+              <div class="doc-signed-sub">${sub.norma || 'Consentimiento opcional'}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      ${f.campos?.emailPersonal ? `<div class="doc-signed-meta"><b>Email:</b> ${f.campos.emailPersonal} · <b>Tel:</b> ${f.campos.telefonoPersonal}</div>` : ''}
+    `;
+    document.getElementById('docViewActions').innerHTML = `<button class="btn btn-outline" onclick="closeDocView()">Cerrar</button>`;
+    document.getElementById('docViewModal').classList.add('open');
+  }
+
+  function openJornadaSign(d) {
+    const hr = horasMesRegla();
+    document.getElementById('docViewTitle').textContent = d.titulo;
+    document.getElementById('docViewSub').textContent = 'Firma obligatoria antes del cierre del mes';
+    document.getElementById('docViewBody').innerHTML = `
+      <div class="jornada-summary">
+        <div class="jornada-row">
+          <span>Horas ordinarias (40h/sem · ${hr.objMes}h/mes)</span>
+          <b>${hr.ordinarias}h</b>
+        </div>
+        ${hr.mostrarExtras ? `
+          <div class="jornada-row">
+            <span>Horas complementarias voluntarias</span>
+            <b>${hr.extras}h</b>
+          </div>` : `
+          <div class="jornada-note">No se registran horas extra porque has completado tus 40h/semana. Solo aparecerán si tu jornada semanal ha sido menor de 40 horas.</div>`}
+        <div class="jornada-row total">
+          <span>Total del mes</span>
+          <b>${hr.ordinarias + hr.extras}h</b>
+        </div>
+      </div>
+      <div class="field mt-3">
+        <label>Firma (nombre completo)</label>
+        <input type="text" id="jornada-firma" placeholder="${me.nombre}" />
+      </div>
+      <label class="wizard-accept-line mt-2">
+        <input type="checkbox" id="jornada-accept" />
+        <span>Confirmo que los datos del registro de jornada son correctos y firmo el documento mensual.</span>
+      </label>
+    `;
+    document.getElementById('docViewActions').innerHTML = `
+      <button class="btn btn-outline" onclick="closeDocView()">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitJornada('${d.id}')">
+        <svg class="ic ic-16"><use href="#ic-pen"/></svg>
+        Firmar jornada
+      </button>
+    `;
+    document.getElementById('docViewModal').classList.add('open');
+  }
+
+  window.submitJornada = function (docId) {
+    const firma = document.getElementById('jornada-firma')?.value.trim();
+    const accept = document.getElementById('jornada-accept')?.checked;
+    if (!firma || !accept) { toast('Firma y marca la casilla para continuar'); return; }
+    PS.firmarDocumento(me.id, docId, { firma, dispositivo: 'móvil empleado' });
+    closeDocView();
+    toast('Jornada mensual firmada ✓');
+    renderDocsHeader();
+    renderDocsLists();
+  };
+
+  window.closeDocView = () => document.getElementById('docViewModal').classList.remove('open');
+  window.openDocView = openJornadaSign;
+
+  // Render inicial de docs
+  renderDocsHeader();
+  renderDocsLists();
+
+  // Al primer login (o si aún no ha firmado kit-alta): mostrar wizard bloqueante
+  if (!PS.haFirmadoKitAlta(me.id)) {
+    setTimeout(() => openKitAltaWizard(), 700);
+  }
+
   /* ---------- Logout ---------- */
   window.logout = function () {
     PS.clearSession();

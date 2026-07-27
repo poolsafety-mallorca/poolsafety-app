@@ -181,6 +181,125 @@ const PS = (function () {
     { id: 'a05', puestoId: 'p18', puestoNombre: 'Aparthotel Colònia', item: 'Antiséptico clorhexidina', reportado: 'hace 3 h', criticidad: 'baja' }
   ];
 
+  /* ==========================================================================
+     DOCUMENTACIÓN LABORAL — Kit Alta Empresa + Jornada + Baja
+     Basado en normativa: RGPD (UE 2016/679), LOPDGDD 3/2018, Ley 31/1995 PRL,
+     Real Decreto-ley 8/2019 (registro horario), art. 90 LOPDGDD (geolocalización).
+     ========================================================================== */
+
+  const EMPRESA = {
+    razonSocial: 'Pool Safety Des Llevant, S.L.',
+    cif: 'B75828418',
+    domicilio: 'C/ Hernán Cortés, 8, 2º Dcha., 07670, Portocolom, Baleares',
+    email: 'info@poolsafety.es'
+  };
+
+  /* Kit Alta: 7 sub-documentos que se firman al alta */
+  const kitAltaSubdocs = [
+    {
+      id: 'ka-privacidad',
+      titulo: 'Política de privacidad · RGPD',
+      resumen: 'Información sobre el tratamiento de tus datos personales por parte de la empresa (contratación, nómina, salud laboral, disciplina, imagen, geolocalización). Derechos de acceso, rectificación, supresión, oposición, limitación, portabilidad y minimización.',
+      obligatorio: true,
+      norma: 'Reglamento UE 2016/679 (RGPD) · Ley Orgánica 3/2018 (LOPDGDD)'
+    },
+    {
+      id: 'ka-geoloc',
+      titulo: 'Tratamiento de geolocalización del dispositivo móvil',
+      resumen: 'Consentimiento para el tratamiento de datos de geolocalización a través del dispositivo móvil personal del trabajador, exclusivamente para el registro digital de la jornada laboral y control de presencia en el puesto. Conservación máxima 2 meses.',
+      obligatorio: true,
+      norma: 'Art. 90 LOPDGDD · Art. 9 RGPD',
+      resaltado: true
+    },
+    {
+      id: 'ka-electronica',
+      titulo: 'Recepción de documentación por medios electrónicos',
+      resumen: 'Autorización para recibir nóminas, avisos, notificaciones y cualquier comunicación laboral por correo electrónico y teléfono móvil (SMS, WhatsApp).',
+      obligatorio: true,
+      requiereCampos: ['emailPersonal','telefonoPersonal']
+    },
+    {
+      id: 'ka-imagen',
+      titulo: 'Captación de imagen',
+      resumen: 'Consentimiento para que la empresa capte y use tu imagen en su página web, redes sociales y comunicación corporativa. Revocable en cualquier momento.',
+      obligatorio: false
+    },
+    {
+      id: 'ka-vigilancia-salud',
+      titulo: 'Vigilancia de la salud laboral (Anexo II)',
+      resumen: 'Información sobre el derecho y deber de vigilancia de la salud según art. 22 Ley 31/1995 PRL. Reconocimiento médico anual por PREVIS Gestión de Riesgos S.L.U.',
+      obligatorio: true,
+      norma: 'Ley 31/1995 Prevención de Riesgos Laborales'
+    },
+    {
+      id: 'ka-desconexion',
+      titulo: 'Comunicación de desconexión digital',
+      resumen: 'Reconocimiento del derecho a la desconexión digital fuera del horario laboral establecido.',
+      obligatorio: true,
+      norma: 'Art. 88 LOPDGDD'
+    },
+    {
+      id: 'ka-epis',
+      titulo: 'Entrega de EPIs (Equipos de Protección Individual)',
+      resumen: 'Recibí sudadera roja Roly, 3 camisetas blancas Roly, 2 bañadores rojos Roly, pantalón largo negro Roly, gafas de sol negras Roly, gorra roja y blanca Roly, crema solar. Uso exclusivo y personal según art. 29 Ley PRL y RD 773/1997.',
+      obligatorio: true,
+      norma: 'RD 773/1997 · Ley 31/1995 PRL',
+      esListaEpis: true
+    }
+  ];
+
+  /* Documentos que ve el empleado (agrupados por bloque) */
+  const documentos = [
+    {
+      id: 'kit-alta',
+      grupo: 'alta',
+      titulo: 'Kit Alta Empresa',
+      subtitulo: 'Documentación laboral inicial (RGPD, geolocalización, EPIs, salud)',
+      obligatorioAlAlta: true,
+      subdocs: kitAltaSubdocs.map(s => s.id)
+    },
+    {
+      id: 'jornada-2026-07',
+      grupo: 'mensual',
+      titulo: 'Registro jornada · julio 2026',
+      subtitulo: 'Firma obligatoria el último día trabajado del mes',
+      mes: 'julio',
+      anio: 2026,
+      firmaObligatoriaEl: '2026-07-31'
+    },
+    {
+      id: 'jornada-2026-06',
+      grupo: 'mensual',
+      titulo: 'Registro jornada · junio 2026',
+      subtitulo: 'Firmado el 30/06/2026',
+      mes: 'junio',
+      anio: 2026,
+      yaFirmado: true
+    }
+  ];
+
+  /* Estado de firmas por socorrista (persistido en localStorage) */
+  function getFirmas() {
+    const raw = localStorage.getItem('poolsafety-firmas-v1');
+    return raw ? JSON.parse(raw) : {};
+  }
+  function saveFirmas(f) { localStorage.setItem('poolsafety-firmas-v1', JSON.stringify(f)); }
+
+  function firmasDeSocorrista(socId) {
+    const all = getFirmas();
+    return all[socId] || {};
+  }
+  function firmarDocumento(socId, docId, meta) {
+    const all = getFirmas();
+    if (!all[socId]) all[socId] = {};
+    all[socId][docId] = { ...meta, fecha: meta.fecha || new Date().toISOString() };
+    saveFirmas(all);
+  }
+  function haFirmadoKitAlta(socId) {
+    const f = firmasDeSocorrista(socId);
+    return f['kit-alta'] && f['kit-alta'].completado === true;
+  }
+
   /* ---------- Números globales para el dashboard ---------- */
   const totales = {
     puestosCubiertos: 80,
@@ -234,8 +353,10 @@ const PS = (function () {
 
   return {
     puestos, socorristas, fichajes, tareas, notas, inventario, alertas, totales,
+    EMPRESA, documentos, kitAltaSubdocs,
     getSession, setSession, clearSession,
     getSocorristaState, setSocorristaState,
+    getFirmas, saveFirmas, firmasDeSocorrista, firmarDocumento, haFirmadoKitAlta,
     socorristaByPuesto, puestoById, ahora, fechaLarga
   };
 })();
