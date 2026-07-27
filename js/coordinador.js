@@ -910,42 +910,80 @@
   };
 
   /* ==========================================================================
-     MÓDULO EMPLEADOS — fichas, foto, alta/baja, edición
+     MÓDULO EMPLEADOS — CONECTADO A BD REAL (Supabase)
      ========================================================================== */
 
-  // Estado extendido por empleado (persistido en localStorage)
-  function getEmpleadosState() {
-    const raw = localStorage.getItem('poolsafety-empleados-v1');
-    return raw ? JSON.parse(raw) : {};
-  }
-  function saveEmpleadosState(s) { localStorage.setItem('poolsafety-empleados-v1', JSON.stringify(s)); }
-  function empleadoData(socId) {
-    const soc = PS.socorristas.find(s => s.id === socId);
-    if (!soc) return null;
-    const ext = getEmpleadosState()[socId] || {};
+  let empleadosDB = []; // cache de la última query a Supabase
+
+  // Convierte row de Supabase al formato que usa el resto del código
+  function rowToEmp(r) {
+    const nombre = r.nombre || '(sin nombre)';
     return {
-      id: socId,
-      nombre: ext.nombre || soc.nombre,
-      iniciales: (ext.nombre || soc.nombre).split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase(),
-      dni: ext.dni || '',
-      email: ext.email || '',
-      telefono: ext.telefono || soc.telefono,
-      direccion: ext.direccion || '',
-      ss: ext.ss || '',
-      fechaAlta: ext.fechaAlta || '2022-06-15',
-      contrato: ext.contrato || 'Indefinido',
-      estado: ext.estado || 'activo',
-      fotoUrl: ext.fotoUrl || null,
-      puestoId: soc.puestoId,
-      horasNormales: soc.horasNormales,
-      horasExtra: soc.horasExtra,
-      diasTrabajados: soc.diasTrabajados
+      id: r.id,
+      usuarioId: r.usuario_id,
+      nombre,
+      iniciales: nombre.split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase(),
+      dni: r.dni || '',
+      email: r.email || '',
+      telefono: r.telefono || '',
+      direccion: r.direccion || '',
+      ss: r.numero_ss || '',
+      fechaAlta: r.fecha_alta || new Date().toISOString().slice(0,10),
+      contrato: r.tipo_contrato || 'Indefinido',
+      estado: r.estado || 'activo',
+      fotoUrl: r.foto_url || null,
+      puestoId: r.puesto_id,
+      horasNormales: 0, horasExtra: 0, diasTrabajados: 0
     };
   }
-  function actualizarEmpleado(socId, patch) {
-    const all = getEmpleadosState();
-    all[socId] = { ...(all[socId] || {}), ...patch };
-    saveEmpleadosState(all);
+
+  window.cargarEmpleadosDB = cargarEmpleadosDB;
+  async function cargarEmpleadosDB() {
+    if (!window.sb) { setTimeout(cargarEmpleadosDB, 300); return; }
+    try {
+      const { data, error } = await window.sb
+        .from('empleados')
+        .select('*')
+        .neq('estado', 'eliminado')
+        .order('nombre');
+      if (error) throw error;
+      empleadosDB = (data || []).map(rowToEmp);
+      renderEmpleadosGrid();
+    } catch (err) {
+      console.error('[Empleados]', err);
+      if (empleadosGrid) empleadosGrid.innerHTML = `<div style="grid-column:1/-1; padding:30px; text-align:center; color: var(--danger);">Error cargando empleados: ${err.message}</div>`;
+    }
+  }
+
+  function empleadoData(id) {
+    return empleadosDB.find(e => e.id === id) || null;
+  }
+
+  async function actualizarEmpleado(id, patch) {
+    // Mapea claves del frontend a nombres de columna de BD
+    const dbPatch = {};
+    if ('nombre' in patch) dbPatch.nombre = patch.nombre;
+    if ('dni' in patch) dbPatch.dni = patch.dni;
+    if ('email' in patch) dbPatch.email = patch.email;
+    if ('telefono' in patch) dbPatch.telefono = patch.telefono;
+    if ('direccion' in patch) dbPatch.direccion = patch.direccion;
+    if ('ss' in patch) dbPatch.numero_ss = patch.ss;
+    if ('fechaAlta' in patch) dbPatch.fecha_alta = patch.fechaAlta;
+    if ('contrato' in patch) dbPatch.tipo_contrato = patch.contrato;
+    if ('estado' in patch) dbPatch.estado = patch.estado;
+    if ('fotoUrl' in patch) dbPatch.foto_url = patch.fotoUrl;
+    if ('puestoId' in patch) dbPatch.puesto_id = patch.puestoId;
+
+    try {
+      const { error } = await window.sb.from('empleados').update(dbPatch).eq('id', id);
+      if (error) throw error;
+      // Actualiza cache local para respuesta inmediata
+      const idx = empleadosDB.findIndex(e => e.id === id);
+      if (idx >= 0) empleadosDB[idx] = { ...empleadosDB[idx], ...patch };
+    } catch (err) {
+      toast('Error guardando: ' + err.message);
+      throw err;
+    }
   }
 
   /* ---------- Grid de empleados ---------- */
@@ -957,12 +995,13 @@
 
   function renderEmpleadosGrid() {
     if (!empleadosGrid) return;
-    const empleados = PS.socorristas.slice(0, 30).map(s => empleadoData(s.id));
+    const empleados = empleadosDB;
 
     const stats = document.getElementById('empleadosStats');
     const activos = empleados.filter(e => e.estado === 'activo').length;
     const bajas = empleados.filter(e => e.estado === 'baja').length;
-    if (stats) stats.textContent = `${empleados.length} totales · ${activos} activos · ${bajas} baja`;
+    const pend = empleados.filter(e => e.estado === 'alta-pendiente').length;
+    if (stats) stats.textContent = `${empleados.length} totales · ${activos} activos · ${pend} pendientes · ${bajas} baja`;
 
     let visibles = empleados;
     if (empFiltro !== 'todos') visibles = visibles.filter(e => e.estado === empFiltro);
@@ -970,26 +1009,33 @@
       const q = empQuery.toLowerCase();
       visibles = visibles.filter(e =>
         e.nombre.toLowerCase().includes(q) ||
-        e.dni.toLowerCase().includes(q) ||
-        (e.puestoId && PS.puestoById(e.puestoId)?.nombre.toLowerCase().includes(q))
+        (e.dni || '').toLowerCase().includes(q) ||
+        (e.email || '').toLowerCase().includes(q) ||
+        (e.puestoId && (PS.puestos.find(p => p.id === e.puestoId)?.nombre || '').toLowerCase().includes(q))
       );
     }
 
     if (visibles.length === 0) {
-      empleadosGrid.innerHTML = `<div style="grid-column:1/-1; padding: 40px; text-align:center; color: var(--ink-500);">Sin resultados</div>`;
+      const empty = empleados.length === 0
+        ? `<div style="grid-column:1/-1; padding: 40px; text-align:center; color: var(--ink-500);">
+             <svg class="ic ic-24" style="opacity:.4; margin: 0 auto 10px;"><use href="#ic-users"/></svg>
+             <div>Aún no hay empleados. Pulsa <b>"+ Nuevo empleado"</b> para dar de alta al primero.</div>
+           </div>`
+        : `<div style="grid-column:1/-1; padding: 40px; text-align:center; color: var(--ink-500);">Sin resultados con este filtro</div>`;
+      empleadosGrid.innerHTML = empty;
       return;
     }
 
     empleadosGrid.innerHTML = visibles.map(e => {
-      const puesto = e.puestoId ? PS.puestoById(e.puestoId)?.nombre : 'Sin puesto';
+      const puestoObj = e.puestoId ? PS.puestos.find(p => p.id === e.puestoId) : null;
+      const puesto = puestoObj ? puestoObj.nombre : 'Sin puesto';
       const photoStyle = e.fotoUrl ? `style="background-image:url('${e.fotoUrl}');"` : '';
       const photoClass = e.fotoUrl ? 'has-photo' : '';
       const photoContent = e.fotoUrl ? '' : e.iniciales;
-      const kitOk = PS.haFirmadoKitAlta(e.id);
       const badges = [];
       if (e.estado === 'baja') badges.push(`<span class="badge badge-neutral small"><span class="dot"></span>Baja</span>`);
-      else if (!kitOk) badges.push(`<span class="badge badge-warn small"><span class="dot"></span>Kit pend.</span>`);
-      else badges.push(`<span class="badge badge-ok small"><span class="dot"></span>Al día</span>`);
+      else if (e.estado === 'alta-pendiente') badges.push(`<span class="badge badge-warn small"><span class="dot"></span>Alta pendiente</span>`);
+      else badges.push(`<span class="badge badge-ok small"><span class="dot"></span>Activo</span>`);
       return `
         <div class="emp-card ${e.estado === 'baja' ? 'baja' : ''}" data-emp="${e.id}">
           <span class="emp-card-status ${e.estado}"></span>
@@ -1007,7 +1053,10 @@
 
   if (empleadoSearch) empleadoSearch.addEventListener('input', e => { empQuery = e.target.value; renderEmpleadosGrid(); });
   if (empleadoFilter) empleadoFilter.addEventListener('change', e => { empFiltro = e.target.value; renderEmpleadosGrid(); });
-  renderEmpleadosGrid();
+
+  // Cargar empleados reales de la BD al iniciar
+  cargarEmpleadosDB();
+  document.addEventListener('ps-session-updated', () => cargarEmpleadosDB());
 
   /* ---------- Modal ficha ---------- */
   let fichaActualId = null;
@@ -1037,18 +1086,20 @@
     const img = new Image();
     const reader = new FileReader();
     reader.onload = ev => { img.src = ev.target.result; };
-    img.onload = () => {
+    img.onload = async () => {
       const canvas = document.createElement('canvas');
       const maxSize = 400;
       const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
       canvas.width = img.width * scale;
       canvas.height = img.height * scale;
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
-      actualizarEmpleado(fichaActualId, { fotoUrl: dataUrl });
-      renderFicha();
-      renderEmpleadosGrid();
-      toast('Foto actualizada');
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      try {
+        await actualizarEmpleado(fichaActualId, { fotoUrl: dataUrl });
+        renderFicha();
+        renderEmpleadosGrid();
+        toast('Foto actualizada');
+      } catch (err) { /* error ya mostrado */ }
     };
     reader.readAsDataURL(f);
   });
@@ -1261,7 +1312,7 @@
     }
   }
 
-  window.guardarFichaDatos = function () {
+  window.guardarFichaDatos = async function () {
     const patch = {
       nombre: document.getElementById('ed-nombre').value.trim(),
       dni: document.getElementById('ed-dni').value.trim(),
@@ -1272,17 +1323,12 @@
       fechaAlta: document.getElementById('ed-fecha').value,
       contrato: document.getElementById('ed-contrato').value
     };
-    actualizarEmpleado(fichaActualId, patch);
-    // Reflejar cambio de nombre en el modelo en memoria
-    const soc = PS.socorristas.find(s => s.id === fichaActualId);
-    if (soc && patch.nombre) {
-      soc.nombre = patch.nombre;
-      soc.iniciales = patch.nombre.split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase();
-    }
-    renderFicha();
-    renderEmpleadosGrid();
-    renderPosts();
-    toast('Ficha actualizada');
+    try {
+      await actualizarEmpleado(fichaActualId, patch);
+      renderFicha();
+      renderEmpleadosGrid();
+      toast('Ficha actualizada en la BD');
+    } catch (err) { /* toast ya mostrado */ }
   };
 
   window.enviarTareaFicha = function () {
@@ -1294,22 +1340,29 @@
     document.getElementById('ft-desc').value = '';
   };
 
-  window.darDeBaja = function () {
+  window.darDeBaja = async function () {
     const e = empleadoData(fichaActualId);
     if (!confirm(`¿Dar de baja a ${e.nombre}?\n\nLe aparecerá el finiquito para firmar.`)) return;
-    actualizarEmpleado(fichaActualId, { estado: 'baja', fechaBaja: new Date().toISOString() });
-    renderFicha();
-    renderEmpleadosGrid();
-    toast(`${e.nombre} dado de baja. Recibirá finiquito para firmar.`);
+    try {
+      await actualizarEmpleado(fichaActualId, { estado: 'baja' });
+      // También seteamos la fecha de baja
+      await window.sb.from('empleados').update({ fecha_baja: new Date().toISOString().slice(0,10) }).eq('id', fichaActualId);
+      await cargarEmpleadosDB();
+      renderFicha();
+      toast(`${e.nombre} dado de baja`);
+    } catch (err) { /* toast ya mostrado */ }
   };
 
-  window.darDeAlta = function () {
+  window.darDeAlta = async function () {
     const e = empleadoData(fichaActualId);
     if (!confirm(`¿Reactivar a ${e.nombre}?`)) return;
-    actualizarEmpleado(fichaActualId, { estado: 'activo' });
-    renderFicha();
-    renderEmpleadosGrid();
-    toast(`${e.nombre} reactivado`);
+    try {
+      await actualizarEmpleado(fichaActualId, { estado: 'activo' });
+      await window.sb.from('empleados').update({ fecha_baja: null }).eq('id', fichaActualId);
+      await cargarEmpleadosDB();
+      renderFicha();
+      toast(`${e.nombre} reactivado`);
+    } catch (err) { /* toast ya mostrado */ }
   };
 
   window.cancelarProximoTurno = function () {
@@ -1317,19 +1370,18 @@
     toast(`Próximo turno de ${e.nombre} cancelado. Notificado.`);
   };
 
-  window.eliminarEmpleado = function () {
+  window.eliminarEmpleado = async function () {
     const e = empleadoData(fichaActualId);
-    if (!confirm(`⚠️ ELIMINAR FICHA de ${e.nombre}\n\nEsto borrará TODOS sus datos del sistema. La acción es irreversible.\n\n¿Continuar?`)) return;
+    if (!confirm(`⚠️ ELIMINAR FICHA de ${e.nombre}\n\nEsto borrará su ficha del sistema (la cuenta de acceso hay que borrarla desde Supabase Auth). Acción irreversible.\n\n¿Continuar?`)) return;
     const nombre2 = prompt('Escribe el nombre completo para confirmar:');
     if (nombre2 !== e.nombre) { toast('Nombre no coincide. Cancelado.'); return; }
-    const all = getEmpleadosState();
-    delete all[fichaActualId];
-    saveEmpleadosState(all);
-    // Marcamos como eliminado en el modelo (no lo quitamos para no romper referencias)
-    actualizarEmpleado(fichaActualId, { estado: 'eliminado' });
-    closeEmpleadoModal();
-    renderEmpleadosGrid();
-    toast(`Ficha de ${e.nombre} eliminada`);
+    try {
+      // Soft delete: marca como eliminado, no borra la fila (para conservar histórico)
+      await actualizarEmpleado(fichaActualId, { estado: 'eliminado' });
+      closeEmpleadoModal();
+      await cargarEmpleadosDB();
+      toast(`Ficha de ${e.nombre} eliminada`);
+    } catch (err) { /* toast ya mostrado */ }
   };
 
   /* ---------- Nuevo usuario (empleado / coordinador / admin) — REAL en Supabase ---------- */
@@ -1463,8 +1515,8 @@
       // Reset campos
       ['neNombre','neDni','neEmail','neTelefono','nePassword'].forEach(id => document.getElementById(id).value = '');
 
-      // Refrescar la lista
-      if (rol === 'socorrista') renderEmpleadosGrid();
+      // Refrescar la lista desde BD
+      if (rol === 'socorrista') await cargarEmpleadosDB();
 
       toast(`✓ Cuenta creada: ${email}`);
     } catch (err) {
