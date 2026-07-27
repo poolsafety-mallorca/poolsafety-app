@@ -215,8 +215,8 @@
             <svg class="ic ic-24"><use href="#ic-medkit"/></svg>
           </div>
           <div style="flex:1">
-            <h3>Botiquín del puesto</h3>
-            <p>Hotel Bellamar · última revisión hace 3 días</p>
+            <h3>Botiquín y equipos</h3>
+            <p id="revisionSummary">Cargando revisión de hoy…</p>
           </div>
         </div>
         <div class="row gap-2 mt-4">
@@ -227,9 +227,31 @@
         </div>
       </div>
 
+      <!-- Alertas automáticas de stock bajo -->
+      <div id="alertasStockPanel"></div>
+
+      <!-- Selector de sección (chips) -->
+      <div class="chip-tabs" id="botiquinTabs">
+        <button class="chip-tab active" data-sec="botiquin">
+          <svg class="ic ic-14"><use href="#ic-medkit"/></svg>
+          Botiquín <span class="tab-count" id="cnt-botiquin"></span>
+        </button>
+        <button class="chip-tab" data-sec="desa">
+          <svg class="ic ic-14"><use href="#ic-heart-pulse"/></svg>
+          DESA <span class="tab-count" id="cnt-desa"></span>
+        </button>
+        <button class="chip-tab" data-sec="oxigeno">
+          <svg class="ic ic-14"><use href="#ic-droplet"/></svg>
+          Oxigenoterapia <span class="tab-count" id="cnt-oxigeno"></span>
+        </button>
+      </div>
+
+      <!-- Info normativa por sección -->
+      <div class="norma-banner" id="normaBanner"></div>
+
       <div class="section-eyebrow">
-        <span class="eyebrow">Inventario actual</span>
-        <span class="text-muted small">10 artículos</span>
+        <span class="eyebrow" id="invSectionTitle">Inventario</span>
+        <span class="text-muted small" id="invSectionMeta"></span>
       </div>
       <div class="col gap-2" id="inventarioList"></div>
     </main>
@@ -320,16 +342,8 @@
 
     <div class="field">
       <label>Material</label>
-      <select id="reportItem">
-        <option>Vendas elásticas</option>
-        <option>Gasas estériles</option>
-        <option>Suero fisiológico 500ml</option>
-        <option>Guantes nitrilo</option>
-        <option>Mascarilla RCP</option>
-        <option>Manta térmica</option>
-        <option>Antiséptico clorhexidina</option>
-        <option>Otro (indicar en notas)</option>
-      </select>
+      <select id="reportItem"></select>
+      <div class="small text-muted mt-1">Ordenado por urgencia · los que están bajo mínimo aparecen primero</div>
     </div>
 
     <div class="field">

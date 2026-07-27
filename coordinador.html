@@ -203,6 +203,47 @@
       </aside>
     </div>
 
+    <!-- Gestión del botiquín -->
+    <section class="panel" id="botiquinSection" style="margin-bottom: 20px;">
+      <div class="panel-head">
+        <div class="panel-title-wrap">
+          <div class="kpi-icon" style="width: 30px; height: 30px; background: linear-gradient(135deg, #0EA5E9, #22D3EE); color:#fff;">
+            <svg class="ic ic-16"><use href="#ic-medkit"/></svg>
+          </div>
+          <h3 class="panel-title">Gestión de botiquín, DESA y oxigenoterapia</h3>
+          <span class="panel-count" id="botiquinPuestoLabel">— Hotel Bellamar</span>
+        </div>
+        <div class="row gap-2">
+          <select id="botiquinPuestoSelect" style="padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; background: #fff; color: var(--ink-700); font-weight: 500;"></select>
+          <button class="btn btn-primary" onclick="openAddItemModal()">
+            <svg class="ic ic-16"><use href="#ic-plus"/></svg>
+            Añadir producto
+          </button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="norma-banner" style="margin-bottom: 14px;">
+          <svg class="ic ic-14"><use href="#ic-shield"/></svg>
+          <span>Contenido según <b>Decreto 53/1995</b> (botiquín y oxigenoterapia) y <b>Decreto 137/2008</b> (DESA) de Baleares. Los productos marcados con <b>Obligatorio</b> no se pueden eliminar.</span>
+        </div>
+        <div class="chip-tabs" id="botiquinAdminTabs">
+          <button class="chip-tab active" data-sec="botiquin">
+            <svg class="ic ic-14"><use href="#ic-medkit"/></svg>
+            Botiquín <span class="tab-count" id="admin-cnt-botiquin"></span>
+          </button>
+          <button class="chip-tab" data-sec="desa">
+            <svg class="ic ic-14"><use href="#ic-heart-pulse"/></svg>
+            DESA <span class="tab-count" id="admin-cnt-desa"></span>
+          </button>
+          <button class="chip-tab" data-sec="oxigeno">
+            <svg class="ic ic-14"><use href="#ic-droplet"/></svg>
+            Oxigenoterapia <span class="tab-count" id="admin-cnt-oxigeno"></span>
+          </button>
+        </div>
+        <div class="botiquin-admin-grid" id="botiquinAdminList"></div>
+      </div>
+    </section>
+
     <!-- Horas del mes -->
     <section class="panel hours-panel" id="hoursSection">
       <div class="panel-head">
@@ -290,6 +331,76 @@
       <button class="btn btn-primary" onclick="submitTarea()">
         <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
         Enviar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL AÑADIR PRODUCTO AL BOTIQUÍN ============ -->
+<div class="modal-backdrop" id="addItemModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>Añadir producto al inventario</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;">Se añadirá al puesto seleccionado. Podrás fijar el stock actual y el mínimo para generar alertas automáticas.</p>
+      </div>
+      <button class="modal-close" onclick="closeAddItemModal()">
+        <svg class="ic ic-16"><use href="#ic-x"/></svg>
+      </button>
+    </div>
+    <div class="field">
+      <label>Nombre del producto</label>
+      <input type="text" id="newItemName" placeholder="p.ej. Guantes talla L, spray protector solar…" />
+    </div>
+    <div class="row gap-2">
+      <div class="field" style="flex:1;">
+        <label>Sección</label>
+        <select id="newItemSeccion">
+          <option value="botiquin">Botiquín general</option>
+          <option value="desa">DESA</option>
+          <option value="oxigeno">Oxigenoterapia</option>
+        </select>
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Categoría</label>
+        <select id="newItemCategoria">
+          <option value="Curas">Curas</option>
+          <option value="Antiséptico">Antiséptico</option>
+          <option value="Lavado">Lavado</option>
+          <option value="Protección">Protección</option>
+          <option value="Instrumental">Instrumental</option>
+          <option value="Emergencia">Emergencia</option>
+          <option value="Medicación">Medicación</option>
+          <option value="DESA">DESA</option>
+          <option value="Oxígeno">Oxígeno</option>
+        </select>
+      </div>
+    </div>
+    <div class="row gap-2">
+      <div class="field" style="flex:1;">
+        <label>Stock actual</label>
+        <input type="number" id="newItemStock" value="1" min="0" />
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Mínimo (alerta)</label>
+        <input type="number" id="newItemMin" value="1" min="0" />
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Unidad</label>
+        <select id="newItemUnidad">
+          <option>ud</option>
+          <option>sobre</option>
+          <option>par</option>
+          <option>rollo</option>
+          <option>bolsa</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeAddItemModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitAddItem()">
+        <svg class="ic ic-16"><use href="#ic-plus"/></svg>
+        Añadir al inventario
       </button>
     </div>
   </div>

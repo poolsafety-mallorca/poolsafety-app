@@ -117,18 +117,59 @@ const PS = (function () {
     { id: 'n02', puestoId: 'p01', socorristaId: 's01', autor: 'Coordinador Marta', mensaje: 'El cliente ha pedido que cerremos el toldo al terminar el turno. Gracias.', fecha: 'Ayer, 18:22' }
   ];
 
-  /* ---------- Inventario del botiquín ---------- */
+  /* ---------- Inventario del botiquín (Decreto 53/1995 Baleares) ---------- */
+  /* seccion: 'botiquin' | 'desa' | 'oxigeno' | 'custom'
+     Decreto 137/2008 regula el DESA.                                        */
   const inventario = [
-    { id: 'i01', puestoId: 'p01', nombre: 'Vendas elásticas', categoria: 'Vendaje', stock: 6, minimo: 4, unidad: 'ud', ultimaRepo: 'hace 3 días' },
-    { id: 'i02', puestoId: 'p01', nombre: 'Gasas estériles', categoria: 'Vendaje', stock: 12, minimo: 10, unidad: 'sobre', ultimaRepo: 'hace 3 días' },
-    { id: 'i03', puestoId: 'p01', nombre: 'Suero fisiológico 500ml', categoria: 'Lavado', stock: 1, minimo: 3, unidad: 'ud', ultimaRepo: 'hace 12 días' },
-    { id: 'i04', puestoId: 'p01', nombre: 'Guantes nitrilo talla M', categoria: 'Protección', stock: 24, minimo: 20, unidad: 'ud', ultimaRepo: 'hace 5 días' },
-    { id: 'i05', puestoId: 'p01', nombre: 'Mascarilla RCP', categoria: 'Reanimación', stock: 2, minimo: 2, unidad: 'ud', ultimaRepo: 'hace 15 días' },
-    { id: 'i06', puestoId: 'p01', nombre: 'Manta térmica', categoria: 'Emergencia', stock: 0, minimo: 2, unidad: 'ud', ultimaRepo: 'hace 20 días' },
-    { id: 'i07', puestoId: 'p01', nombre: 'Tirita variada', categoria: 'Curas', stock: 30, minimo: 20, unidad: 'ud', ultimaRepo: 'hace 3 días' },
-    { id: 'i08', puestoId: 'p01', nombre: 'Antiséptico clorhexidina', categoria: 'Curas', stock: 1, minimo: 2, unidad: 'ud', ultimaRepo: 'hace 10 días' },
-    { id: 'i09', puestoId: 'p01', nombre: 'Tijeras romas', categoria: 'Herramienta', stock: 1, minimo: 1, unidad: 'ud', ultimaRepo: 'ok' },
-    { id: 'i10', puestoId: 'p01', nombre: 'Bolsa hielo instantáneo', categoria: 'Traumatismo', stock: 3, minimo: 3, unidad: 'ud', ultimaRepo: 'hace 5 días' }
+    // === BOTIQUÍN GENERAL — curas y vendaje ===
+    { id: 'i01', puestoId: 'p01', seccion: 'botiquin', nombre: 'Gasas estériles', categoria: 'Curas', stock: 15, minimo: 10, unidad: 'sobre', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 3 días', revisadoHoy: true },
+    { id: 'i02', puestoId: 'p01', seccion: 'botiquin', nombre: 'Vendas elásticas', categoria: 'Curas', stock: 6, minimo: 4, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 3 días', revisadoHoy: true },
+    { id: 'i03', puestoId: 'p01', seccion: 'botiquin', nombre: 'Vendas cohesivas (tensoplast)', categoria: 'Curas', stock: 3, minimo: 3, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 5 días', revisadoHoy: false },
+    { id: 'i04', puestoId: 'p01', seccion: 'botiquin', nombre: 'Esparadrapo hipoalergénico', categoria: 'Curas', stock: 4, minimo: 2, unidad: 'rollo', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 5 días', revisadoHoy: false },
+    { id: 'i05', puestoId: 'p01', seccion: 'botiquin', nombre: 'Tiritas / apósitos surtidos', categoria: 'Curas', stock: 30, minimo: 20, unidad: 'ud', obligatorio: false, normativa: 'Recomendado', ultimaRepo: 'hace 3 días', revisadoHoy: false },
+    { id: 'i06', puestoId: 'p01', seccion: 'botiquin', nombre: 'Algodón hidrófilo', categoria: 'Curas', stock: 2, minimo: 1, unidad: 'bolsa', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 5 días', revisadoHoy: false },
+    { id: 'i07', puestoId: 'p01', seccion: 'botiquin', nombre: 'Suturas adhesivas (steri-strip)', categoria: 'Curas', stock: 5, minimo: 3, unidad: 'sobre', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 10 días', revisadoHoy: false },
+    // === BOTIQUÍN GENERAL — antisépticos y lavado ===
+    { id: 'i08', puestoId: 'p01', seccion: 'botiquin', nombre: 'Povidona yodada (Betadine)', categoria: 'Antiséptico', stock: 2, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 8 días', revisadoHoy: false },
+    { id: 'i09', puestoId: 'p01', seccion: 'botiquin', nombre: 'Antiséptico clorhexidina', categoria: 'Antiséptico', stock: 1, minimo: 2, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 10 días', revisadoHoy: false },
+    { id: 'i10', puestoId: 'p01', seccion: 'botiquin', nombre: 'Alcohol 96°', categoria: 'Antiséptico', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 15 días', revisadoHoy: false },
+    { id: 'i11', puestoId: 'p01', seccion: 'botiquin', nombre: 'Agua oxigenada', categoria: 'Antiséptico', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 15 días', revisadoHoy: false },
+    { id: 'i12', puestoId: 'p01', seccion: 'botiquin', nombre: 'Suero fisiológico 500ml', categoria: 'Lavado', stock: 1, minimo: 3, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 12 días', revisadoHoy: false },
+    // === BOTIQUÍN GENERAL — protección e instrumental ===
+    { id: 'i13', puestoId: 'p01', seccion: 'botiquin', nombre: 'Guantes nitrilo talla M', categoria: 'Protección', stock: 24, minimo: 20, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 5 días', revisadoHoy: true },
+    { id: 'i14', puestoId: 'p01', seccion: 'botiquin', nombre: 'Guantes estériles', categoria: 'Protección', stock: 10, minimo: 6, unidad: 'par', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 5 días', revisadoHoy: false },
+    { id: 'i15', puestoId: 'p01', seccion: 'botiquin', nombre: 'Tijeras acero inoxidable', categoria: 'Instrumental', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'ok', revisadoHoy: false },
+    { id: 'i16', puestoId: 'p01', seccion: 'botiquin', nombre: 'Pinzas acero inoxidable', categoria: 'Instrumental', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'ok', revisadoHoy: false },
+    { id: 'i17', puestoId: 'p01', seccion: 'botiquin', nombre: 'Pinzas de lengua', categoria: 'Instrumental', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'ok', revisadoHoy: false },
+    { id: 'i18', puestoId: 'p01', seccion: 'botiquin', nombre: 'Termómetro digital', categoria: 'Instrumental', stock: 1, minimo: 1, unidad: 'ud', obligatorio: false, normativa: 'Recomendado', ultimaRepo: 'ok', revisadoHoy: false },
+    // === BOTIQUÍN GENERAL — emergencia / traumatismo ===
+    { id: 'i19', puestoId: 'p01', seccion: 'botiquin', nombre: 'Manta térmica', categoria: 'Emergencia', stock: 0, minimo: 2, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 20 días', revisadoHoy: false },
+    { id: 'i20', puestoId: 'p01', seccion: 'botiquin', nombre: 'Bolsa hielo instantáneo', categoria: 'Emergencia', stock: 3, minimo: 3, unidad: 'ud', obligatorio: false, normativa: 'Recomendado', ultimaRepo: 'hace 5 días', revisadoHoy: false },
+    { id: 'i21', puestoId: 'p01', seccion: 'botiquin', nombre: 'Collarín cervical ajustable', categoria: 'Emergencia', stock: 1, minimo: 1, unidad: 'ud', obligatorio: false, normativa: 'Recomendado', ultimaRepo: 'ok', revisadoHoy: false },
+    { id: 'i22', puestoId: 'p01', seccion: 'botiquin', nombre: 'Antiinflamatorio tópico', categoria: 'Medicación', stock: 2, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 12 días', revisadoHoy: false },
+    { id: 'i23', puestoId: 'p01', seccion: 'botiquin', nombre: 'Neutralizante picaduras medusas', categoria: 'Medicación', stock: 1, minimo: 1, unidad: 'ud', obligatorio: false, normativa: 'Recomendado litoral', ultimaRepo: 'ok', revisadoHoy: false },
+
+    // === DESA (Decreto 137/2008 Baleares) ===
+    { id: 'd01', puestoId: 'p01', seccion: 'desa', nombre: 'Desfibrilador DESA', categoria: 'DESA', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 137/2008', ultimaRepo: 'Revisado hoy', revisadoHoy: true, revisionMensual: true, proximaRevision: '15 días' },
+    { id: 'd02', puestoId: 'p01', seccion: 'desa', nombre: 'Parches adulto DESA', categoria: 'DESA', stock: 2, minimo: 2, unidad: 'par', obligatorio: true, normativa: 'Decreto 137/2008', ultimaRepo: 'ok', revisadoHoy: true, caducidad: '12/2027' },
+    { id: 'd03', puestoId: 'p01', seccion: 'desa', nombre: 'Parches pediátricos DESA', categoria: 'DESA', stock: 1, minimo: 1, unidad: 'par', obligatorio: true, normativa: 'Decreto 137/2008', ultimaRepo: 'ok', revisadoHoy: false, caducidad: '08/2027' },
+    { id: 'd04', puestoId: 'p01', seccion: 'desa', nombre: 'Batería DESA de repuesto', categoria: 'DESA', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 137/2008', ultimaRepo: 'ok', revisadoHoy: false, caducidad: '06/2028' },
+    { id: 'd05', puestoId: 'p01', seccion: 'desa', nombre: 'Rasuradora desechable', categoria: 'DESA', stock: 3, minimo: 2, unidad: 'ud', obligatorio: true, normativa: 'Decreto 137/2008', ultimaRepo: 'ok', revisadoHoy: false },
+    { id: 'd06', puestoId: 'p01', seccion: 'desa', nombre: 'Toalla no conductora / secante', categoria: 'DESA', stock: 2, minimo: 1, unidad: 'ud', obligatorio: false, normativa: 'Recomendado', ultimaRepo: 'ok', revisadoHoy: false },
+    { id: 'd07', puestoId: 'p01', seccion: 'desa', nombre: 'Mascarilla RCP con válvula', categoria: 'DESA', stock: 2, minimo: 2, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'hace 15 días', revisadoHoy: false },
+    { id: 'd08', puestoId: 'p01', seccion: 'desa', nombre: 'Libro de registro de uso DESA', categoria: 'DESA', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 137/2008', ultimaRepo: 'ok', revisadoHoy: false },
+
+    // === OXIGENOTERAPIA (Decreto 53/1995 Baleares) ===
+    { id: 'o01', puestoId: 'p01', seccion: 'oxigeno', nombre: 'Bala de oxígeno 5L (principal)', categoria: 'Oxígeno', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'llena', revisadoHoy: true, revisionMensual: true, cargaBala: '95%' },
+    { id: 'o02', puestoId: 'p01', seccion: 'oxigeno', nombre: 'Bala de oxígeno de repuesto', categoria: 'Oxígeno', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'llena', revisadoHoy: false, cargaBala: '100%' },
+    { id: 'o03', puestoId: 'p01', seccion: 'oxigeno', nombre: 'Regulador con manómetro', categoria: 'Oxígeno', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'ok', revisadoHoy: true, revisionMensual: true },
+    { id: 'o04', puestoId: 'p01', seccion: 'oxigeno', nombre: 'Ambú adulto (bolsa autoinflable)', categoria: 'Oxígeno', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'ok', revisadoHoy: true },
+    { id: 'o05', puestoId: 'p01', seccion: 'oxigeno', nombre: 'Ambú pediátrico', categoria: 'Oxígeno', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'ok', revisadoHoy: false },
+    { id: 'o06', puestoId: 'p01', seccion: 'oxigeno', nombre: 'Mascarilla no-rebreather adulto', categoria: 'Oxígeno', stock: 2, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'ok', revisadoHoy: false },
+    { id: 'o07', puestoId: 'p01', seccion: 'oxigeno', nombre: 'Mascarilla no-rebreather pediátrica', categoria: 'Oxígeno', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'ok', revisadoHoy: false },
+    { id: 'o08', puestoId: 'p01', seccion: 'oxigeno', nombre: 'Cánulas Guedel adulto (surtido)', categoria: 'Oxígeno', stock: 3, minimo: 2, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'ok', revisadoHoy: false },
+    { id: 'o09', puestoId: 'p01', seccion: 'oxigeno', nombre: 'Cánulas Guedel pediátrico', categoria: 'Oxígeno', stock: 2, minimo: 2, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'ok', revisadoHoy: false },
+    { id: 'o10', puestoId: 'p01', seccion: 'oxigeno', nombre: 'Aspirador de secreciones', categoria: 'Oxígeno', stock: 1, minimo: 1, unidad: 'ud', obligatorio: true, normativa: 'Decreto 53/1995', ultimaRepo: 'ok', revisadoHoy: false, revisionMensual: true }
   ];
 
   /* ---------- Alertas de inventario del sistema ---------- */

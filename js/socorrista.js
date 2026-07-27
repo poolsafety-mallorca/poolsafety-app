@@ -159,21 +159,98 @@
   }
   renderTareas();
 
-  /* ---------- Botiquín ---------- */
+  /* ---------- Botiquín / DESA / Oxigenoterapia ---------- */
   const inventarioList = document.getElementById('inventarioList');
+  const alertasStockPanel = document.getElementById('alertasStockPanel');
+  const revisionSummary = document.getElementById('revisionSummary');
+  const invSectionTitle = document.getElementById('invSectionTitle');
+  const invSectionMeta = document.getElementById('invSectionMeta');
+  const normaBanner = document.getElementById('normaBanner');
+  let seccionActual = 'botiquin';
+
+  const SECCION_INFO = {
+    botiquin: { titulo: 'Inventario del botiquín', norma: 'Contenido según Decreto 53/1995 de Baleares · piscinas de establecimientos turísticos.' },
+    desa:     { titulo: 'Desfibrilador (DESA)', norma: 'Obligatorio según Decreto 137/2008 de Baleares. Revisión mensual del equipo, batería y parches.' },
+    oxigeno:  { titulo: 'Oxigenoterapia', norma: 'Obligatoria según Decreto 53/1995. Comprobar carga de bala, ambú y mascarillas antes del turno.' }
+  };
+
   function iconForCat(cat) {
     switch (cat) {
-      case 'Reanimación': return 'ic-heart-pulse';
-      case 'Vendaje': return 'ic-package';
-      case 'Emergencia': return 'ic-alert';
+      case 'Curas': return 'ic-package';
+      case 'Antiséptico': return 'ic-droplet';
       case 'Lavado': return 'ic-droplet';
       case 'Protección': return 'ic-shield';
+      case 'Instrumental': return 'ic-package';
+      case 'Emergencia': return 'ic-alert';
+      case 'Medicación': return 'ic-medkit';
+      case 'DESA': return 'ic-heart-pulse';
+      case 'Oxígeno': return 'ic-droplet';
       default: return 'ic-package';
     }
   }
+
+  function itemsPorSeccion(sec) {
+    return PS.inventario.filter(it => it.seccion === sec && it.puestoId === me.puestoId);
+  }
+
+  function alertasAutomaticas() {
+    return PS.inventario.filter(it => it.puestoId === me.puestoId && it.stock < it.minimo);
+  }
+
+  function renderTabs() {
+    ['botiquin','desa','oxigeno'].forEach(sec => {
+      const el = document.getElementById(`cnt-${sec}`);
+      if (el) el.textContent = itemsPorSeccion(sec).length;
+    });
+    document.querySelectorAll('.chip-tab').forEach(b => {
+      b.classList.toggle('active', b.dataset.sec === seccionActual);
+    });
+  }
+
+  function renderRevisionSummary() {
+    const items = PS.inventario.filter(it => it.puestoId === me.puestoId);
+    const total = items.length;
+    const revisados = items.filter(it => it.revisadoHoy).length;
+    if (revisionSummary) {
+      revisionSummary.textContent = `${miPuesto.nombre} · revisión diaria ${revisados}/${total} comprobados`;
+    }
+  }
+
+  function renderAlertasStock() {
+    if (!alertasStockPanel) return;
+    const alertas = alertasAutomaticas();
+    if (alertas.length === 0) {
+      alertasStockPanel.innerHTML = `
+        <div class="alert-strip ok">
+          <svg class="ic ic-16"><use href="#ic-check-circle"/></svg>
+          Todo el material está por encima del mínimo.
+        </div>`;
+      return;
+    }
+    alertasStockPanel.innerHTML = `
+      <div class="alert-strip warn">
+        <svg class="ic ic-16"><use href="#ic-alert"/></svg>
+        <div style="flex:1">
+          <div><b>${alertas.length} artículo${alertas.length>1?'s':''} bajo mínimo</b> · alerta enviada al coordinador</div>
+          <div class="small mt-1">${alertas.map(a => a.nombre).slice(0,3).join(' · ')}${alertas.length>3?' …':''}</div>
+        </div>
+      </div>`;
+  }
+
   function renderInventario() {
     if (!inventarioList) return;
-    inventarioList.innerHTML = PS.inventario.map(it => {
+    const info = SECCION_INFO[seccionActual];
+    if (invSectionTitle) invSectionTitle.textContent = info.titulo;
+    if (normaBanner) {
+      normaBanner.innerHTML = `<svg class="ic ic-14"><use href="#ic-shield"/></svg><span>${info.norma}</span>`;
+    }
+    const items = itemsPorSeccion(seccionActual);
+    if (invSectionMeta) {
+      const rev = items.filter(it => it.revisadoHoy).length;
+      invSectionMeta.textContent = `${rev}/${items.length} revisados hoy`;
+    }
+
+    inventarioList.innerHTML = items.map(it => {
       const pct = Math.min(100, Math.round((it.stock / (it.minimo * 2)) * 100));
       const level = it.stock === 0 ? 'low' : it.stock < it.minimo ? 'warn' : 'ok';
       const badge = it.stock === 0
@@ -181,8 +258,20 @@
         : it.stock < it.minimo
         ? '<span class="badge badge-warn"><span class="dot"></span>Bajo mínimo</span>'
         : '<span class="badge badge-ok"><span class="dot"></span>OK</span>';
+      const obligBadge = it.obligatorio
+        ? `<span class="badge badge-info small" title="${it.normativa}"><svg class="ic ic-14"><use href="#ic-shield"/></svg>Obligatorio</span>`
+        : '';
+      const extraInfo = [];
+      if (it.caducidad) extraInfo.push(`Caduca ${it.caducidad}`);
+      if (it.cargaBala) extraInfo.push(`Carga ${it.cargaBala}`);
+      if (it.revisionMensual) extraInfo.push(`Revisión mensual · próx. ${it.proximaRevision || 'este mes'}`);
+      const extra = extraInfo.length ? `<div class="inv-extra">${extraInfo.join(' · ')}</div>` : '';
+
       return `
         <div class="inv">
+          <button class="inv-check ${it.revisadoHoy ? 'done' : ''}" data-id="${it.id}" title="Marcar revisado hoy">
+            ${it.revisadoHoy ? `<svg class="ic ic-14"><use href="#ic-check"/></svg>` : ''}
+          </button>
           <div class="inv-icon ${level}">
             <svg class="ic ic-22"><use href="#${iconForCat(it.categoria)}"/></svg>
           </div>
@@ -191,25 +280,69 @@
               <div class="inv-name">${it.nombre}</div>
               ${badge}
             </div>
+            <div class="row gap-1 mt-1">${obligBadge}</div>
             <div class="inv-meta">
               <div class="inv-stock">${it.stock} ${it.unidad} · mínimo ${it.minimo}</div>
               <div class="inv-bar"><span class="${level}" style="width:${pct}%"></span></div>
             </div>
+            ${extra}
           </div>
         </div>
       `;
     }).join('');
+
+    // Checkbox revisión diaria
+    inventarioList.querySelectorAll('.inv-check').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const it = PS.inventario.find(x => x.id === id);
+        if (!it) return;
+        it.revisadoHoy = !it.revisadoHoy;
+        renderInventario();
+        renderRevisionSummary();
+        if (it.revisadoHoy) toast(`Revisado ✓ ${it.nombre}`);
+      });
+    });
   }
+
+  document.querySelectorAll('#botiquinTabs .chip-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      seccionActual = btn.dataset.sec;
+      renderTabs();
+      renderInventario();
+    });
+  });
+
+  renderTabs();
+  renderRevisionSummary();
+  renderAlertasStock();
   renderInventario();
 
+  // Recalcular reporte modal según sección actual
+  window.updateReportOptions = function () {
+    const sel = document.getElementById('reportItem');
+    if (!sel) return;
+    sel.innerHTML = PS.inventario
+      .filter(it => it.puestoId === me.puestoId)
+      .sort((a,b) => a.stock/a.minimo - b.stock/b.minimo)
+      .map(it => `<option value="${it.id}">${it.nombre}${it.stock<it.minimo?' · '+it.stock+' '+it.unidad:''}</option>`)
+      .join('');
+  };
+  updateReportOptions();
+
   /* ---------- Modal reportar ---------- */
-  window.openReportModal = () => document.getElementById('reportModal').classList.add('open');
+  window.openReportModal = () => {
+    updateReportOptions();
+    document.getElementById('reportModal').classList.add('open');
+  };
   window.closeReportModal = () => document.getElementById('reportModal').classList.remove('open');
   window.submitReport = function () {
-    const item = document.getElementById('reportItem').value;
+    const itemId = document.getElementById('reportItem').value;
     const qty = document.getElementById('reportQty').value;
+    const it = PS.inventario.find(x => x.id === itemId);
+    const nombre = it ? it.nombre : 'material';
     closeReportModal();
-    toast(`Alerta enviada: falta ${qty}× ${item}`);
+    toast(`Alerta enviada al coordinador: falta ${qty}× ${nombre}`);
     document.getElementById('reportNotes').value = '';
   };
 

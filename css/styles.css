@@ -917,6 +917,210 @@ img, svg { display: block; max-width: 100%; }
 .medkit-hero .btn { background: #fff; color: var(--ocean); }
 .medkit-hero .btn:hover { background: var(--foam); }
 
+/* Chip tabs (Botiquín / DESA / Oxigeno) */
+.chip-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.chip-tabs::-webkit-scrollbar { display: none; }
+.chip-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--ink-200);
+  background: #fff;
+  color: var(--ink-700);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .18s ease;
+}
+.chip-tab:hover { border-color: var(--sky-500); color: var(--sky-700); }
+.chip-tab.active {
+  background: linear-gradient(135deg, var(--sky-500), var(--cyan-400));
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(14,165,233,.28);
+}
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: rgba(255,255,255,.22);
+  font-size: 11px;
+  font-weight: 700;
+}
+.chip-tab:not(.active) .tab-count {
+  background: var(--ink-100);
+  color: var(--ink-600);
+}
+
+/* Banner normativa */
+.norma-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-2);
+  background: var(--info-bg);
+  color: var(--sky-900);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.norma-banner svg { flex: 0 0 auto; }
+
+/* Alert strip (aviso stock bajo automático) */
+.alert-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: var(--r-2);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.alert-strip.warn {
+  background: var(--warning-bg);
+  color: #92400E;
+  border-left: 3px solid var(--warning);
+}
+.alert-strip.ok {
+  background: var(--success-bg);
+  color: #065F46;
+  border-left: 3px solid var(--success);
+}
+.alert-strip svg { flex: 0 0 auto; margin-top: 1px; }
+.alert-strip .small { opacity: .82; }
+
+/* Checkbox de revisión diaria en cada item */
+.inv-check {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 2px solid var(--ink-300);
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: all .15s ease;
+  align-self: flex-start;
+  margin-top: 4px;
+}
+.inv-check:hover { border-color: var(--sky-500); }
+.inv-check.done {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+
+/* Info extra en items (caducidad, carga, revisión mensual) */
+.inv-extra {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--ink-500);
+  font-style: italic;
+}
+
+/* Badge pequeño para "obligatorio" */
+.badge.small {
+  padding: 2px 6px;
+  font-size: 10.5px;
+  gap: 3px;
+}
+
+/* Admin de botiquín (coordinador) */
+.botiquin-admin-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bot-admin-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  background: #fff;
+  transition: all .15s ease;
+}
+.bot-admin-row:hover {
+  border-color: var(--sky-300, #7DD3FC);
+  box-shadow: 0 4px 12px rgba(14,165,233,.08);
+}
+.bot-admin-main { flex: 1; min-width: 0; }
+.bot-admin-name { font-weight: 600; font-size: 14px; color: var(--ink-900); }
+.bot-admin-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.bot-mini-label {
+  font-size: 11px;
+  color: var(--ink-500);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+.bot-num {
+  width: 60px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--ink-800);
+  background: var(--foam, #F0F9FF);
+}
+.bot-num:focus {
+  outline: none;
+  border-color: var(--sky-500);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(14,165,233,.14);
+}
+.btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink-600);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .15s ease;
+}
+.btn-icon:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+@media (max-width: 720px) {
+  .bot-admin-row { flex-direction: column; align-items: stretch; gap: 10px; }
+  .bot-admin-controls { justify-content: space-between; }
+}
+
 /* Perfil */
 .profile {
   padding: 22px;

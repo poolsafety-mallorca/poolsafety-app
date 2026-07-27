@@ -223,37 +223,204 @@
   };
   window.closePostModal = () => document.getElementById('postModal').classList.remove('open');
 
-  /* ---------- Alertas botiquín ---------- */
+  /* ---------- Alertas botiquín (manuales + automáticas por stock bajo) ---------- */
   const alertsList = document.getElementById('alertsList');
-  document.getElementById('alertsCount').innerHTML = `<span class="dot"></span>${PS.alertas.length} abiertas`;
-  alertsList.innerHTML = PS.alertas.map(a => {
-    const cls = a.criticidad === 'alta' ? 'high' : a.criticidad === 'media' ? 'med' : 'low';
-    const critBadge = a.criticidad === 'alta' ? 'badge-danger'
-                    : a.criticidad === 'media' ? 'badge-warn' : 'badge-info';
-    return `
-      <div class="alert ${cls}">
-        <div class="alert-icon">
-          <svg class="ic ic-18"><use href="#ic-alert"/></svg>
-        </div>
-        <div class="alert-body">
-          <div class="alert-title-row">
-            <span class="alert-title">${a.item}</span>
-            <span class="badge ${critBadge}"><span class="dot"></span>${a.criticidad}</span>
+
+  function renderAlertas() {
+    // Alertas automáticas: cualquier item por debajo del mínimo, agrupado por puesto
+    const auto = PS.inventario
+      .filter(it => it.stock < it.minimo)
+      .map(it => ({
+        id: 'auto-' + it.id,
+        puestoId: it.puestoId,
+        puestoNombre: PS.puestoById(it.puestoId)?.nombre || '—',
+        item: it.nombre,
+        reportado: it.stock === 0 ? 'sin stock' : `${it.stock}/${it.minimo}`,
+        criticidad: it.stock === 0 ? 'alta' : it.obligatorio ? 'media' : 'baja',
+        automatica: true,
+        seccion: it.seccion
+      }));
+
+    const todas = [...auto, ...PS.alertas];
+    document.getElementById('alertsCount').innerHTML = `<span class="dot"></span>${todas.length} abiertas`;
+
+    alertsList.innerHTML = todas.map(a => {
+      const cls = a.criticidad === 'alta' ? 'high' : a.criticidad === 'media' ? 'med' : 'low';
+      const critBadge = a.criticidad === 'alta' ? 'badge-danger'
+                      : a.criticidad === 'media' ? 'badge-warn' : 'badge-info';
+      const origen = a.automatica
+        ? `<span class="badge badge-info small"><svg class="ic ic-14"><use href="#ic-signal"/></svg>Auto</span>`
+        : `<span class="badge badge-neutral small"><svg class="ic ic-14"><use href="#ic-user"/></svg>Socorrista</span>`;
+      const secTag = a.seccion === 'desa' ? ' · DESA' : a.seccion === 'oxigeno' ? ' · Oxígeno' : '';
+      return `
+        <div class="alert ${cls}">
+          <div class="alert-icon">
+            <svg class="ic ic-18"><use href="#ic-alert"/></svg>
           </div>
-          <div class="alert-sub">
-            <svg class="ic ic-14"><use href="#ic-pin"/></svg>
-            ${a.puestoNombre} · ${a.reportado}
+          <div class="alert-body">
+            <div class="alert-title-row">
+              <span class="alert-title">${a.item}${secTag}</span>
+              <span class="badge ${critBadge}"><span class="dot"></span>${a.criticidad}</span>
+            </div>
+            <div class="alert-sub">
+              <svg class="ic ic-14"><use href="#ic-pin"/></svg>
+              ${a.puestoNombre} · ${a.reportado}
+            </div>
+            <div class="row gap-1 mt-1">${origen}</div>
           </div>
+          <button class="alert-action" onclick="resolveAlert(this)">Reponer</button>
         </div>
-        <button class="alert-action" onclick="resolveAlert(this)">Reponer</button>
-      </div>
-    `;
-  }).join('');
+      `;
+    }).join('');
+  }
 
   window.resolveAlert = function (btn) {
     btn.innerHTML = '<svg class="ic ic-14" style="vertical-align:-3px;"><use href="#ic-check"/></svg> Repuesto';
     btn.classList.add('done');
-    toast('Alerta resuelta');
+    toast('Alerta resuelta y stock actualizado');
+  };
+  renderAlertas();
+
+  /* ---------- Gestión de botiquines (selector de puesto + inventario) ---------- */
+  const botiquinPuestoSelect = document.getElementById('botiquinPuestoSelect');
+  const botiquinAdminList = document.getElementById('botiquinAdminList');
+  const botiquinPuestoLabel = document.getElementById('botiquinPuestoLabel');
+  let currentBotPuesto = 'p01';
+  let currentBotSeccion = 'botiquin';
+
+  // Llenar selector con todos los puestos
+  if (botiquinPuestoSelect) {
+    botiquinPuestoSelect.innerHTML = PS.puestos.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+    botiquinPuestoSelect.value = currentBotPuesto;
+    botiquinPuestoSelect.addEventListener('change', e => {
+      currentBotPuesto = e.target.value;
+      renderBotiquinAdmin();
+    });
+  }
+
+  function itemsPuestoSeccion(puestoId, sec) {
+    return PS.inventario.filter(it => it.puestoId === puestoId && it.seccion === sec);
+  }
+
+  function renderBotiquinAdmin() {
+    if (!botiquinAdminList) return;
+    const p = PS.puestoById(currentBotPuesto);
+    if (botiquinPuestoLabel) botiquinPuestoLabel.textContent = `— ${p.nombre}`;
+
+    ['botiquin','desa','oxigeno'].forEach(sec => {
+      const el = document.getElementById(`admin-cnt-${sec}`);
+      if (el) el.textContent = itemsPuestoSeccion(currentBotPuesto, sec).length;
+    });
+    document.querySelectorAll('#botiquinAdminTabs .chip-tab').forEach(b => {
+      b.classList.toggle('active', b.dataset.sec === currentBotSeccion);
+    });
+
+    const items = itemsPuestoSeccion(currentBotPuesto, currentBotSeccion);
+    if (items.length === 0) {
+      botiquinAdminList.innerHTML = `<div style="padding: 30px 20px; text-align:center; color: var(--ink-500); font-size: 13.5px;">No hay productos en esta sección para este puesto.</div>`;
+      return;
+    }
+    botiquinAdminList.innerHTML = items.map(it => {
+      const level = it.stock === 0 ? 'low' : it.stock < it.minimo ? 'warn' : 'ok';
+      const badge = it.stock === 0
+        ? '<span class="badge badge-danger"><span class="dot"></span>Sin stock</span>'
+        : it.stock < it.minimo
+        ? '<span class="badge badge-warn"><span class="dot"></span>Bajo mínimo</span>'
+        : '<span class="badge badge-ok"><span class="dot"></span>OK</span>';
+      const oblig = it.obligatorio
+        ? `<span class="badge badge-info small" title="${it.normativa}"><svg class="ic ic-14"><use href="#ic-shield"/></svg>Obligatorio</span>`
+        : `<span class="badge badge-neutral small">Opcional</span>`;
+      const delBtn = it.obligatorio
+        ? ''
+        : `<button class="btn-icon" data-del="${it.id}" title="Eliminar producto"><svg class="ic ic-14"><use href="#ic-x"/></svg></button>`;
+
+      return `
+        <div class="bot-admin-row">
+          <div class="bot-admin-main">
+            <div class="row between">
+              <div class="bot-admin-name">${it.nombre}</div>
+              ${badge}
+            </div>
+            <div class="row gap-1 mt-1">${oblig}<span class="badge badge-neutral small">${it.categoria}</span></div>
+          </div>
+          <div class="bot-admin-controls">
+            <label class="bot-mini-label">Stock</label>
+            <input type="number" class="bot-num" data-field="stock" data-id="${it.id}" value="${it.stock}" min="0" />
+            <label class="bot-mini-label">Mín</label>
+            <input type="number" class="bot-num" data-field="minimo" data-id="${it.id}" value="${it.minimo}" min="0" />
+            ${delBtn}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Editar stock / mínimo
+    botiquinAdminList.querySelectorAll('.bot-num').forEach(inp => {
+      inp.addEventListener('change', e => {
+        const it = PS.inventario.find(x => x.id === inp.dataset.id);
+        if (!it) return;
+        it[inp.dataset.field] = parseInt(e.target.value) || 0;
+        renderAlertas();
+        renderBotiquinAdmin();
+        toast(`${it.nombre} actualizado`);
+      });
+    });
+    // Eliminar (solo opcionales)
+    botiquinAdminList.querySelectorAll('[data-del]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.del;
+        if (!confirm('¿Quitar este producto del inventario del puesto?')) return;
+        const idx = PS.inventario.findIndex(x => x.id === id);
+        if (idx >= 0) PS.inventario.splice(idx, 1);
+        renderAlertas();
+        renderBotiquinAdmin();
+        toast('Producto eliminado');
+      });
+    });
+  }
+
+  document.querySelectorAll('#botiquinAdminTabs .chip-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentBotSeccion = btn.dataset.sec;
+      renderBotiquinAdmin();
+    });
+  });
+  renderBotiquinAdmin();
+
+  /* ---------- Modal añadir producto ---------- */
+  window.openAddItemModal = function () {
+    document.getElementById('newItemSeccion').value = currentBotSeccion;
+    document.getElementById('addItemModal').classList.add('open');
+  };
+  window.closeAddItemModal = function () {
+    document.getElementById('addItemModal').classList.remove('open');
+  };
+  window.submitAddItem = function () {
+    const nombre = document.getElementById('newItemName').value.trim();
+    if (!nombre) { toast('Escribe un nombre para el producto'); return; }
+    const seccion = document.getElementById('newItemSeccion').value;
+    const categoria = document.getElementById('newItemCategoria').value;
+    const stock = parseInt(document.getElementById('newItemStock').value) || 0;
+    const minimo = parseInt(document.getElementById('newItemMin').value) || 0;
+    const unidad = document.getElementById('newItemUnidad').value;
+
+    const nuevo = {
+      id: 'c' + Date.now(),
+      puestoId: currentBotPuesto,
+      seccion, nombre, categoria, stock, minimo, unidad,
+      obligatorio: false,
+      normativa: 'Añadido por coordinador',
+      ultimaRepo: 'nuevo',
+      revisadoHoy: false,
+      custom: true
+    };
+    PS.inventario.push(nuevo);
+    document.getElementById('newItemName').value = '';
+    closeAddItemModal();
+    currentBotSeccion = seccion;
+    renderBotiquinAdmin();
+    renderAlertas();
+    toast(`"${nombre}" añadido al inventario`);
   };
 
   /* ---------- Horas mes ---------- */
