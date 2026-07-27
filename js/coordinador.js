@@ -8,9 +8,13 @@
   const rol = psSession.rol || psSession.role || 'coordinador';
   const email = psSession.email || 'usuario@poolsafety.es';
 
-  // Nombre por defecto: parte del email antes de la @, capitalizada
-  let nombre = email.split('@')[0];
-  nombre = nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase();
+  // Nombre real del usuario (columna usuarios.nombre en Supabase)
+  let nombre = psSession.nombre;
+  if (!nombre) {
+    // Fallback: parte del email antes de la @, capitalizada
+    nombre = email.split('@')[0];
+    nombre = nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase();
+  }
 
   const rolLabel = rol === 'dueno' ? 'Administrador' : 'Coordinador';
 

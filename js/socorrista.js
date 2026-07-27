@@ -7,11 +7,13 @@
   const psSession = window.PS_SESSION || PS.getSession() || {};
   const email = psSession.email || 'maria@poolsafety.es';
 
-  // Nombre por defecto: parte del email antes de la @, capitalizada
-  let nombreLogueado = email.split('@')[0];
-  nombreLogueado = nombreLogueado.charAt(0).toUpperCase() + nombreLogueado.slice(1).toLowerCase();
-  // Si el email es de Carlos Biosca lo mostramos completo
-  if (email.toLowerCase().includes('carlosbiosca')) nombreLogueado = 'Carlos Biosca';
+  // Nombre real del usuario (columna usuarios.nombre en Supabase)
+  let nombreLogueado = psSession.nombre;
+  if (!nombreLogueado) {
+    // Fallback: parte del email antes de la @, capitalizada
+    nombreLogueado = email.split('@')[0];
+    nombreLogueado = nombreLogueado.charAt(0).toUpperCase() + nombreLogueado.slice(1).toLowerCase();
+  }
 
   const me = PS.socorristas.find(s => s.id === 's01');
   // Sobreescribimos con el usuario logueado (temporalmente hasta migración total a BD)

@@ -95,7 +95,7 @@
     try {
       const { data: usuario, error } = await window.sb
         .from('usuarios')
-        .select('rol, empresa_id, activo')
+        .select('rol, empresa_id, activo, nombre')
         .eq('id', user.id)
         .single();
 
@@ -121,6 +121,7 @@
         userId: user.id,
         email: user.email,
         rol: usuario.rol,
+        nombre: usuario.nombre,
         empresa_id: usuario.empresa_id
       }));
 

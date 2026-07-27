@@ -23,7 +23,7 @@
       // Obtenemos el perfil del usuario
       const { data: usuario, error } = await window.sb
         .from('usuarios')
-        .select('rol, empresa_id, activo, email')
+        .select('rol, empresa_id, activo, email, nombre')
         .eq('id', session.user.id)
         .single();
 
@@ -51,6 +51,7 @@
         userId: session.user.id,
         email: session.user.email,
         rol: usuario.rol,
+        nombre: usuario.nombre,
         empresa_id: usuario.empresa_id
       };
 
