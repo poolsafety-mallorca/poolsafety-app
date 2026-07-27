@@ -2628,24 +2628,299 @@ img, svg { display: block; max-width: 100%; }
 .mb-1 { margin-bottom: 4px; } .mb-2 { margin-bottom: 8px; } .mb-3 { margin-bottom: 12px; } .mb-4 { margin-bottom: 16px; }
 
 /* ==========================================================================
-   Responsive
+   PWA INSTALL MODAL
    ========================================================================== */
-@media (max-width: 1024px) {
-  .kpi-row { grid-template-columns: repeat(2, 1fr); }
-  .dash-grid { grid-template-columns: 1fr; }
-  .search-inline input { width: 180px; }
+.pwa-install-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 30, 63, .55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  animation: pwa-fade-in .3s ease;
 }
-@media (max-width: 640px) {
-  .dash-nav { padding: 12px 16px; }
-  .dash-nav-inner { gap: 8px; }
-  .search-inline { padding: 7px 12px; }
-  .search-inline input { width: 120px; font-size: 13px; }
-  .user-chip-name, .user-chip-role { display: none; }
-  .dash-hero { padding: 28px 16px 80px; }
-  .dash-title { font-size: 24px; }
-  .dash-body { padding: 0 16px 40px; }
-  .kpi { padding: 14px; }
+.pwa-install-modal.show { display: flex; }
+.pwa-install-content {
+  background: #fff;
+  border-radius: 20px;
+  padding: 24px 22px 20px;
+  max-width: 420px;
+  width: 100%;
+  position: relative;
+  box-shadow: 0 20px 40px -10px rgba(11,30,63,.35);
+  animation: pwa-slide-up .35s cubic-bezier(.16,.84,.44,1);
+}
+.pwa-install-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 32px; height: 32px;
+  border: none;
+  background: transparent;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--ink-500);
+  cursor: pointer;
+  border-radius: 8px;
+}
+.pwa-install-close:hover { background: var(--ink-100); }
+.pwa-install-icon {
+  width: 64px; height: 64px;
+  margin: 0 auto 12px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--ocean, #0F2C5F), var(--deepsea, #0A1E3F));
+  display: flex; align-items: center; justify-content: center;
+  padding: 8px;
+}
+.pwa-install-icon img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+}
+.pwa-install-title {
+  text-align: center;
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink-900);
+}
+.pwa-install-desc {
+  text-align: center;
+  color: var(--ink-500);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+.pwa-install-actions .btn { justify-content: center; }
+.pwa-install-actions .btn-block { width: 100%; }
+.pwa-ios-steps {
+  margin: 12px 0 16px;
+  padding-left: 22px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--ink-700);
+}
+.pwa-ios-steps li { margin-bottom: 4px; }
+.pwa-ios-steps .ios-share {
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--sky-100, #E0F2FE);
+  border-radius: 6px;
+}
+@keyframes pwa-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pwa-slide-up { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* ==========================================================================
+   RESPONSIVE — móvil y tablet (12" iPad y otros)
+   Breakpoints:
+     - 1400px: pantallas medianas
+     - 1024px: tablet grande (iPad Pro 12")
+     - 900px:  tablet portrait
+     - 720px:  mobile grande / tablet pequeña
+     - 480px:  mobile
+   ========================================================================== */
+
+/* ---- Tablet 12" y ordenadores medianos (1024px+) ---- */
+@media (max-width: 1400px) {
+  .dash-body { padding: 0 20px 40px; }
+  .empleados-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .hoteles-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+}
+
+/* ---- Tablet 12" (1024px máx: iPad Pro 12.9" portrait ~ 1024px) ---- */
+@media (max-width: 1200px) {
+  .kpi-row { grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi { padding: 14px 16px; }
   .kpi-value { font-size: 24px; }
+  .dash-menu-item { padding: 9px 14px; font-size: 12.5px; }
+  .empleados-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .hoteles-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+}
+
+/* ---- Tablet estándar / iPad portrait (< 1024px) ---- */
+@media (max-width: 1024px) {
+  .dash-body { padding: 0 16px 40px; }
+  .kpi-row { grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .kpi { padding: 12px 14px; }
+  .kpi-value { font-size: 22px; }
+  .kpi-spark { display: none; }
+  .dash-grid { grid-template-columns: 1fr; }
+  .search-inline input { width: 160px; }
+  .dash-menu { padding: 4px; }
+  .dash-menu-item { padding: 8px 12px; font-size: 12px; }
+  .dash-menu-item svg { width: 14px; height: 14px; }
+
+  /* Panel head: título arriba, controles debajo */
+  .panel-head {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .panel-head > .row {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  /* Modales más grandes en tablet */
+  .modal { max-width: 90vw; }
+  .ficha-modal, .wizard-modal { max-width: 92vw; }
+}
+
+/* ---- Tablet pequeña / mobile grande (< 900px) ---- */
+@media (max-width: 900px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .empleados-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+  .hoteles-grid { grid-template-columns: 1fr; }
+  .doc-admin-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .doc-admin-actions { justify-content: flex-end; flex-wrap: wrap; }
+
+  /* Menú tabs: horizontal scroll bien visible */
+  .dash-menu {
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 5px;
+  }
+  .dash-menu-item { flex: 0 0 auto; white-space: nowrap; }
+
+  /* Formularios: campos se apilan */
+  .row.gap-2 > .field { min-width: 0; }
+  .upload-mini-form, .horario-manual-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .upload-mini-form > *, .horario-manual-form > * { width: 100%; }
+  .upload-select { min-width: 0; width: 100%; }
+}
+
+/* ---- Mobile grande (< 720px) ---- */
+@media (max-width: 720px) {
+  .dash-nav { padding: 10px 14px; }
+  .dash-nav-inner { gap: 6px; flex-wrap: wrap; }
+  .search-inline { padding: 6px 10px; width: 100%; order: 3; margin-top: 4px; }
+  .search-inline input { width: 100%; font-size: 13px; }
+  .user-chip-name, .user-chip-role { display: none; }
+  .dash-hero { padding: 22px 14px 60px; }
+  .dash-title { font-size: 22px; }
+  .dash-sub { font-size: 13px; }
+  .dash-body { padding: 0 14px 40px; }
+  .kpi { padding: 12px; }
+  .kpi-label { font-size: 11px; }
+  .kpi-value { font-size: 22px; }
+  .kpi-icon { width: 30px; height: 30px; }
   .panel-body { padding: 12px 14px 16px; }
   .posts { grid-template-columns: 1fr; }
+
+  /* Menu: aún más compacto */
+  .dash-menu-item span:not(.menu-badge) { display: inline; }
+
+  /* Filter chips en móvil */
+  .filter-chips { overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .filter-chips::-webkit-scrollbar { display: none; }
+  .filter-chips .chip { flex: 0 0 auto; white-space: nowrap; }
+
+  /* Modales full-height friendly */
+  .modal {
+    max-width: 100%;
+    max-height: 95vh;
+    margin: 8px;
+    border-radius: 16px;
+  }
+  .modal-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .modal-actions .btn { width: 100%; justify-content: center; }
+  .ficha-modal, .wizard-modal, .doc-modal {
+    max-width: 96vw;
+    width: calc(100vw - 16px);
+  }
+  .ficha-head { padding: 18px 16px 14px; }
+  .ficha-head-info h2 { font-size: 18px; }
+  .ficha-photo, .hotel-icon-big { width: 56px; height: 56px; font-size: 20px; }
+  .ficha-tabs { padding: 0 14px; }
+  .ficha-tab { padding: 10px 12px; font-size: 12px; }
+  .ficha-body { padding: 16px; }
+
+  /* Ficha data rows */
+  .ficha-data-row { flex-direction: column; gap: 4px; padding: 10px 0; }
+  .ficha-data-label { min-width: 0; font-size: 11.5px; text-transform: uppercase; letter-spacing: .3px; }
+
+  /* Empleado grid: menor tamaño */
+  .empleados-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .emp-card { padding: 10px; }
+  .emp-card-photo { width: 48px; height: 48px; font-size: 16px; }
+  .emp-card-name { font-size: 12.5px; }
+  .emp-card-role { font-size: 11px; }
+
+  /* Hoteles: apilados */
+  .hotel-card { flex-direction: column; align-items: flex-start; }
+  .hotel-card-icon { width: 40px; height: 40px; }
+
+  /* Docs admin row */
+  .doc-admin-actions .btn { flex: 1; }
+
+  /* Botiquin admin */
+  .bot-num { width: 50px; padding: 4px 6px; }
+
+  /* Coordinación timeline: menos indent */
+  .coord-timeline { padding-left: 20px; }
+  .coord-item::before { left: -18px; }
+
+  /* Tabla horas: puede tener scroll horizontal */
+  .hours-table { min-width: 500px; }
+}
+
+/* ---- Mobile pequeña (< 480px) ---- */
+@media (max-width: 480px) {
+  .dash-title { font-size: 20px; }
+  .kpi-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .kpi-value { font-size: 20px; }
+  .of { font-size: 12px; }
+
+  /* Ocultar sparkline en móvil */
+  .kpi-trend { font-size: 11px; }
+
+  /* Menú: mostrar solo iconos si es MUY pequeño */
+  .dash-menu-item {
+    padding: 8px 10px;
+    font-size: 11.5px;
+  }
+
+  /* Fichas: aún más compactas */
+  .ficha-modal, .wizard-modal { max-height: 96vh; }
+
+  /* Botones: full width por defecto en móvil pequeño */
+  .btn-lg { padding: 12px 16px; font-size: 14px; }
+
+  /* Empleado card: 2 columnas ajustadas */
+  .empleados-grid { grid-template-columns: repeat(2, 1fr); }
+
+  /* Norma banner: menos padding */
+  .norma-banner { font-size: 11.5px; padding: 8px 10px; }
+
+  /* Chip tabs: más ajustados */
+  .chip-tab { padding: 7px 10px; font-size: 12px; }
+
+  /* Modal actions siempre columna */
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-actions .btn { width: 100%; }
+}
+
+/* ---- Landscape móvil: ajustes específicos ---- */
+@media (max-height: 500px) and (orientation: landscape) {
+  .ficha-modal, .wizard-modal, .doc-modal { max-height: 92vh; }
+  .dash-hero { padding: 12px 14px 40px; }
+  .dash-title { font-size: 20px; }
+}
+
+/* ---- Safe area para iOS (notch) ---- */
+@supports (padding: max(0px)) {
+  .tabbar { padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+  .dash-nav { padding-top: max(14px, env(safe-area-inset-top)); }
 }

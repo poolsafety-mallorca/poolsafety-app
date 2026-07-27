@@ -1,0 +1,33 @@
+{
+  "name": "PoolSafety",
+  "short_name": "PoolSafety",
+  "description": "App operativa de PoolSafety Socorrismo — fichaje, coordinación, botiquín y equipo",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0A1E3F",
+  "theme_color": "#0A1E3F",
+  "lang": "es",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "assets/logo-blanco.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/logo-blanco.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/logo-blanco.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "assets/logo-blanco.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Fichar entrada",
+      "short_name": "Fichar",
+      "url": "/socorrista.html",
+      "icons": [{ "src": "assets/logo-blanco.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dashboard coordinador",
+      "short_name": "Panel",
+      "url": "/coordinador.html",
+      "icons": [{ "src": "assets/logo-blanco.png", "sizes": "192x192" }]
+    }
+  ]
+}
