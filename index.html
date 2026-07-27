@@ -49,7 +49,34 @@
     </form>
 
     <div class="login-help">
-      <a href="#" onclick="resetPassword(); return false;">¿Olvidaste la contraseña?</a>
+      <a href="#" onclick="abrirResetModal(); return false;">¿Olvidaste la contraseña?</a>
+    </div>
+  </div>
+
+  <!-- Modal recuperar contraseña -->
+  <div class="modal-backdrop" id="resetModal">
+    <div class="modal" style="max-width: 420px;">
+      <div class="modal-head">
+        <div>
+          <h3>Recuperar contraseña</h3>
+          <p class="small text-muted mt-1" style="margin:4px 0 0;">Te enviaremos un email con un enlace para poner una contraseña nueva.</p>
+        </div>
+        <button class="modal-close" onclick="cerrarResetModal()">
+          <svg class="ic ic-16"><use href="#ic-x"/></svg>
+        </button>
+      </div>
+      <div class="field">
+        <label>Tu correo electrónico</label>
+        <input type="email" id="resetEmail" placeholder="tu@correo.com" autocomplete="email" />
+      </div>
+      <div id="resetMsg" style="display:none;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="cerrarResetModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="enviarResetEmail()" id="resetSendBtn">
+          <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
+          Enviar enlace
+        </button>
+      </div>
     </div>
   </div>
 
@@ -147,14 +174,44 @@
     }
   }
 
-  window.resetPassword = async function () {
-    const email = document.getElementById('loginEmail').value.trim();
-    if (!email) { alert('Escribe primero tu correo arriba'); return; }
-    const { error } = await window.sb.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + '/index.html'
-    });
-    if (error) alert('Error: ' + error.message);
-    else alert('Te hemos enviado un email con instrucciones para restablecer la contraseña.');
+  window.abrirResetModal = function () {
+    const emailLogin = document.getElementById('loginEmail').value.trim();
+    if (emailLogin) document.getElementById('resetEmail').value = emailLogin;
+    document.getElementById('resetMsg').style.display = 'none';
+    document.getElementById('resetSendBtn').disabled = false;
+    document.getElementById('resetModal').classList.add('open');
+  };
+  window.cerrarResetModal = function () {
+    document.getElementById('resetModal').classList.remove('open');
+  };
+  window.enviarResetEmail = async function () {
+    const email = document.getElementById('resetEmail').value.trim();
+    const msg = document.getElementById('resetMsg');
+    const btn = document.getElementById('resetSendBtn');
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+      msg.className = 'login-error';
+      msg.textContent = 'Escribe un email válido.';
+      msg.style.display = 'block';
+      return;
+    }
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-signal"/></svg> Enviando…';
+    try {
+      const { error } = await window.sb.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/reset.html'
+      });
+      if (error) throw error;
+      msg.className = 'alert-strip ok';
+      msg.style.display = 'flex';
+      msg.innerHTML = `<svg class="ic ic-16"><use href="#ic-check-circle"/></svg><div><b>Email enviado a ${email}</b><br><span class="small">Revisa la bandeja de entrada (y spam por si acaso). El enlace caduca en 1 hora.</span></div>`;
+    } catch (err) {
+      msg.className = 'login-error';
+      msg.style.display = 'block';
+      msg.textContent = 'Error: ' + err.message;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg> Enviar enlace';
+    }
   };
 
   // Estado de conexión discreto en el footer

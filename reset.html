@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <meta name="theme-color" content="#B91C1C" />
+  <title>PoolSafety · Restablecer contraseña</title>
+  <link rel="icon" type="image/png" href="assets/logo-blanco.png" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="js/theme-toggle.js"></script>
+</head>
+<body>
+
+<div class="splash">
+
+  <svg class="splash-wave" viewBox="0 0 1440 120" preserveAspectRatio="none">
+    <path d="M0,80 C240,40 480,110 720,80 C960,50 1200,110 1440,80 L1440,120 L0,120 Z" fill="#F87171" fill-opacity=".12"/>
+    <path d="M0,90 C240,60 480,120 720,90 C960,60 1200,120 1440,90 L1440,120 L0,120 Z" fill="#DC2626" fill-opacity=".14"/>
+  </svg>
+
+  <div class="splash-card login-card">
+    <div class="splash-logo-wrap">
+      <img src="assets/logo-blanco.png" alt="PoolSafety" />
+    </div>
+
+    <h1 class="splash-title" style="font-size: 26px;">Nueva contraseña</h1>
+    <p class="splash-sub" id="resetSub">Escribe una contraseña nueva para volver a acceder.</p>
+
+    <div id="resetBox">
+      <form id="resetForm" class="login-form">
+        <div class="field">
+          <label for="newPass">Contraseña nueva</label>
+          <input type="password" id="newPass" placeholder="Mínimo 8 caracteres" required minlength="8" autocomplete="new-password" />
+        </div>
+        <div class="field">
+          <label for="newPassConfirm">Repite la contraseña</label>
+          <input type="password" id="newPassConfirm" placeholder="Vuelve a escribirla" required minlength="8" autocomplete="new-password" />
+        </div>
+        <div id="resetError" class="login-error" style="display:none;"></div>
+        <button type="submit" class="btn btn-primary btn-lg btn-block" id="resetBtn">
+          <svg class="ic ic-18"><use href="#ic-check"/></svg>
+          <span id="resetBtnText">Guardar contraseña</span>
+        </button>
+      </form>
+      <div class="login-help">
+        <a href="index.html">Volver al login</a>
+      </div>
+    </div>
+
+    <div id="resetDone" style="display:none;">
+      <div class="alert-strip ok" style="margin-bottom:14px;">
+        <svg class="ic ic-16"><use href="#ic-check-circle"/></svg>
+        <span>Contraseña cambiada correctamente</span>
+      </div>
+      <a href="index.html" class="btn btn-primary btn-lg btn-block">
+        <svg class="ic ic-18"><use href="#ic-arrow-right"/></svg>
+        Ir al login
+      </a>
+    </div>
+  </div>
+
+  <div class="splash-footer">
+    <span>PoolSafety Des Llevant, S.L.</span>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js"></script>
+<script src="js/icons.js"></script>
+<script>
+(async function () {
+  const errBox = document.getElementById('resetError');
+  const btn = document.getElementById('resetBtn');
+  const btnText = document.getElementById('resetBtnText');
+  const box = document.getElementById('resetBox');
+  const done = document.getElementById('resetDone');
+  const sub = document.getElementById('resetSub');
+
+  function showError(msg) {
+    errBox.textContent = msg;
+    errBox.style.display = 'block';
+  }
+
+  // El link del email pone la sesión temporal automáticamente
+  // Damos un poquito de tiempo para que se procese
+  await new Promise(r => setTimeout(r, 500));
+
+  const { data: { session } } = await window.sb.auth.getSession();
+  if (!session) {
+    sub.textContent = 'El enlace de restablecimiento ha caducado o no es válido.';
+    box.innerHTML = '<a href="index.html" class="btn btn-outline btn-block">Volver al login</a>';
+    return;
+  }
+
+  document.getElementById('resetForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errBox.style.display = 'none';
+    const p1 = document.getElementById('newPass').value;
+    const p2 = document.getElementById('newPassConfirm').value;
+    if (p1.length < 8) return showError('La contraseña debe tener mínimo 8 caracteres.');
+    if (p1 !== p2) return showError('Las contraseñas no coinciden.');
+
+    btn.disabled = true;
+    btnText.textContent = 'Guardando…';
+    try {
+      const { error } = await window.sb.auth.updateUser({ password: p1 });
+      if (error) throw error;
+      // Cerrar la sesión temporal para forzar login limpio
+      await window.sb.auth.signOut();
+      box.style.display = 'none';
+      done.style.display = 'block';
+    } catch (err) {
+      showError('Error: ' + err.message);
+      btn.disabled = false;
+      btnText.textContent = 'Guardar contraseña';
+    }
+  });
+})();
+</script>
+</body>
+</html>

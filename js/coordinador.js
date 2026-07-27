@@ -1292,6 +1292,15 @@
             <button class="btn btn-primary btn-sm" onclick="darDeAlta()">Reactivar</button>
           </div>`}
 
+        <div class="ficha-action-row">
+          <div class="icon" style="background: var(--info-bg); color: var(--sky-700);"><svg class="ic ic-18"><use href="#ic-shield"/></svg></div>
+          <div class="ficha-action-body">
+            <div class="ficha-action-title">Enviar email de recuperación de contraseña</div>
+            <div class="ficha-action-sub">${e.email ? 'Se enviará un enlace a <b>' + e.email + '</b> para que ponga una contraseña nueva.' : 'Este empleado no tiene email en la ficha.'}</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="enviarResetPassword()" ${!e.email ? 'disabled' : ''}>Enviar</button>
+        </div>
+
         <div class="ficha-action-row warn">
           <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
           <div class="ficha-action-body">
@@ -1311,6 +1320,21 @@
         </div>`;
     }
   }
+
+  window.enviarResetPassword = async function () {
+    const e = empleadoData(fichaActualId);
+    if (!e || !e.email) { toast('Este empleado no tiene email'); return; }
+    if (!confirm(`Enviar email de recuperación de contraseña a ${e.nombre} (${e.email})?`)) return;
+    try {
+      const { error } = await window.sb.auth.resetPasswordForEmail(e.email, {
+        redirectTo: window.location.origin + '/reset.html'
+      });
+      if (error) throw error;
+      toast(`✓ Enlace enviado a ${e.email}. El empleado tiene 1 hora para usarlo.`);
+    } catch (err) {
+      toast('Error: ' + err.message);
+    }
+  };
 
   window.guardarFichaDatos = async function () {
     const patch = {
