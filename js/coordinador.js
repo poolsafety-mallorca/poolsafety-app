@@ -3,24 +3,33 @@
    ========================================================================== */
 
 (function () {
-  // Sesión real de Supabase (set por auth-guard.js). Fallback a mock por compatibilidad.
+  // Fija cabecera desde la sesión actual — se llama al inicio y cada vez que se refresca desde la BD
+  function pintarCabecera(session) {
+    const rol = session.rol || session.role || 'coordinador';
+    const email = session.email || 'usuario@poolsafety.es';
+    let nombre = session.nombre;
+    if (!nombre) {
+      nombre = email.split('@')[0];
+      nombre = nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase();
+    }
+    const rolLabel = rol === 'dueno' ? 'Administrador' : 'Coordinador';
+    document.getElementById('userName').textContent = nombre;
+    document.getElementById('userRoleLabel').textContent = rolLabel;
+    document.getElementById('userAvatar').textContent = nombre.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
+  }
+
+  // Pintar con lo que haya ahora (localStorage cache)
+  pintarCabecera(window.PS_SESSION || PS.getSession() || {});
+
+  // Cuando auth-guard termine de refrescar desde la BD, repintamos con datos reales
+  document.addEventListener('ps-session-updated', (e) => pintarCabecera(e.detail));
+
+  // Variables para el resto del código
   const psSession = window.PS_SESSION || PS.getSession() || {};
   const rol = psSession.rol || psSession.role || 'coordinador';
   const email = psSession.email || 'usuario@poolsafety.es';
-
-  // Nombre real del usuario (columna usuarios.nombre en Supabase)
-  let nombre = psSession.nombre;
-  if (!nombre) {
-    // Fallback: parte del email antes de la @, capitalizada
-    nombre = email.split('@')[0];
-    nombre = nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase();
-  }
-
+  const nombre = psSession.nombre || (email.split('@')[0].charAt(0).toUpperCase() + email.split('@')[0].slice(1).toLowerCase());
   const rolLabel = rol === 'dueno' ? 'Administrador' : 'Coordinador';
-
-  document.getElementById('userName').textContent = nombre;
-  document.getElementById('userRoleLabel').textContent = rolLabel;
-  document.getElementById('userAvatar').textContent = nombre.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
   const fecha = PS.fechaLarga();
   document.getElementById('dateText').textContent = fecha.charAt(0).toUpperCase() + fecha.slice(1);
 

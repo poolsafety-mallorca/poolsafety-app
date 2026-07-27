@@ -7,18 +7,32 @@
   const psSession = window.PS_SESSION || PS.getSession() || {};
   const email = psSession.email || 'maria@poolsafety.es';
 
-  // Nombre real del usuario (columna usuarios.nombre en Supabase)
-  let nombreLogueado = psSession.nombre;
-  if (!nombreLogueado) {
-    // Fallback: parte del email antes de la @, capitalizada
-    nombreLogueado = email.split('@')[0];
-    nombreLogueado = nombreLogueado.charAt(0).toUpperCase() + nombreLogueado.slice(1).toLowerCase();
+  function nombreDe(session) {
+    let n = session.nombre;
+    if (!n) {
+      n = (session.email || 'usuario').split('@')[0];
+      n = n.charAt(0).toUpperCase() + n.slice(1).toLowerCase();
+    }
+    return n;
   }
 
   const me = PS.socorristas.find(s => s.id === 's01');
-  // Sobreescribimos con el usuario logueado (temporalmente hasta migración total a BD)
-  me.nombre = nombreLogueado;
-  me.iniciales = nombreLogueado.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
+  me.nombre = nombreDe(psSession);
+  me.iniciales = me.nombre.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
+
+  // Cuando llegue el nombre real de la BD, refresca cabecera + perfil
+  document.addEventListener('ps-session-updated', (e) => {
+    me.nombre = nombreDe(e.detail);
+    me.iniciales = me.nombre.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
+    const un = document.getElementById('userName');
+    const ui = document.getElementById('userInitials');
+    const pn = document.getElementById('profileName');
+    const pa = document.getElementById('profileAvatarPhoto');
+    if (un) un.textContent = me.nombre;
+    if (ui && !ui.style.backgroundImage) ui.textContent = me.iniciales;
+    if (pn) pn.textContent = me.nombre;
+    if (pa && !pa.style.backgroundImage) pa.textContent = me.iniciales;
+  });
 
   // Leer horario personalizado asignado por el coordinador (si existe)
   function miHorarioAsignado() {
