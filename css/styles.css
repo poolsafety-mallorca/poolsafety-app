@@ -1409,6 +1409,50 @@ img, svg { display: block; max-width: 100%; }
   .doc-modal { max-width: 96vw; }
 }
 
+/* Docs admin (coordinador) */
+.docs-admin-list { display: flex; flex-direction: column; gap: 8px; }
+.doc-admin-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(280px, auto) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  background: #fff;
+  transition: all .15s ease;
+}
+.doc-admin-row:hover {
+  border-color: var(--sky-300, #7DD3FC);
+  box-shadow: 0 4px 12px rgba(14,165,233,.08);
+}
+.doc-admin-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.doc-admin-name { font-weight: 600; font-size: 14px; color: var(--ink-900); }
+.doc-admin-sub { font-size: 12px; color: var(--ink-500); margin-top: 1px; }
+.doc-admin-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.doc-admin-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .doc-admin-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .doc-admin-actions { justify-content: flex-end; }
+}
+
 /* Perfil */
 .profile {
   padding: 22px;

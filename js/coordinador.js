@@ -490,6 +490,130 @@
     toastT = setTimeout(() => toastEl.classList.remove('show'), 2600);
   };
 
+  /* ==========================================================================
+     DOCUMENTACIÓN LABORAL (vista coordinador)
+     ========================================================================== */
+
+  const docsAdminList = document.getElementById('docsAdminList');
+  const docsStats = document.getElementById('docsStats');
+  const docsFilter = document.getElementById('docsFilter');
+  let docsCurrentFilter = 'pendientes';
+
+  function estadoDocsSocorrista(socId) {
+    const firmas = PS.firmasDeSocorrista(socId);
+    const kitOk = firmas['kit-alta']?.completado === true;
+    const jornadasPend = PS.documentos
+      .filter(d => d.grupo === 'mensual' && !d.yaFirmado && !firmas[d.id]).length;
+    const total = (kitOk ? 0 : 1) + jornadasPend;
+    return { kitOk, jornadasPend, total, firmas };
+  }
+
+  function renderDocsAdmin() {
+    if (!docsAdminList) return;
+    const rows = PS.socorristas.slice(0, 30).map(s => {
+      const st = estadoDocsSocorrista(s.id);
+      const puesto = s.puestoId ? PS.puestoById(s.puestoId).nombre : '—';
+      return { s, st, puesto };
+    });
+
+    const alDia = rows.filter(r => r.st.total === 0).length;
+    const pendTotal = rows.filter(r => r.st.total > 0).length;
+    if (docsStats) docsStats.textContent = `${alDia}/${rows.length} al día · ${pendTotal} pendientes`;
+
+    let visibles = rows;
+    if (docsCurrentFilter === 'pendientes') visibles = rows.filter(r => r.st.total > 0);
+    else if (docsCurrentFilter === 'firmados') visibles = rows.filter(r => r.st.total === 0);
+
+    if (visibles.length === 0) {
+      docsAdminList.innerHTML = `<div style="padding: 30px; text-align:center; color: var(--ink-500); font-size: 13.5px;">
+        <svg class="ic ic-24" style="opacity:.5; margin: 0 auto 8px;"><use href="#ic-check-circle"/></svg>
+        <div>${docsCurrentFilter === 'pendientes' ? '¡Todos los socorristas al día!' : 'Sin resultados'}</div>
+      </div>`;
+      return;
+    }
+
+    docsAdminList.innerHTML = visibles.map(({s, st, puesto}) => {
+      const kitBadge = st.kitOk
+        ? `<span class="badge badge-ok"><span class="dot"></span>Kit Alta ✓</span>`
+        : `<span class="badge badge-danger"><span class="dot"></span>Kit Alta pendiente</span>`;
+      const jornBadge = st.jornadasPend === 0
+        ? `<span class="badge badge-ok"><span class="dot"></span>Jornadas al día</span>`
+        : `<span class="badge badge-warn"><span class="dot"></span>${st.jornadasPend} jornada${st.jornadasPend>1?'s':''} pend.</span>`;
+      return `
+        <div class="doc-admin-row">
+          <div class="doc-admin-main">
+            <div class="mini-av sky">${s.iniciales}</div>
+            <div style="min-width:0;flex:1;">
+              <div class="doc-admin-name">${s.nombre}</div>
+              <div class="doc-admin-sub">${puesto}</div>
+            </div>
+          </div>
+          <div class="doc-admin-badges">
+            ${kitBadge}
+            ${jornBadge}
+          </div>
+          <div class="doc-admin-actions">
+            ${!st.kitOk ? `<button class="btn btn-primary btn-sm" data-tablet-kit="${s.id}">
+              <svg class="ic ic-14"><use href="#ic-pen"/></svg>
+              Firmar en tablet
+            </button>` : ''}
+            <button class="btn btn-outline btn-sm" data-view="${s.id}">
+              Ver docs
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    docsAdminList.querySelectorAll('[data-tablet-kit]').forEach(btn => {
+      btn.addEventListener('click', () => firmarKitEnTablet(btn.dataset.tabletKit));
+    });
+    docsAdminList.querySelectorAll('[data-view]').forEach(btn => {
+      btn.addEventListener('click', () => verDocsSocorrista(btn.dataset.view));
+    });
+  }
+
+  function firmarKitEnTablet(socId) {
+    const s = PS.socorristas.find(x => x.id === socId);
+    if (!s) return;
+    if (!confirm(`Vas a firmar el Kit Alta en nombre de ${s.nombre} desde la tablet del coordinador. El sistema registrará el origen "tablet coordinador".\n\n¿Continuar?`)) return;
+    // Registro simplificado desde coordinador (todos aceptados por defecto, requiere firma escrita)
+    const firma = prompt(`Escribe el nombre completo del empleado (${s.nombre}) tal como debe firmar:`);
+    if (!firma) return;
+    const dni = prompt('DNI del empleado:');
+    if (!dni) return;
+    const aceptados = {};
+    PS.kitAltaSubdocs.forEach(sub => { aceptados[sub.id] = true; });
+    PS.firmarDocumento(socId, 'kit-alta', {
+      completado: true,
+      firma, dni,
+      dispositivo: 'tablet coordinador · ' + (nombre || 'coordinador'),
+      aceptados
+    });
+    toast(`Kit Alta firmado para ${s.nombre}`);
+    renderDocsAdmin();
+  }
+
+  function verDocsSocorrista(socId) {
+    const s = PS.socorristas.find(x => x.id === socId);
+    const firmas = PS.firmasDeSocorrista(socId);
+    const kitOk = firmas['kit-alta']?.completado === true;
+    const jornadasFirmadas = Object.keys(firmas).filter(k => k.startsWith('jornada-'));
+    const msg = `Documentación de ${s.nombre}:
+- Kit Alta: ${kitOk ? '✓ Firmado el ' + new Date(firmas['kit-alta'].fecha).toLocaleDateString('es-ES') + ' desde ' + firmas['kit-alta'].dispositivo : '✗ Pendiente'}
+- Jornadas firmadas: ${jornadasFirmadas.length}
+- Pendientes de firma este mes: ${estadoDocsSocorrista(socId).jornadasPend}`;
+    alert(msg);
+  }
+
+  if (docsFilter) {
+    docsFilter.addEventListener('change', e => {
+      docsCurrentFilter = e.target.value;
+      renderDocsAdmin();
+    });
+  }
+  renderDocsAdmin();
+
   /* ---------- Logout ---------- */
   window.logout = function () {
     PS.clearSession();
