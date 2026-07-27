@@ -138,11 +138,104 @@
     b.addEventListener('click', () => showView(b.dataset.tab));
   });
 
-  /* ---------- Fichaje ---------- */
+  /* ==========================================================================
+     FICHAJE REAL CON GPS + BD (Supabase)
+     ========================================================================== */
+
   const state = PS.getSocorristaState();
   const punchActions = document.getElementById('punchActions');
   const punchBadge = document.getElementById('punchBadge');
   const punchWhen = document.getElementById('punchWhen');
+  const gpsChip = document.getElementById('gpsChip');
+  const gpsText = document.getElementById('gpsText');
+  const gpsMeta = document.getElementById('gpsMeta');
+
+  let empleadoReal = null;      // ficha del empleado logueado (de tabla empleados)
+  let puestoReal = null;         // puesto asignado (de tabla puestos)
+  let ultimaPosicion = null;     // GPS más reciente
+
+  async function cargarMiFicha() {
+    if (!window.sb) return null;
+    const psSes = window.PS_SESSION || {};
+    if (!psSes.userId) return null;
+    try {
+      const { data, error } = await window.sb
+        .from('empleados')
+        .select('*, puestos(id, nombre, zona, direccion, gps_lat, gps_lng, gps_radio_m, hora_inicio_default, hora_fin_default)')
+        .eq('usuario_id', psSes.userId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.warn('[Socorrista] cargar ficha:', err.message);
+      return null;
+    }
+  }
+
+  function aplicarPuestoEnUI() {
+    if (puestoReal) {
+      document.getElementById('puestoName').textContent = puestoReal.nombre;
+      const hIni = (puestoReal.hora_inicio_default || '10:00:00').slice(0,5);
+      const hFin = (puestoReal.hora_fin_default || '18:00:00').slice(0,5);
+      document.getElementById('turnoText').textContent = `${hIni} – ${hFin}`;
+    } else {
+      document.getElementById('puestoName').textContent = 'Sin puesto asignado';
+      document.getElementById('turnoText').textContent = '—';
+    }
+  }
+
+  async function obtenerGPS() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) return reject(new Error('Tu dispositivo no soporta GPS'));
+      navigator.geolocation.getCurrentPosition(
+        pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+        err => {
+          let msg = 'Error GPS';
+          if (err.code === 1) msg = 'Has bloqueado el permiso de GPS. Actívalo desde ajustes del navegador.';
+          else if (err.code === 2) msg = 'GPS no disponible. Comprueba que tienes conexión y ubicación activada.';
+          else if (err.code === 3) msg = 'GPS tarda demasiado. Prueba en un sitio más abierto.';
+          reject(new Error(msg));
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    });
+  }
+
+  function distanciaMetros(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+  }
+
+  function actualizarGpsChip(estado, texto, meta) {
+    if (!gpsChip) return;
+    gpsChip.className = 'gps-chip ' + (estado || '');
+    if (gpsText) gpsText.textContent = texto || '—';
+    if (gpsMeta) gpsMeta.textContent = meta || '';
+  }
+
+  async function checkGpsPasivo() {
+    // Comprueba GPS y actualiza el chip sin fichar (info al usuario)
+    if (!puestoReal || !puestoReal.gps_lat) {
+      actualizarGpsChip('', 'Sin puesto asignado con GPS', 'El coordinador debe asignarte un hotel');
+      return;
+    }
+    try {
+      const gps = await obtenerGPS();
+      ultimaPosicion = gps;
+      const dist = distanciaMetros(gps.lat, gps.lng, +puestoReal.gps_lat, +puestoReal.gps_lng);
+      const radio = puestoReal.gps_radio_m || 50;
+      if (dist <= radio) {
+        actualizarGpsChip('ok', 'Dentro del área del puesto', `Precisión ±${Math.round(gps.accuracy)}m · ${puestoReal.nombre}`);
+      } else {
+        actualizarGpsChip('warn', `Fuera del área (${dist}m de ${puestoReal.nombre})`, `El radio permitido es ${radio}m`);
+      }
+    } catch (err) {
+      actualizarGpsChip('warn', 'Sin GPS', err.message);
+    }
+  }
 
   function renderPunch() {
     if (!state.fichado && !state.horaSalida) {
@@ -174,27 +267,132 @@
     }
   }
 
-  function doPunchIn() {
+  async function insertarFichaje(tipo) {
+    if (!empleadoReal) throw new Error('No tienes ficha de empleado (contacta con el coordinador)');
+    const gps = await obtenerGPS();
+    ultimaPosicion = gps;
+    let distanciaM = null, gpsOk = null, fueraDeZona = false;
+    if (puestoReal && puestoReal.gps_lat && puestoReal.gps_lng) {
+      distanciaM = distanciaMetros(gps.lat, gps.lng, +puestoReal.gps_lat, +puestoReal.gps_lng);
+      const radio = puestoReal.gps_radio_m || 50;
+      gpsOk = distanciaM <= radio;
+      fueraDeZona = !gpsOk;
+    }
+    const { error } = await window.sb.from('fichajes').insert({
+      empleado_id: empleadoReal.id,
+      puesto_id: empleadoReal.puesto_id,
+      tipo,
+      hora: new Date().toISOString(),
+      gps_lat: gps.lat,
+      gps_lng: gps.lng,
+      gps_ok: gpsOk,
+      fuera_de_zona: fueraDeZona,
+      distancia_m: distanciaM
+    });
+    if (error) throw error;
+    return { gps, distanciaM, fueraDeZona };
+  }
+
+  async function doPunchIn() {
     const btn = document.getElementById('punchInBtn');
-    btn.innerHTML = `<svg class="ic ic-18"><use href="#ic-signal"/></svg> Comprobando ubicación…`;
+    btn.innerHTML = `<svg class="ic ic-18"><use href="#ic-signal"/></svg> Obteniendo GPS…`;
     btn.disabled = true;
-    setTimeout(() => {
+    try {
+      const r = await insertarFichaje('entrada');
       state.fichado = true;
-      state.horaEntrada = PS.ahora();
+      state.horaEntrada = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
       PS.setSocorristaState(state);
       renderPunch();
-      toast(`Entrada registrada a las ${state.horaEntrada} · dentro del puesto`);
-    }, 1300);
+      if (r.fueraDeZona) {
+        toast(`⚠️ Entrada FUERA de zona (${r.distanciaM}m del puesto). Registrada con aviso al coordinador.`);
+      } else {
+        toast(`✓ Entrada registrada · ${r.distanciaM != null ? r.distanciaM + 'm del puesto' : 'GPS OK'}`);
+      }
+      actualizarGpsChip(r.fueraDeZona ? 'warn' : 'ok',
+        r.fueraDeZona ? `Fichaje fuera de zona` : 'Dentro del área del puesto',
+        r.distanciaM != null ? `${r.distanciaM}m del puesto · precisión ±${Math.round(r.gps.accuracy)}m` : `Precisión ±${Math.round(r.gps.accuracy)}m`);
+    } catch (err) {
+      toast('Error: ' + err.message);
+      btn.disabled = false;
+      btn.innerHTML = `<svg class="ic ic-18"><use href="#ic-play"/></svg> Fichar entrada`;
+    }
   }
-  function doPunchOut() {
+
+  async function doPunchOut() {
     if (!confirm('¿Fichar salida ahora?')) return;
-    state.horaSalida = PS.ahora();
-    state.fichado = false;
-    PS.setSocorristaState(state);
-    renderPunch();
-    toast(`Turno finalizado. ¡Buen trabajo!`);
+    const btn = document.getElementById('punchOutBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="ic ic-18"><use href="#ic-signal"/></svg> Registrando salida…'; }
+    try {
+      const r = await insertarFichaje('salida');
+      state.horaSalida = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      state.fichado = false;
+      PS.setSocorristaState(state);
+      renderPunch();
+      toast(`✓ Salida registrada · ¡Buen trabajo!${r.fueraDeZona ? ' (fuera de zona)' : ''}`);
+    } catch (err) {
+      toast('Error: ' + err.message);
+      if (btn) { btn.disabled = false; btn.innerHTML = '<svg class="ic ic-18"><use href="#ic-stop"/></svg> Fichar salida'; }
+    }
   }
+
+  async function cargarFichajesHoyDeBd() {
+    if (!empleadoReal || !window.sb) return;
+    const hoy = new Date().toISOString().slice(0,10);
+    try {
+      const { data, error } = await window.sb.from('fichajes')
+        .select('*')
+        .eq('empleado_id', empleadoReal.id)
+        .gte('hora', hoy + 'T00:00:00')
+        .order('hora', { ascending: true });
+      if (error) throw error;
+      if (data && data.length > 0) {
+        const ult = data[data.length - 1];
+        if (ult.tipo === 'entrada') {
+          state.fichado = true;
+          state.horaEntrada = new Date(ult.hora).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+          state.horaSalida = null;
+        } else if (ult.tipo === 'salida') {
+          state.fichado = false;
+          const ultEntrada = data.filter(f => f.tipo === 'entrada').pop();
+          state.horaEntrada = ultEntrada ? new Date(ultEntrada.hora).toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'}) : null;
+          state.horaSalida = new Date(ult.hora).toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'});
+        }
+        PS.setSocorristaState(state);
+        renderPunch();
+      }
+    } catch (err) { console.warn('[Fichajes]', err.message); }
+  }
+
   renderPunch();
+
+  // Cargar datos reales del empleado en BD
+  (async () => {
+    empleadoReal = await cargarMiFicha();
+    if (empleadoReal && empleadoReal.puestos) {
+      puestoReal = empleadoReal.puestos;
+    }
+    if (empleadoReal && empleadoReal.nombre) {
+      const un = document.getElementById('userName');
+      if (un) un.textContent = empleadoReal.nombre;
+    }
+    aplicarPuestoEnUI();
+    await cargarFichajesHoyDeBd();
+    // Comprobar GPS pasivamente
+    checkGpsPasivo();
+  })();
+
+  // Re-comprobar GPS cada 60 seg (info al usuario)
+  setInterval(checkGpsPasivo, 60000);
+
+  // También cuando llega la sesión con nombre real
+  document.addEventListener('ps-session-updated', async () => {
+    if (!empleadoReal) {
+      empleadoReal = await cargarMiFicha();
+      if (empleadoReal && empleadoReal.puestos) puestoReal = empleadoReal.puestos;
+      aplicarPuestoEnUI();
+      cargarFichajesHoyDeBd();
+    }
+  });
 
   /* ---------- Notas ---------- */
   const notasList = document.getElementById('notasList');
