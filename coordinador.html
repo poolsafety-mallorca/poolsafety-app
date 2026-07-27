@@ -788,62 +788,90 @@
   </div>
 </div>
 
-<!-- ============ MODAL NUEVO EMPLEADO ============ -->
+<!-- ============ MODAL NUEVO USUARIO (empleado/coordinador/admin) ============ -->
 <div class="modal-backdrop" id="nuevoEmpleadoModal">
   <div class="modal">
     <div class="modal-head">
       <div>
-        <h3>Nuevo empleado</h3>
-        <p class="small text-muted mt-1" style="margin:4px 0 0;">Se creará su ficha y recibirá la invitación para completar el Kit Alta al primer login.</p>
+        <h3 id="nuevoUsuarioTitulo">Nuevo empleado</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;">Crea la cuenta de acceso a la app y su ficha. Podrá entrar inmediatamente con el email y contraseña que le des.</p>
       </div>
       <button class="modal-close" onclick="closeNuevoEmpleadoModal()">
         <svg class="ic ic-16"><use href="#ic-x"/></svg>
       </button>
     </div>
+
+    <!-- Selector rol (solo visible para admin) -->
+    <div class="field" id="neRolWrap" style="display:none;">
+      <label>Tipo de cuenta</label>
+      <select id="neRol">
+        <option value="socorrista">Socorrista</option>
+        <option value="coordinador">Coordinador (Rrhh, Laboral, etc.)</option>
+        <option value="dueno">Administrador / Dirección</option>
+      </select>
+    </div>
+
     <div class="row gap-2">
       <div class="field" style="flex:1;">
         <label>Nombre y apellidos *</label>
         <input type="text" id="neNombre" placeholder="Juan Pérez García" />
       </div>
       <div class="field" style="flex:1;">
-        <label>DNI *</label>
+        <label>DNI</label>
         <input type="text" id="neDni" placeholder="00000000A" />
       </div>
     </div>
     <div class="row gap-2">
       <div class="field" style="flex:1;">
-        <label>Email *</label>
-        <input type="email" id="neEmail" placeholder="empleado@correo.com" />
+        <label>Email de acceso *</label>
+        <input type="email" id="neEmail" placeholder="empleado@correo.com" autocomplete="off" />
       </div>
       <div class="field" style="flex:1;">
         <label>Teléfono</label>
         <input type="tel" id="neTelefono" placeholder="+34 6XX XXX XXX" />
       </div>
     </div>
-    <div class="field">
-      <label>Puesto asignado</label>
-      <select id="nePuesto"></select>
-    </div>
     <div class="row gap-2">
       <div class="field" style="flex:1;">
-        <label>Fecha de alta</label>
-        <input type="date" id="neFechaAlta" />
-      </div>
-      <div class="field" style="flex:1;">
-        <label>Tipo de contrato</label>
-        <select id="neContrato">
-          <option>Indefinido</option>
-          <option>Fijo discontinuo</option>
-          <option>Temporal 6 meses</option>
-          <option>Prácticas</option>
-        </select>
+        <label>Contraseña inicial *</label>
+        <div class="row gap-1" style="align-items:center;">
+          <input type="text" id="nePassword" placeholder="Mínimo 8 caracteres" autocomplete="off" />
+          <button type="button" class="btn btn-outline btn-sm" onclick="generarPasswordNueva()">Generar</button>
+        </div>
+        <div class="small text-muted mt-1">Se la dictarás al usuario. Podrá cambiarla luego desde su perfil.</div>
       </div>
     </div>
+
+    <!-- Campos específicos socorrista -->
+    <div id="neCamposSocorrista">
+      <div class="field">
+        <label>Puesto asignado</label>
+        <select id="nePuesto"></select>
+      </div>
+      <div class="row gap-2">
+        <div class="field" style="flex:1;">
+          <label>Fecha de alta</label>
+          <input type="date" id="neFechaAlta" />
+        </div>
+        <div class="field" style="flex:1;">
+          <label>Tipo de contrato</label>
+          <select id="neContrato">
+            <option>Indefinido</option>
+            <option>Fijo discontinuo</option>
+            <option>Temporal 6 meses</option>
+            <option>Prácticas</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div id="neResultado" style="display:none;"></div>
+
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeNuevoEmpleadoModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="crearNuevoEmpleado()">
+      <button class="btn btn-primary" onclick="crearNuevoEmpleado()" id="neSubmitBtn">
         <svg class="ic ic-16"><use href="#ic-plus"/></svg>
-        Crear ficha
+        Crear cuenta
       </button>
     </div>
   </div>

@@ -1332,44 +1332,151 @@
     toast(`Ficha de ${e.nombre} eliminada`);
   };
 
-  /* ---------- Nuevo empleado ---------- */
+  /* ---------- Nuevo usuario (empleado / coordinador / admin) — REAL en Supabase ---------- */
   const nePuestoSel = document.getElementById('nePuesto');
   if (nePuestoSel) {
     nePuestoSel.innerHTML = '<option value="">Sin asignar de momento</option>' +
-      PS.puestos.map(p => `<option value="${p.id}">${p.nombre} — ${p.zona}</option>`).join('');
+      PS.puestos.map(p => `<option value="${p.id}">${p.nombre}${p.zona ? ' — ' + p.zona : ''}</option>`).join('');
   }
+
   window.openNuevoEmpleadoModal = function () {
+    const psSes = window.PS_SESSION || {};
+    const esAdmin = psSes.rol === 'dueno';
+
+    // Rol selector solo visible para admin
+    document.getElementById('neRolWrap').style.display = esAdmin ? 'block' : 'none';
+    document.getElementById('neRol').value = 'socorrista';
+    document.getElementById('nuevoUsuarioTitulo').textContent = esAdmin
+      ? 'Nuevo usuario'
+      : 'Nuevo socorrista';
+
     document.getElementById('neFechaAlta').value = new Date().toISOString().slice(0,10);
+    document.getElementById('neResultado').style.display = 'none';
+    document.getElementById('neResultado').innerHTML = '';
+    document.getElementById('neSubmitBtn').disabled = false;
+
+    ajustarCamposSegunRol();
     document.getElementById('nuevoEmpleadoModal').classList.add('open');
   };
+
+  document.getElementById('neRol')?.addEventListener('change', ajustarCamposSegunRol);
+
+  function ajustarCamposSegunRol() {
+    const rol = document.getElementById('neRol').value;
+    const camposSoc = document.getElementById('neCamposSocorrista');
+    if (camposSoc) camposSoc.style.display = rol === 'socorrista' ? 'block' : 'none';
+  }
+
   window.closeNuevoEmpleadoModal = () => document.getElementById('nuevoEmpleadoModal').classList.remove('open');
-  window.crearNuevoEmpleado = function () {
+
+  window.generarPasswordNueva = function () {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let p = '';
+    for (let i = 0; i < 12; i++) p += chars.charAt(Math.floor(Math.random() * chars.length));
+    // Fuerza mayúscula, minúscula y número
+    p = 'Ps' + p + '2!';
+    document.getElementById('nePassword').value = p;
+  };
+
+  window.crearNuevoEmpleado = async function () {
+    const psSes = window.PS_SESSION || {};
+    const esAdmin = psSes.rol === 'dueno';
+    const rol = esAdmin ? document.getElementById('neRol').value : 'socorrista';
+
     const nombre = document.getElementById('neNombre').value.trim();
+    const email = document.getElementById('neEmail').value.trim().toLowerCase();
+    const password = document.getElementById('nePassword').value;
     const dni = document.getElementById('neDni').value.trim();
-    const email = document.getElementById('neEmail').value.trim();
-    if (!nombre || !dni || !email) { toast('Rellena nombre, DNI y email'); return; }
-    // Añadir al modelo en memoria (prototipo)
-    const nuevoId = 's' + Date.now();
-    const nuevo = {
-      id: nuevoId,
-      nombre,
-      iniciales: nombre.split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase(),
-      telefono: document.getElementById('neTelefono').value.trim(),
-      puestoId: document.getElementById('nePuesto').value || null,
-      horasNormales: 0, horasExtra: 0, diasTrabajados: 0
-    };
-    PS.socorristas.push(nuevo);
-    actualizarEmpleado(nuevoId, {
-      dni, email,
-      fechaAlta: document.getElementById('neFechaAlta').value,
-      contrato: document.getElementById('neContrato').value,
-      estado: 'alta-pendiente',
-      telefono: nuevo.telefono
-    });
-    ['neNombre','neDni','neEmail','neTelefono'].forEach(id => document.getElementById(id).value = '');
-    closeNuevoEmpleadoModal();
-    renderEmpleadosGrid();
-    toast(`${nombre} creado. Recibirá invitación por email para completar Kit Alta.`);
+    const telefono = document.getElementById('neTelefono').value.trim();
+
+    if (!nombre || !email || !password) { toast('Nombre, email y contraseña son obligatorios'); return; }
+    if (password.length < 8) { toast('La contraseña debe tener al menos 8 caracteres'); return; }
+    if (!/\S+@\S+\.\S+/.test(email)) { toast('Email no válido'); return; }
+
+    const btn = document.getElementById('neSubmitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-signal"/></svg> Creando cuenta…';
+
+    // Cliente Supabase SEPARADO para no perder la sesión del admin
+    const tmpClient = window.supabase.createClient(
+      'https://msdjsbegqpjpshnxoilh.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1zZGpzYmVncXBqcHNobnhvaWxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjQ5NDgsImV4cCI6MjEwMDc0MDk0OH0.Ws2Fq3chqf7jgJUFQcXlAKEr63z1HkJgs08e4GrxqdI',
+      { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
+    );
+
+    try {
+      // 1. Crear cuenta auth
+      const { data: signUpData, error: signUpErr } = await tmpClient.auth.signUp({
+        email, password,
+        options: { data: { rol, nombre } }
+      });
+      if (signUpErr) throw signUpErr;
+      if (!signUpData.user) throw new Error('No se recibió el user tras signup — comprueba que la confirmación de email está desactivada en Supabase.');
+
+      const nuevoId = signUpData.user.id;
+
+      // 2. Insertar en usuarios con el rol correcto (usa nuestra sesión admin)
+      const { error: usrErr } = await window.sb.from('usuarios').insert({
+        id: nuevoId,
+        empresa_id: psSes.empresa_id,
+        rol,
+        email,
+        nombre,
+        activo: true
+      });
+      if (usrErr) throw usrErr;
+
+      // 3. Si es socorrista, crear también la ficha empleado
+      if (rol === 'socorrista') {
+        const puestoId = document.getElementById('nePuesto').value || null;
+        const fechaAlta = document.getElementById('neFechaAlta').value || new Date().toISOString().slice(0,10);
+        const contrato = document.getElementById('neContrato').value;
+        const { error: empErr } = await window.sb.from('empleados').insert({
+          usuario_id: nuevoId,
+          empresa_id: psSes.empresa_id,
+          nombre, dni, email, telefono,
+          puesto_id: puestoId,
+          fecha_alta: fechaAlta,
+          tipo_contrato: contrato,
+          estado: 'alta-pendiente'
+        });
+        if (empErr) console.warn('No se pudo crear ficha empleado:', empErr.message);
+      }
+
+      // 4. Mostrar resultado con las credenciales
+      const rolLabel = rol === 'dueno' ? 'Administrador' : (rol === 'coordinador' ? 'Coordinador' : 'Socorrista');
+      const resultado = document.getElementById('neResultado');
+      resultado.innerHTML = `
+        <div class="alert-strip ok" style="flex-direction:column; align-items:flex-start;">
+          <div style="display:flex;gap:8px;align-items:center;"><svg class="ic ic-16"><use href="#ic-check-circle"/></svg><b>${nombre} creado como ${rolLabel}</b></div>
+          <div class="small" style="margin-top:8px;">Dictale estas credenciales para que entre en <b>${window.location.origin}</b>:</div>
+          <div style="margin-top:8px;padding:10px 12px;background:#fff;border:1px dashed var(--ink-300);border-radius:8px;font-family:monospace;font-size:13px;width:100%;box-sizing:border-box;">
+            <div><b>Email:</b> ${email}</div>
+            <div style="margin-top:4px;"><b>Contraseña:</b> ${password}</div>
+          </div>
+          <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="navigator.clipboard.writeText('Email: ${email}\\nContraseña: ${password}\\nURL: ${window.location.origin}');toast('Copiado')">
+            <svg class="ic ic-14"><use href="#ic-download"/></svg> Copiar credenciales
+          </button>
+        </div>`;
+      resultado.style.display = 'block';
+
+      // Reset campos
+      ['neNombre','neDni','neEmail','neTelefono','nePassword'].forEach(id => document.getElementById(id).value = '');
+
+      // Refrescar la lista
+      if (rol === 'socorrista') renderEmpleadosGrid();
+
+      toast(`✓ Cuenta creada: ${email}`);
+    } catch (err) {
+      let msg = err.message || 'Error desconocido';
+      if (msg.includes('already registered')) msg = 'Ese email ya está registrado.';
+      if (msg.includes('confirm')) msg = 'Desactiva "Confirm email" en Supabase → Auth → Providers → Email.';
+      toast('Error: ' + msg);
+      console.error('[crearNuevoEmpleado]', err);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-plus"/></svg> Crear cuenta';
+    }
   };
 
   /* ==========================================================================
