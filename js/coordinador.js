@@ -889,6 +889,469 @@
     toast(`${rows.length} horarios aplicados. Los socorristas ya lo ven en su app.`);
   };
 
+  /* ==========================================================================
+     MÓDULO EMPLEADOS — fichas, foto, alta/baja, edición
+     ========================================================================== */
+
+  // Estado extendido por empleado (persistido en localStorage)
+  function getEmpleadosState() {
+    const raw = localStorage.getItem('poolsafety-empleados-v1');
+    return raw ? JSON.parse(raw) : {};
+  }
+  function saveEmpleadosState(s) { localStorage.setItem('poolsafety-empleados-v1', JSON.stringify(s)); }
+  function empleadoData(socId) {
+    const soc = PS.socorristas.find(s => s.id === socId);
+    if (!soc) return null;
+    const ext = getEmpleadosState()[socId] || {};
+    return {
+      id: socId,
+      nombre: ext.nombre || soc.nombre,
+      iniciales: (ext.nombre || soc.nombre).split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase(),
+      dni: ext.dni || '',
+      email: ext.email || '',
+      telefono: ext.telefono || soc.telefono,
+      direccion: ext.direccion || '',
+      ss: ext.ss || '',
+      fechaAlta: ext.fechaAlta || '2022-06-15',
+      contrato: ext.contrato || 'Indefinido',
+      estado: ext.estado || 'activo',
+      fotoUrl: ext.fotoUrl || null,
+      puestoId: soc.puestoId,
+      horasNormales: soc.horasNormales,
+      horasExtra: soc.horasExtra,
+      diasTrabajados: soc.diasTrabajados
+    };
+  }
+  function actualizarEmpleado(socId, patch) {
+    const all = getEmpleadosState();
+    all[socId] = { ...(all[socId] || {}), ...patch };
+    saveEmpleadosState(all);
+  }
+
+  /* ---------- Grid de empleados ---------- */
+  const empleadosGrid = document.getElementById('empleadosGrid');
+  const empleadoSearch = document.getElementById('empleadoSearch');
+  const empleadoFilter = document.getElementById('empleadoFilter');
+  let empQuery = '';
+  let empFiltro = 'todos';
+
+  function renderEmpleadosGrid() {
+    if (!empleadosGrid) return;
+    const empleados = PS.socorristas.slice(0, 30).map(s => empleadoData(s.id));
+
+    const stats = document.getElementById('empleadosStats');
+    const activos = empleados.filter(e => e.estado === 'activo').length;
+    const bajas = empleados.filter(e => e.estado === 'baja').length;
+    if (stats) stats.textContent = `${empleados.length} totales · ${activos} activos · ${bajas} baja`;
+
+    let visibles = empleados;
+    if (empFiltro !== 'todos') visibles = visibles.filter(e => e.estado === empFiltro);
+    if (empQuery) {
+      const q = empQuery.toLowerCase();
+      visibles = visibles.filter(e =>
+        e.nombre.toLowerCase().includes(q) ||
+        e.dni.toLowerCase().includes(q) ||
+        (e.puestoId && PS.puestoById(e.puestoId)?.nombre.toLowerCase().includes(q))
+      );
+    }
+
+    if (visibles.length === 0) {
+      empleadosGrid.innerHTML = `<div style="grid-column:1/-1; padding: 40px; text-align:center; color: var(--ink-500);">Sin resultados</div>`;
+      return;
+    }
+
+    empleadosGrid.innerHTML = visibles.map(e => {
+      const puesto = e.puestoId ? PS.puestoById(e.puestoId)?.nombre : 'Sin puesto';
+      const photoStyle = e.fotoUrl ? `style="background-image:url('${e.fotoUrl}');"` : '';
+      const photoClass = e.fotoUrl ? 'has-photo' : '';
+      const photoContent = e.fotoUrl ? '' : e.iniciales;
+      const kitOk = PS.haFirmadoKitAlta(e.id);
+      const badges = [];
+      if (e.estado === 'baja') badges.push(`<span class="badge badge-neutral small"><span class="dot"></span>Baja</span>`);
+      else if (!kitOk) badges.push(`<span class="badge badge-warn small"><span class="dot"></span>Kit pend.</span>`);
+      else badges.push(`<span class="badge badge-ok small"><span class="dot"></span>Al día</span>`);
+      return `
+        <div class="emp-card ${e.estado === 'baja' ? 'baja' : ''}" data-emp="${e.id}">
+          <span class="emp-card-status ${e.estado}"></span>
+          <div class="emp-card-photo ${photoClass}" ${photoStyle}>${photoContent}</div>
+          <div class="emp-card-name">${e.nombre}</div>
+          <div class="emp-card-role">${puesto}</div>
+          <div class="emp-card-badges">${badges.join('')}</div>
+        </div>`;
+    }).join('');
+
+    empleadosGrid.querySelectorAll('.emp-card').forEach(c => {
+      c.addEventListener('click', () => openEmpleadoModal(c.dataset.emp));
+    });
+  }
+
+  if (empleadoSearch) empleadoSearch.addEventListener('input', e => { empQuery = e.target.value; renderEmpleadosGrid(); });
+  if (empleadoFilter) empleadoFilter.addEventListener('change', e => { empFiltro = e.target.value; renderEmpleadosGrid(); });
+  renderEmpleadosGrid();
+
+  /* ---------- Modal ficha ---------- */
+  let fichaActualId = null;
+  let fichaTabActual = 'datos';
+
+  window.openEmpleadoModal = function (empId) {
+    fichaActualId = empId;
+    fichaTabActual = 'datos';
+    renderFicha();
+    document.getElementById('empleadoModal').classList.add('open');
+  };
+  window.closeEmpleadoModal = () => document.getElementById('empleadoModal').classList.remove('open');
+
+  document.querySelectorAll('.ficha-tab').forEach(t => {
+    t.addEventListener('click', () => {
+      fichaTabActual = t.dataset.ftab;
+      document.querySelectorAll('.ficha-tab').forEach(x => x.classList.toggle('active', x === t));
+      renderFichaBody();
+    });
+  });
+
+  document.getElementById('fichaPhotoInput')?.addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (!f.type.startsWith('image/')) { toast('El archivo debe ser una imagen'); return; }
+    // Redimensionar y guardar como base64 comprimido
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = ev => { img.src = ev.target.result; };
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const maxSize = 400;
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+      actualizarEmpleado(fichaActualId, { fotoUrl: dataUrl });
+      renderFicha();
+      renderEmpleadosGrid();
+      toast('Foto actualizada');
+    };
+    reader.readAsDataURL(f);
+  });
+
+  function renderFicha() {
+    const e = empleadoData(fichaActualId);
+    if (!e) return;
+    const puesto = e.puestoId ? PS.puestoById(e.puestoId)?.nombre : 'Sin puesto';
+
+    document.getElementById('fichaNombre').textContent = e.nombre;
+    const photoEl = document.getElementById('fichaPhoto');
+    if (e.fotoUrl) {
+      photoEl.style.backgroundImage = `url('${e.fotoUrl}')`;
+      photoEl.textContent = '';
+    } else {
+      photoEl.style.backgroundImage = '';
+      photoEl.textContent = e.iniciales;
+    }
+
+    const estBadge = document.getElementById('fichaEstadoBadge');
+    if (e.estado === 'activo') estBadge.className = 'badge badge-ok', estBadge.innerHTML = '<span class="dot"></span>Activo';
+    else if (e.estado === 'baja') estBadge.className = 'badge badge-neutral', estBadge.innerHTML = '<span class="dot"></span>Baja';
+    else estBadge.className = 'badge badge-warn', estBadge.innerHTML = '<span class="dot"></span>Alta pendiente';
+
+    document.getElementById('fichaSubinfo').textContent = `${puesto} · Alta el ${new Date(e.fechaAlta).toLocaleDateString('es-ES')}`;
+
+    // Reset tabs to datos on open
+    document.querySelectorAll('.ficha-tab').forEach(t => t.classList.toggle('active', t.dataset.ftab === fichaTabActual));
+    renderFichaBody();
+  }
+
+  function renderFichaBody() {
+    const e = empleadoData(fichaActualId);
+    const body = document.getElementById('fichaBody');
+    if (!body || !e) return;
+
+    if (fichaTabActual === 'datos') {
+      body.innerHTML = `
+        <div class="ficha-body-title">Datos personales</div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Nombre completo</div>
+          <div class="ficha-data-value"><input type="text" id="ed-nombre" value="${e.nombre}" /></div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">DNI</div>
+          <div class="ficha-data-value"><input type="text" id="ed-dni" value="${e.dni}" placeholder="00000000A" /></div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Email</div>
+          <div class="ficha-data-value"><input type="email" id="ed-email" value="${e.email}" /></div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Teléfono</div>
+          <div class="ficha-data-value"><input type="tel" id="ed-tel" value="${e.telefono}" /></div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Dirección</div>
+          <div class="ficha-data-value"><input type="text" id="ed-dir" value="${e.direccion}" placeholder="Calle, número, CP, ciudad" /></div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Nº Seg. Social</div>
+          <div class="ficha-data-value"><input type="text" id="ed-ss" value="${e.ss}" /></div>
+        </div>
+
+        <div class="ficha-body-title">Datos laborales</div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Fecha de alta</div>
+          <div class="ficha-data-value"><input type="date" id="ed-fecha" value="${e.fechaAlta}" /></div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Tipo de contrato</div>
+          <div class="ficha-data-value">
+            <select id="ed-contrato">
+              ${['Indefinido','Fijo discontinuo','Temporal 6 meses','Prácticas'].map(t => `<option ${e.contrato===t?'selected':''}>${t}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div class="row gap-2 mt-3">
+          <button class="btn btn-outline" onclick="closeEmpleadoModal()">Cancelar</button>
+          <button class="btn btn-primary" onclick="guardarFichaDatos()">
+            <svg class="ic ic-16"><use href="#ic-check"/></svg>
+            Guardar cambios
+          </button>
+        </div>`;
+    }
+    else if (fichaTabActual === 'horario') {
+      const h = getHorarios()[e.id];
+      const efectivo = h || (e.puestoId ? { puestoId: e.puestoId, hora: PS.puestoById(e.puestoId).hora, duracion: PS.puestoById(e.puestoId).duracion, dias: 'Lun-Vie' } : null);
+      if (!efectivo) {
+        body.innerHTML = `<div class="text-muted" style="padding: 30px; text-align:center;">Sin horario asignado. Ve a la pestaña <b>Horarios</b> para asignarle uno.</div>`;
+      } else {
+        const p = PS.puestoById(efectivo.puestoId);
+        const fin = `${(parseInt(efectivo.hora) + efectivo.duracion).toString().padStart(2,'0')}:00`;
+        body.innerHTML = `
+          <div class="ficha-body-title">Turno actual</div>
+          <div class="ficha-data-row">
+            <div class="ficha-data-label">Puesto / hotel</div>
+            <div class="ficha-data-value">${p.nombre} — ${p.zona}</div>
+          </div>
+          <div class="ficha-data-row">
+            <div class="ficha-data-label">Horario</div>
+            <div class="ficha-data-value">${efectivo.hora} – ${fin} (${efectivo.duracion}h)</div>
+          </div>
+          <div class="ficha-data-row">
+            <div class="ficha-data-label">Días</div>
+            <div class="ficha-data-value">${efectivo.dias}</div>
+          </div>
+          <div class="ficha-data-row">
+            <div class="ficha-data-label">Horas del mes</div>
+            <div class="ficha-data-value">${e.horasNormales}h ordinarias · ${e.diasTrabajados} días</div>
+          </div>`;
+      }
+    }
+    else if (fichaTabActual === 'docs') {
+      const firmas = PS.firmasDeSocorrista(e.id);
+      const kitOk = firmas['kit-alta']?.completado === true;
+      body.innerHTML = `
+        <div class="ficha-action-row ${kitOk ? 'ok' : 'warn'}">
+          <div class="icon"><svg class="ic ic-18"><use href="#ic-shield"/></svg></div>
+          <div class="ficha-action-body">
+            <div class="ficha-action-title">Kit Alta Empresa</div>
+            <div class="ficha-action-sub">${kitOk ? 'Firmado el ' + new Date(firmas['kit-alta'].fecha).toLocaleDateString('es-ES') + ' desde ' + firmas['kit-alta'].dispositivo : 'Pendiente de firma'}</div>
+          </div>
+          ${!kitOk ? `<button class="btn btn-primary btn-sm" onclick="firmarKitEnTablet('${e.id}')">Firmar en tablet</button>` : ''}
+        </div>
+        <div class="ficha-action-row ${firmas['jornada-2026-07'] ? 'ok' : 'warn'}">
+          <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
+          <div class="ficha-action-body">
+            <div class="ficha-action-title">Registro jornada · julio 2026</div>
+            <div class="ficha-action-sub">${firmas['jornada-2026-07'] ? 'Firmado' : 'Pendiente de firma (último día del mes)'}</div>
+          </div>
+        </div>
+        <div class="ficha-action-row ok">
+          <div class="icon"><svg class="ic ic-18"><use href="#ic-check-circle"/></svg></div>
+          <div class="ficha-action-body">
+            <div class="ficha-action-title">Registro jornada · junio 2026</div>
+            <div class="ficha-action-sub">Firmado el 30/06/2026</div>
+          </div>
+        </div>`;
+    }
+    else if (fichaTabActual === 'tareas') {
+      body.innerHTML = `
+        <div class="ficha-body-title">Enviar tarea o nota a ${e.nombre.split(' ')[0]}</div>
+        <div class="field">
+          <label>Tipo</label>
+          <select id="ft-tipo">
+            <option value="tarea">Tarea con checkbox</option>
+            <option value="nota">Nota informativa</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Título / mensaje</label>
+          <input type="text" id="ft-titulo" placeholder="p.ej. Revisar cloración a las 12:00" />
+        </div>
+        <div class="field">
+          <label>Detalles (opcional)</label>
+          <textarea id="ft-desc" placeholder="Instrucciones específicas…"></textarea>
+        </div>
+        <div class="field">
+          <label>Prioridad</label>
+          <select id="ft-prior">
+            <option value="baja">Baja</option>
+            <option value="media" selected>Media</option>
+            <option value="alta">Alta</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="enviarTareaFicha()">
+          <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
+          Enviar
+        </button>`;
+    }
+    else if (fichaTabActual === 'acciones') {
+      body.innerHTML = `
+        ${e.estado === 'activo' ? `
+          <div class="ficha-action-row warn">
+            <div class="icon"><svg class="ic ic-18"><use href="#ic-alert"/></svg></div>
+            <div class="ficha-action-body">
+              <div class="ficha-action-title">Dar de baja</div>
+              <div class="ficha-action-sub">El empleado verá el finiquito para firmar. No podrá seguir fichando.</div>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="darDeBaja()">Dar de baja</button>
+          </div>` : `
+          <div class="ficha-action-row ok">
+            <div class="icon"><svg class="ic ic-18"><use href="#ic-check-circle"/></svg></div>
+            <div class="ficha-action-body">
+              <div class="ficha-action-title">Reactivar empleado</div>
+              <div class="ficha-action-sub">Volver a poner en activo y permitir fichaje.</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="darDeAlta()">Reactivar</button>
+          </div>`}
+
+        <div class="ficha-action-row warn">
+          <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
+          <div class="ficha-action-body">
+            <div class="ficha-action-title">Cancelar el próximo turno</div>
+            <div class="ficha-action-sub">Se le notifica al momento y queda registrado como cancelado por coordinador.</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="cancelarProximoTurno()">Cancelar turno</button>
+        </div>
+
+        <div class="ficha-action-row danger">
+          <div class="icon"><svg class="ic ic-18"><use href="#ic-x"/></svg></div>
+          <div class="ficha-action-body">
+            <div class="ficha-action-title">Eliminar ficha por completo</div>
+            <div class="ficha-action-sub">Borra todos los datos del empleado del sistema. Acción irreversible.</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="eliminarEmpleado()" style="color: var(--danger); border-color: var(--danger);">Eliminar</button>
+        </div>`;
+    }
+  }
+
+  window.guardarFichaDatos = function () {
+    const patch = {
+      nombre: document.getElementById('ed-nombre').value.trim(),
+      dni: document.getElementById('ed-dni').value.trim(),
+      email: document.getElementById('ed-email').value.trim(),
+      telefono: document.getElementById('ed-tel').value.trim(),
+      direccion: document.getElementById('ed-dir').value.trim(),
+      ss: document.getElementById('ed-ss').value.trim(),
+      fechaAlta: document.getElementById('ed-fecha').value,
+      contrato: document.getElementById('ed-contrato').value
+    };
+    actualizarEmpleado(fichaActualId, patch);
+    // Reflejar cambio de nombre en el modelo en memoria
+    const soc = PS.socorristas.find(s => s.id === fichaActualId);
+    if (soc && patch.nombre) {
+      soc.nombre = patch.nombre;
+      soc.iniciales = patch.nombre.split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase();
+    }
+    renderFicha();
+    renderEmpleadosGrid();
+    renderPosts();
+    toast('Ficha actualizada');
+  };
+
+  window.enviarTareaFicha = function () {
+    const titulo = document.getElementById('ft-titulo').value.trim();
+    if (!titulo) { toast('Escribe un título'); return; }
+    const e = empleadoData(fichaActualId);
+    toast(`Enviado a ${e.nombre}`);
+    document.getElementById('ft-titulo').value = '';
+    document.getElementById('ft-desc').value = '';
+  };
+
+  window.darDeBaja = function () {
+    const e = empleadoData(fichaActualId);
+    if (!confirm(`¿Dar de baja a ${e.nombre}?\n\nLe aparecerá el finiquito para firmar.`)) return;
+    actualizarEmpleado(fichaActualId, { estado: 'baja', fechaBaja: new Date().toISOString() });
+    renderFicha();
+    renderEmpleadosGrid();
+    toast(`${e.nombre} dado de baja. Recibirá finiquito para firmar.`);
+  };
+
+  window.darDeAlta = function () {
+    const e = empleadoData(fichaActualId);
+    if (!confirm(`¿Reactivar a ${e.nombre}?`)) return;
+    actualizarEmpleado(fichaActualId, { estado: 'activo' });
+    renderFicha();
+    renderEmpleadosGrid();
+    toast(`${e.nombre} reactivado`);
+  };
+
+  window.cancelarProximoTurno = function () {
+    const e = empleadoData(fichaActualId);
+    toast(`Próximo turno de ${e.nombre} cancelado. Notificado.`);
+  };
+
+  window.eliminarEmpleado = function () {
+    const e = empleadoData(fichaActualId);
+    if (!confirm(`⚠️ ELIMINAR FICHA de ${e.nombre}\n\nEsto borrará TODOS sus datos del sistema. La acción es irreversible.\n\n¿Continuar?`)) return;
+    const nombre2 = prompt('Escribe el nombre completo para confirmar:');
+    if (nombre2 !== e.nombre) { toast('Nombre no coincide. Cancelado.'); return; }
+    const all = getEmpleadosState();
+    delete all[fichaActualId];
+    saveEmpleadosState(all);
+    // Marcamos como eliminado en el modelo (no lo quitamos para no romper referencias)
+    actualizarEmpleado(fichaActualId, { estado: 'eliminado' });
+    closeEmpleadoModal();
+    renderEmpleadosGrid();
+    toast(`Ficha de ${e.nombre} eliminada`);
+  };
+
+  /* ---------- Nuevo empleado ---------- */
+  const nePuestoSel = document.getElementById('nePuesto');
+  if (nePuestoSel) {
+    nePuestoSel.innerHTML = '<option value="">Sin asignar de momento</option>' +
+      PS.puestos.map(p => `<option value="${p.id}">${p.nombre} — ${p.zona}</option>`).join('');
+  }
+  window.openNuevoEmpleadoModal = function () {
+    document.getElementById('neFechaAlta').value = new Date().toISOString().slice(0,10);
+    document.getElementById('nuevoEmpleadoModal').classList.add('open');
+  };
+  window.closeNuevoEmpleadoModal = () => document.getElementById('nuevoEmpleadoModal').classList.remove('open');
+  window.crearNuevoEmpleado = function () {
+    const nombre = document.getElementById('neNombre').value.trim();
+    const dni = document.getElementById('neDni').value.trim();
+    const email = document.getElementById('neEmail').value.trim();
+    if (!nombre || !dni || !email) { toast('Rellena nombre, DNI y email'); return; }
+    // Añadir al modelo en memoria (prototipo)
+    const nuevoId = 's' + Date.now();
+    const nuevo = {
+      id: nuevoId,
+      nombre,
+      iniciales: nombre.split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase(),
+      telefono: document.getElementById('neTelefono').value.trim(),
+      puestoId: document.getElementById('nePuesto').value || null,
+      horasNormales: 0, horasExtra: 0, diasTrabajados: 0
+    };
+    PS.socorristas.push(nuevo);
+    actualizarEmpleado(nuevoId, {
+      dni, email,
+      fechaAlta: document.getElementById('neFechaAlta').value,
+      contrato: document.getElementById('neContrato').value,
+      estado: 'alta-pendiente',
+      telefono: nuevo.telefono
+    });
+    ['neNombre','neDni','neEmail','neTelefono'].forEach(id => document.getElementById(id).value = '');
+    closeNuevoEmpleadoModal();
+    renderEmpleadosGrid();
+    toast(`${nombre} creado. Recibirá invitación por email para completar Kit Alta.`);
+  };
+
   /* ---------- Logout ---------- */
   window.logout = function () {
     PS.clearSession();

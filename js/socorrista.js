@@ -29,6 +29,68 @@
   document.getElementById('puestoName').textContent = miPuesto.nombre;
   const finTurno = `${(parseInt(horaInicio) + dur).toString().padStart(2,'0')}:00`;
   document.getElementById('turnoText').textContent = `${horaInicio} – ${finTurno}`;
+
+  // Foto de perfil (compartida con la ficha del coordinador)
+  function miFoto() {
+    const raw = localStorage.getItem('poolsafety-empleados-v1');
+    if (!raw) return null;
+    return JSON.parse(raw)[me.id]?.fotoUrl || null;
+  }
+  function guardarMiFoto(url) {
+    const raw = localStorage.getItem('poolsafety-empleados-v1');
+    const all = raw ? JSON.parse(raw) : {};
+    all[me.id] = { ...(all[me.id] || {}), fotoUrl: url };
+    localStorage.setItem('poolsafety-empleados-v1', JSON.stringify(all));
+  }
+  function aplicarFotoEnUI() {
+    const foto = miFoto();
+    // Avatar de cabecera (redondo)
+    const av = document.getElementById('userInitials');
+    const profileAv = document.getElementById('profileAvatarPhoto');
+    const profileName = document.getElementById('profileName');
+    if (foto) {
+      av.style.backgroundImage = `url('${foto}')`;
+      av.style.backgroundSize = 'cover';
+      av.style.backgroundPosition = 'center';
+      av.textContent = '';
+      if (profileAv) {
+        profileAv.style.backgroundImage = `url('${foto}')`;
+        profileAv.style.backgroundSize = 'cover';
+        profileAv.style.backgroundPosition = 'center';
+        profileAv.textContent = '';
+      }
+    } else {
+      av.style.backgroundImage = '';
+      av.textContent = me.iniciales;
+      if (profileAv) {
+        profileAv.style.backgroundImage = '';
+        profileAv.textContent = me.iniciales;
+      }
+    }
+    if (profileName) profileName.textContent = me.nombre;
+  }
+  aplicarFotoEnUI();
+
+  document.addEventListener('change', e => {
+    if (e.target.id !== 'profilePhotoInput') return;
+    const f = e.target.files[0];
+    if (!f || !f.type.startsWith('image/')) { toast('El archivo debe ser una imagen'); return; }
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = ev => { img.src = ev.target.result; };
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const maxSize = 400;
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      guardarMiFoto(canvas.toDataURL('image/jpeg', 0.75));
+      aplicarFotoEnUI();
+      toast('Foto de perfil actualizada');
+    };
+    reader.readAsDataURL(f);
+  });
   const h = new Date().getHours();
   document.getElementById('greetingText').textContent =
     h < 6 ? 'Buenas noches' : h < 13 ? 'Buenos días' : h < 20 ? 'Buenas tardes' : 'Buenas noches';

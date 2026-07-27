@@ -291,8 +291,14 @@
     <!-- ============ VIEW: PERFIL ============ -->
     <main class="view hidden" data-view="perfil">
       <div class="profile">
-        <div class="profile-avatar">MF</div>
-        <div class="profile-name">María Fernández</div>
+        <div class="profile-avatar-wrap">
+          <div class="profile-avatar" id="profileAvatarPhoto">MF</div>
+          <label class="profile-avatar-upload" title="Cambiar foto">
+            <svg class="ic ic-14"><use href="#ic-pen"/></svg>
+            <input type="file" id="profilePhotoInput" accept="image/*" style="display:none;" />
+          </label>
+        </div>
+        <div class="profile-name" id="profileName">María Fernández</div>
         <div class="profile-role">Socorrista · en plantilla desde 2022</div>
         <div class="profile-badges">
           <span class="badge badge-ok">

@@ -135,6 +135,10 @@
         <svg class="ic ic-16"><use href="#ic-home"/></svg>
         Vista general
       </button>
+      <button class="dash-menu-item" data-section="empleados">
+        <svg class="ic ic-16"><use href="#ic-users"/></svg>
+        Empleados
+      </button>
       <button class="dash-menu-item" data-section="documentacion">
         <svg class="ic ic-16"><use href="#ic-file-text"/></svg>
         Documentación
@@ -232,6 +236,46 @@
     </div>
 
     </div><!-- /panel general -->
+
+    <!-- ============ PANEL: EMPLEADOS ============ -->
+    <div class="tab-panel hidden" data-panel="empleados">
+
+    <section class="panel" style="margin-bottom: 20px;">
+      <div class="panel-head">
+        <div class="panel-title-wrap">
+          <div class="kpi-icon" style="width: 30px; height: 30px; background: linear-gradient(135deg, #0EA5E9, #22D3EE); color:#fff;">
+            <svg class="ic ic-16"><use href="#ic-users"/></svg>
+          </div>
+          <h3 class="panel-title">Empleados</h3>
+          <span class="panel-count" id="empleadosStats">— empleados</span>
+        </div>
+        <div class="row gap-2">
+          <label class="search-inline">
+            <svg class="ic ic-16"><use href="#ic-search"/></svg>
+            <input type="text" id="empleadoSearch" placeholder="Buscar por nombre, DNI o puesto…" />
+          </label>
+          <select id="empleadoFilter" class="upload-select">
+            <option value="todos">Todos</option>
+            <option value="activo">Activos</option>
+            <option value="baja">De baja</option>
+            <option value="alta-pendiente">Alta pendiente</option>
+          </select>
+          <button class="btn btn-primary" onclick="openNuevoEmpleadoModal()">
+            <svg class="ic ic-16"><use href="#ic-plus"/></svg>
+            Nuevo empleado
+          </button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="norma-banner" style="margin-bottom: 14px;">
+          <svg class="ic ic-14"><use href="#ic-shield"/></svg>
+          <span>Fichas completas de empleados con foto, datos personales, contrato, documentación firmada, horario asignado y acciones (enviar tarea, alta, baja con finiquito, eliminar). Los datos son editables y se sincronizan al momento con la app del socorrista.</span>
+        </div>
+        <div class="empleados-grid" id="empleadosGrid"></div>
+      </div>
+    </section>
+
+    </div><!-- /panel empleados -->
 
     <!-- ============ PANEL: DOCUMENTACIÓN ============ -->
     <div class="tab-panel hidden" data-panel="documentacion">
@@ -594,6 +638,102 @@
       <button class="btn btn-primary" onclick="submitAddItem()">
         <svg class="ic ic-16"><use href="#ic-plus"/></svg>
         Añadir al inventario
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL FICHA COMPLETA DE EMPLEADO ============ -->
+<div class="modal-backdrop" id="empleadoModal">
+  <div class="modal ficha-modal">
+    <div class="ficha-head">
+      <button class="modal-close" onclick="closeEmpleadoModal()" style="position:absolute; top:14px; right:14px;">
+        <svg class="ic ic-16"><use href="#ic-x"/></svg>
+      </button>
+      <div class="ficha-photo-wrap">
+        <div class="ficha-photo" id="fichaPhoto"></div>
+        <label class="ficha-photo-upload" title="Cambiar foto">
+          <svg class="ic ic-14"><use href="#ic-pen"/></svg>
+          <input type="file" id="fichaPhotoInput" accept="image/*" style="display:none;" />
+        </label>
+      </div>
+      <div class="ficha-head-info">
+        <h2 id="fichaNombre">—</h2>
+        <div class="ficha-head-meta">
+          <span class="badge" id="fichaEstadoBadge"></span>
+          <span class="text-muted small" id="fichaSubinfo">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="ficha-tabs">
+      <button class="ficha-tab active" data-ftab="datos">Datos</button>
+      <button class="ficha-tab" data-ftab="horario">Horario</button>
+      <button class="ficha-tab" data-ftab="docs">Documentación</button>
+      <button class="ficha-tab" data-ftab="tareas">Tareas y notas</button>
+      <button class="ficha-tab" data-ftab="acciones">Acciones</button>
+    </div>
+
+    <div class="ficha-body" id="fichaBody"></div>
+  </div>
+</div>
+
+<!-- ============ MODAL NUEVO EMPLEADO ============ -->
+<div class="modal-backdrop" id="nuevoEmpleadoModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>Nuevo empleado</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;">Se creará su ficha y recibirá la invitación para completar el Kit Alta al primer login.</p>
+      </div>
+      <button class="modal-close" onclick="closeNuevoEmpleadoModal()">
+        <svg class="ic ic-16"><use href="#ic-x"/></svg>
+      </button>
+    </div>
+    <div class="row gap-2">
+      <div class="field" style="flex:1;">
+        <label>Nombre y apellidos *</label>
+        <input type="text" id="neNombre" placeholder="Juan Pérez García" />
+      </div>
+      <div class="field" style="flex:1;">
+        <label>DNI *</label>
+        <input type="text" id="neDni" placeholder="00000000A" />
+      </div>
+    </div>
+    <div class="row gap-2">
+      <div class="field" style="flex:1;">
+        <label>Email *</label>
+        <input type="email" id="neEmail" placeholder="empleado@correo.com" />
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Teléfono</label>
+        <input type="tel" id="neTelefono" placeholder="+34 6XX XXX XXX" />
+      </div>
+    </div>
+    <div class="field">
+      <label>Puesto asignado</label>
+      <select id="nePuesto"></select>
+    </div>
+    <div class="row gap-2">
+      <div class="field" style="flex:1;">
+        <label>Fecha de alta</label>
+        <input type="date" id="neFechaAlta" />
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Tipo de contrato</label>
+        <select id="neContrato">
+          <option>Indefinido</option>
+          <option>Fijo discontinuo</option>
+          <option>Temporal 6 meses</option>
+          <option>Prácticas</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeNuevoEmpleadoModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="crearNuevoEmpleado()">
+        <svg class="ic ic-16"><use href="#ic-plus"/></svg>
+        Crear ficha
       </button>
     </div>
   </div>
