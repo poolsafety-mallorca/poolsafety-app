@@ -1372,6 +1372,430 @@
     toast(`${nombre} creado. Recibirá invitación por email para completar Kit Alta.`);
   };
 
+  /* ==========================================================================
+     MÓDULO HOTELES — conectado a la BD real (Supabase)
+     ========================================================================== */
+
+  const hotelesGrid = document.getElementById('hotelesGrid');
+  const hotelSearch = document.getElementById('hotelSearch');
+  const hotelGrupoFilter = document.getElementById('hotelGrupoFilter');
+  let hotelesCache = [];
+  let hotelQuery = '';
+  let hotelGrupoSel = 'todos';
+
+  async function cargarHoteles() {
+    if (!window.sb) { setTimeout(cargarHoteles, 200); return; }
+    try {
+      const { data, error } = await window.sb
+        .from('puestos')
+        .select('*')
+        .order('grupo_hotel', { ascending: true })
+        .order('nombre', { ascending: true });
+      if (error) throw error;
+      hotelesCache = data || [];
+
+      // También actualiza PS.puestos para que otros módulos (botiquín, horarios) vean lo real
+      PS.puestos.length = 0;
+      hotelesCache.forEach(p => {
+        const hIni = (p.hora_inicio_default || '10:00:00').slice(0,5);
+        const hFin = (p.hora_fin_default || '18:00:00').slice(0,5);
+        const dur = parseInt(hFin.slice(0,2)) - parseInt(hIni.slice(0,2));
+        PS.puestos.push({
+          id: p.id,
+          nombre: p.nombre,
+          zona: p.zona,
+          hora: hIni,
+          duracion: dur > 0 ? dur : 8,
+          _raw: p
+        });
+      });
+
+      renderGruposFilter();
+      renderHotelesGrid();
+
+      // Refresca botiquín admin si estaba renderizado
+      if (typeof renderBotiquinAdmin === 'function') {
+        try {
+          if (botiquinPuestoSelect) {
+            botiquinPuestoSelect.innerHTML = PS.puestos.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+            currentBotPuesto = PS.puestos[0]?.id || currentBotPuesto;
+            botiquinPuestoSelect.value = currentBotPuesto;
+          }
+          renderBotiquinAdmin();
+        } catch (e) { /* ignore */ }
+      }
+    } catch (err) {
+      console.error('[Hoteles]', err);
+      if (hotelesGrid) hotelesGrid.innerHTML = `<div style="grid-column:1/-1; padding: 30px; text-align:center; color: var(--danger);">
+        Error al cargar hoteles: ${err.message}
+      </div>`;
+    }
+  }
+
+  function renderGruposFilter() {
+    if (!hotelGrupoFilter) return;
+    const grupos = [...new Set(hotelesCache.map(h => h.grupo_hotel).filter(Boolean))].sort();
+    const actual = hotelGrupoFilter.value;
+    hotelGrupoFilter.innerHTML = '<option value="todos">Todos los grupos</option>' +
+      grupos.map(g => `<option value="${g}">${g}</option>`).join('');
+    if (grupos.includes(actual)) hotelGrupoFilter.value = actual;
+  }
+
+  function renderHotelesGrid() {
+    if (!hotelesGrid) return;
+
+    const total = hotelesCache.length;
+    const serviciosTotal = hotelesCache.reduce((sum, h) => sum + (h.servicios_necesarios || 0), 0);
+    const stats = document.getElementById('hotelesStats');
+    if (stats) stats.textContent = `${total} hoteles · ${serviciosTotal} servicios/día`;
+
+    let visibles = hotelesCache;
+    if (hotelGrupoSel !== 'todos') visibles = visibles.filter(h => h.grupo_hotel === hotelGrupoSel);
+    if (hotelQuery) {
+      const q = hotelQuery.toLowerCase();
+      visibles = visibles.filter(h =>
+        (h.nombre || '').toLowerCase().includes(q) ||
+        (h.zona || '').toLowerCase().includes(q) ||
+        (h.direccion || '').toLowerCase().includes(q) ||
+        (h.grupo_hotel || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (visibles.length === 0) {
+      hotelesGrid.innerHTML = `<div style="grid-column:1/-1; padding: 40px; text-align:center; color: var(--ink-500);">Sin resultados</div>`;
+      return;
+    }
+
+    hotelesGrid.innerHTML = visibles.map(h => {
+      const hIni = (h.hora_inicio_default || '').slice(0,5);
+      const hFin = (h.hora_fin_default || '').slice(0,5);
+      const horario = hIni && hFin ? `${hIni}–${hFin}` : (hIni || '');
+      const eqs = [];
+      eqs.push(`<span class="hotel-eq-badge ${h.tiene_botiquin?'on bot':''}" title="Botiquín">🩹 Botiquín</span>`);
+      eqs.push(`<span class="hotel-eq-badge ${h.tiene_desa?'on desa':''}" title="DESA">⚡ DESA</span>`);
+      eqs.push(`<span class="hotel-eq-badge ${h.tiene_oxigeno?'on oxi':''}" title="Oxigenoterapia">💨 O₂</span>`);
+      return `
+        <div class="hotel-card" data-hotel="${h.id}">
+          <div class="hotel-card-icon"><svg class="ic ic-22"><use href="#ic-pin"/></svg></div>
+          <div class="hotel-card-body">
+            <div class="hotel-card-name">${h.nombre}</div>
+            <div class="hotel-card-loc">
+              <svg class="ic ic-14"><use href="#ic-pin"/></svg>
+              ${h.zona || 'Sin zona'}${h.grupo_hotel ? ' · ' + h.grupo_hotel : ''}
+            </div>
+            <div class="hotel-card-meta">
+              ${horario ? `<span class="badge badge-neutral small"><svg class="ic ic-14"><use href="#ic-clock"/></svg>${horario}</span>` : ''}
+              <span class="badge badge-info small"><svg class="ic ic-14"><use href="#ic-users"/></svg>${h.servicios_necesarios || 1} socorristas</span>
+            </div>
+            <div class="hotel-card-eq">${eqs.join('')}</div>
+          </div>
+        </div>`;
+    }).join('');
+
+    hotelesGrid.querySelectorAll('.hotel-card').forEach(c => {
+      c.addEventListener('click', () => openHotelModal(c.dataset.hotel));
+    });
+  }
+
+  if (hotelSearch) hotelSearch.addEventListener('input', e => { hotelQuery = e.target.value; renderHotelesGrid(); });
+  if (hotelGrupoFilter) hotelGrupoFilter.addEventListener('change', e => { hotelGrupoSel = e.target.value; renderHotelesGrid(); });
+
+  /* ---------- Modal ficha hotel ---------- */
+  let hotelActualId = null;
+  let hotelTabActual = 'datos';
+
+  window.openHotelModal = function (hotelId) {
+    hotelActualId = hotelId;
+    hotelTabActual = 'datos';
+    document.querySelectorAll('.ficha-tab[data-htab]').forEach(t => t.classList.toggle('active', t.dataset.htab === 'datos'));
+    renderHotelFicha();
+    document.getElementById('hotelModal').classList.add('open');
+  };
+  window.closeHotelModal = () => document.getElementById('hotelModal').classList.remove('open');
+
+  document.querySelectorAll('.ficha-tab[data-htab]').forEach(t => {
+    t.addEventListener('click', () => {
+      hotelTabActual = t.dataset.htab;
+      document.querySelectorAll('.ficha-tab[data-htab]').forEach(x => x.classList.toggle('active', x === t));
+      renderHotelBody();
+    });
+  });
+
+  function renderHotelFicha() {
+    const h = hotelesCache.find(x => x.id === hotelActualId);
+    if (!h) return;
+    document.getElementById('hotelNombre').textContent = h.nombre;
+    document.getElementById('hotelGrupoBadge').innerHTML = h.grupo_hotel ? `<span class="dot"></span>${h.grupo_hotel}` : '';
+    const hIni = (h.hora_inicio_default || '').slice(0,5);
+    const hFin = (h.hora_fin_default || '').slice(0,5);
+    document.getElementById('hotelSubinfo').textContent = `${h.zona || ''} · ${hIni}–${hFin} · ${h.servicios_necesarios || 1} socorristas`;
+    renderHotelBody();
+  }
+
+  function renderHotelBody() {
+    const h = hotelesCache.find(x => x.id === hotelActualId);
+    const body = document.getElementById('hotelBody');
+    if (!h || !body) return;
+
+    if (hotelTabActual === 'datos') {
+      const mapsUrl = h.gps_lat && h.gps_lng
+        ? `https://www.google.com/maps?q=${h.gps_lat},${h.gps_lng}`
+        : null;
+      body.innerHTML = `
+        <div class="ficha-body-title">Identificación</div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Nombre</div>
+          <div class="ficha-data-value"><input type="text" id="hd-nombre" value="${h.nombre || ''}" /></div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Grupo hotelero</div>
+          <div class="ficha-data-value"><input type="text" id="hd-grupo" value="${h.grupo_hotel || ''}" placeholder="INTUROTEL / GAVIMAR / ONA / ..." /></div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Zona</div>
+          <div class="ficha-data-value"><input type="text" id="hd-zona" value="${h.zona || ''}" /></div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Dirección</div>
+          <div class="ficha-data-value"><input type="text" id="hd-dir" value="${h.direccion || ''}" /></div>
+        </div>
+
+        <div class="ficha-body-title">Geolocalización</div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Latitud</div>
+          <div class="ficha-data-value"><input type="number" step="0.000001" id="hd-lat" value="${h.gps_lat || ''}" /></div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Longitud</div>
+          <div class="ficha-data-value"><input type="number" step="0.000001" id="hd-lng" value="${h.gps_lng || ''}" /></div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Radio (m)</div>
+          <div class="ficha-data-value"><input type="number" id="hd-radio" value="${h.gps_radio_m || 50}" /></div>
+        </div>
+        ${mapsUrl ? `<a class="btn btn-outline" href="${mapsUrl}" target="_blank" style="margin-top:10px;">
+          <svg class="ic ic-16"><use href="#ic-pin"/></svg> Ver en Google Maps
+        </a>` : ''}
+
+        <div class="ficha-body-title">Contacto</div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Contacto hotel</div>
+          <div class="ficha-data-value"><input type="text" id="hd-contnombre" value="${h.contacto_hotel_nombre || ''}" placeholder="Nombre" /></div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Teléfono hotel</div>
+          <div class="ficha-data-value"><input type="tel" id="hd-conttel" value="${h.contacto_hotel_tel || ''}" placeholder="+34 971 000 000" /></div>
+        </div>
+
+        <div class="row gap-2 mt-3">
+          <button class="btn btn-outline" onclick="closeHotelModal()">Cancelar</button>
+          <button class="btn btn-primary" onclick="guardarHotelDatos()">
+            <svg class="ic ic-16"><use href="#ic-check"/></svg>
+            Guardar cambios
+          </button>
+        </div>`;
+    }
+    else if (hotelTabActual === 'horario') {
+      const hIni = (h.hora_inicio_default || '10:00:00').slice(0,5);
+      const hFin = (h.hora_fin_default || '18:00:00').slice(0,5);
+      body.innerHTML = `
+        <div class="ficha-body-title">Horario de apertura</div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Hora apertura</div>
+          <div class="ficha-data-value"><input type="time" id="hh-ini" value="${hIni}" /></div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Hora cierre</div>
+          <div class="ficha-data-value"><input type="time" id="hh-fin" value="${hFin}" /></div>
+        </div>
+        <div class="row gap-2 mt-3">
+          <button class="btn btn-outline" onclick="closeHotelModal()">Cancelar</button>
+          <button class="btn btn-primary" onclick="guardarHotelHorario()">
+            <svg class="ic ic-16"><use href="#ic-check"/></svg>
+            Guardar horario
+          </button>
+        </div>`;
+    }
+    else if (hotelTabActual === 'servicios') {
+      body.innerHTML = `
+        <div class="ficha-body-title">Nº de servicios (socorristas) necesarios por día</div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Socorristas</div>
+          <div class="ficha-data-value"><input type="number" id="hs-serv" min="1" value="${h.servicios_necesarios || 1}" /></div>
+        </div>
+        <div class="ficha-body-title">Notas para el coordinador</div>
+        <div class="field">
+          <textarea id="hs-notas" placeholder="Instrucciones especiales del hotel, horarios especiales, etc.">${h.notas || ''}</textarea>
+        </div>
+        <div class="row gap-2 mt-3">
+          <button class="btn btn-outline" onclick="closeHotelModal()">Cancelar</button>
+          <button class="btn btn-primary" onclick="guardarHotelServicios()">
+            <svg class="ic ic-16"><use href="#ic-check"/></svg>
+            Guardar
+          </button>
+        </div>`;
+    }
+    else if (hotelTabActual === 'equipamiento') {
+      body.innerHTML = `
+        <div class="eq-toggle-row ${h.tiene_botiquin ? 'on' : ''}">
+          <div class="icon botiquin"><svg class="ic ic-18"><use href="#ic-medkit"/></svg></div>
+          <div class="eq-toggle-body">
+            <div class="eq-toggle-title">Botiquín</div>
+            <div class="eq-toggle-sub">Contenido según Decreto 53/1995. 23 items en total.</div>
+          </div>
+          <label style="display:flex; gap:6px; align-items:center; cursor:pointer;">
+            <input type="checkbox" id="he-botiquin" ${h.tiene_botiquin ? 'checked' : ''} />
+            <span>${h.tiene_botiquin ? 'Sí' : 'No'}</span>
+          </label>
+        </div>
+        <div class="eq-toggle-row ${h.tiene_desa ? 'on' : ''}">
+          <div class="icon desa"><svg class="ic ic-18"><use href="#ic-heart-pulse"/></svg></div>
+          <div class="eq-toggle-body">
+            <div class="eq-toggle-title">DESA (Desfibrilador)</div>
+            <div class="eq-toggle-sub">Obligatorio en Baleares por Decreto 137/2008. Revisión mensual.</div>
+          </div>
+          <label style="display:flex; gap:6px; align-items:center; cursor:pointer;">
+            <input type="checkbox" id="he-desa" ${h.tiene_desa ? 'checked' : ''} />
+            <span>${h.tiene_desa ? 'Sí' : 'No'}</span>
+          </label>
+        </div>
+        <div class="eq-toggle-row ${h.tiene_oxigeno ? 'on' : ''}">
+          <div class="icon oxi"><svg class="ic ic-18"><use href="#ic-droplet"/></svg></div>
+          <div class="eq-toggle-body">
+            <div class="eq-toggle-title">Oxigenoterapia</div>
+            <div class="eq-toggle-sub">Bala, ambú, mascarillas. Comprobar antes del turno.</div>
+          </div>
+          <label style="display:flex; gap:6px; align-items:center; cursor:pointer;">
+            <input type="checkbox" id="he-oxigeno" ${h.tiene_oxigeno ? 'checked' : ''} />
+            <span>${h.tiene_oxigeno ? 'Sí' : 'No'}</span>
+          </label>
+        </div>
+        <div class="row gap-2 mt-3">
+          <button class="btn btn-outline" onclick="closeHotelModal()">Cancelar</button>
+          <button class="btn btn-primary" onclick="guardarHotelEquipamiento()">
+            <svg class="ic ic-16"><use href="#ic-check"/></svg>
+            Guardar equipamiento
+          </button>
+        </div>`;
+    }
+    else if (hotelTabActual === 'acciones') {
+      body.innerHTML = `
+        <div class="ficha-action-row ${h.activo ? 'warn' : 'ok'}">
+          <div class="icon"><svg class="ic ic-18"><use href="#ic-alert"/></svg></div>
+          <div class="ficha-action-body">
+            <div class="ficha-action-title">${h.activo ? 'Marcar como inactivo' : 'Reactivar hotel'}</div>
+            <div class="ficha-action-sub">${h.activo ? 'El hotel dejará de aparecer en el listado activo pero se conserva el histórico.' : 'Vuelve a estar disponible para asignar socorristas.'}</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="toggleActivoHotel()">${h.activo ? 'Desactivar' : 'Reactivar'}</button>
+        </div>
+        <div class="ficha-action-row danger">
+          <div class="icon"><svg class="ic ic-18"><use href="#ic-x"/></svg></div>
+          <div class="ficha-action-body">
+            <div class="ficha-action-title">Eliminar hotel permanentemente</div>
+            <div class="ficha-action-sub">Borra el hotel, sus horarios asignados y su inventario. Acción irreversible.</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="eliminarHotel()" style="color: var(--danger); border-color: var(--danger);">Eliminar</button>
+        </div>`;
+    }
+  }
+
+  async function actualizarHotel(patch) {
+    try {
+      const { error } = await window.sb.from('puestos').update(patch).eq('id', hotelActualId);
+      if (error) throw error;
+      await cargarHoteles();
+      renderHotelFicha();
+      toast('Hotel actualizado');
+    } catch (err) {
+      toast('Error: ' + err.message);
+    }
+  }
+
+  window.guardarHotelDatos = () => actualizarHotel({
+    nombre: document.getElementById('hd-nombre').value.trim(),
+    grupo_hotel: document.getElementById('hd-grupo').value.trim(),
+    zona: document.getElementById('hd-zona').value.trim(),
+    direccion: document.getElementById('hd-dir').value.trim(),
+    gps_lat: parseFloat(document.getElementById('hd-lat').value) || null,
+    gps_lng: parseFloat(document.getElementById('hd-lng').value) || null,
+    gps_radio_m: parseInt(document.getElementById('hd-radio').value) || 50,
+    contacto_hotel_nombre: document.getElementById('hd-contnombre').value.trim(),
+    contacto_hotel_tel: document.getElementById('hd-conttel').value.trim()
+  });
+  window.guardarHotelHorario = () => actualizarHotel({
+    hora_inicio_default: document.getElementById('hh-ini').value,
+    hora_fin_default: document.getElementById('hh-fin').value
+  });
+  window.guardarHotelServicios = () => actualizarHotel({
+    servicios_necesarios: parseInt(document.getElementById('hs-serv').value) || 1,
+    notas: document.getElementById('hs-notas').value.trim()
+  });
+  window.guardarHotelEquipamiento = () => actualizarHotel({
+    tiene_botiquin: document.getElementById('he-botiquin').checked,
+    tiene_desa: document.getElementById('he-desa').checked,
+    tiene_oxigeno: document.getElementById('he-oxigeno').checked
+  });
+  window.toggleActivoHotel = async () => {
+    const h = hotelesCache.find(x => x.id === hotelActualId);
+    await actualizarHotel({ activo: !h.activo });
+  };
+  window.eliminarHotel = async () => {
+    const h = hotelesCache.find(x => x.id === hotelActualId);
+    if (!confirm(`⚠️ ELIMINAR el hotel "${h.nombre}" permanentemente?\n\nEsto borrará también su inventario y sus horarios. Irreversible.`)) return;
+    const nombre2 = prompt('Escribe el nombre exacto del hotel para confirmar:');
+    if (nombre2 !== h.nombre) { toast('Nombre no coincide. Cancelado.'); return; }
+    try {
+      const { error } = await window.sb.from('puestos').delete().eq('id', hotelActualId);
+      if (error) throw error;
+      closeHotelModal();
+      await cargarHoteles();
+      toast('Hotel eliminado');
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  /* ---------- Modal nuevo hotel ---------- */
+  window.openNuevoHotelModal = () => document.getElementById('nuevoHotelModal').classList.add('open');
+  window.closeNuevoHotelModal = () => document.getElementById('nuevoHotelModal').classList.remove('open');
+  window.usarMiUbicacion = () => {
+    if (!navigator.geolocation) { toast('Tu navegador no soporta GPS'); return; }
+    navigator.geolocation.getCurrentPosition(pos => {
+      document.getElementById('nhLat').value = pos.coords.latitude.toFixed(6);
+      document.getElementById('nhLng').value = pos.coords.longitude.toFixed(6);
+      toast('Ubicación GPS obtenida');
+    }, err => toast('Error GPS: ' + err.message));
+  };
+  window.crearNuevoHotel = async function () {
+    const nombre = document.getElementById('nhNombre').value.trim();
+    if (!nombre) { toast('Escribe un nombre'); return; }
+    const psSes = window.PS_SESSION || {};
+    try {
+      const { error } = await window.sb.from('puestos').insert({
+        empresa_id: psSes.empresa_id,
+        nombre,
+        zona: document.getElementById('nhZona').value.trim(),
+        grupo_hotel: document.getElementById('nhGrupo').value.trim(),
+        direccion: document.getElementById('nhDireccion').value.trim(),
+        gps_lat: parseFloat(document.getElementById('nhLat').value) || null,
+        gps_lng: parseFloat(document.getElementById('nhLng').value) || null,
+        hora_inicio_default: document.getElementById('nhHoraIni').value,
+        hora_fin_default: document.getElementById('nhHoraFin').value,
+        servicios_necesarios: parseInt(document.getElementById('nhServicios').value) || 1,
+        tiene_botiquin: document.getElementById('nhBotiquin').checked,
+        tiene_desa: document.getElementById('nhDesa').checked,
+        tiene_oxigeno: document.getElementById('nhOxigeno').checked,
+        activo: true
+      });
+      if (error) throw error;
+      ['nhNombre','nhZona','nhGrupo','nhDireccion','nhLat','nhLng'].forEach(id => document.getElementById(id).value = '');
+      closeNuevoHotelModal();
+      await cargarHoteles();
+      toast(`Hotel "${nombre}" creado`);
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  // Arrancar carga de hoteles
+  cargarHoteles();
+
   /* ---------- Logout (real: cierra sesión en Supabase) ---------- */
   window.logout = function () {
     if (window.logoutReal) return window.logoutReal();

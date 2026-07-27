@@ -139,6 +139,10 @@
         <svg class="ic ic-16"><use href="#ic-users"/></svg>
         Empleados
       </button>
+      <button class="dash-menu-item" data-section="hoteles">
+        <svg class="ic ic-16"><use href="#ic-pin"/></svg>
+        Hoteles
+      </button>
       <button class="dash-menu-item" data-section="documentacion">
         <svg class="ic ic-16"><use href="#ic-file-text"/></svg>
         Documentación
@@ -276,6 +280,43 @@
     </section>
 
     </div><!-- /panel empleados -->
+
+    <!-- ============ PANEL: HOTELES ============ -->
+    <div class="tab-panel hidden" data-panel="hoteles">
+
+    <section class="panel" style="margin-bottom: 20px;">
+      <div class="panel-head">
+        <div class="panel-title-wrap">
+          <div class="kpi-icon" style="width: 30px; height: 30px; background: linear-gradient(135deg, #22D3EE, #10B981); color:#fff;">
+            <svg class="ic ic-16"><use href="#ic-pin"/></svg>
+          </div>
+          <h3 class="panel-title">Hoteles y puestos</h3>
+          <span class="panel-count" id="hotelesStats">— hoteles</span>
+        </div>
+        <div class="row gap-2">
+          <label class="search-inline">
+            <svg class="ic ic-16"><use href="#ic-search"/></svg>
+            <input type="text" id="hotelSearch" placeholder="Buscar por nombre, zona…" />
+          </label>
+          <select id="hotelGrupoFilter" class="upload-select">
+            <option value="todos">Todos los grupos</option>
+          </select>
+          <button class="btn btn-primary" onclick="openNuevoHotelModal()">
+            <svg class="ic ic-16"><use href="#ic-plus"/></svg>
+            Nuevo hotel
+          </button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="norma-banner" style="margin-bottom: 14px;">
+          <svg class="ic ic-14"><use href="#ic-shield"/></svg>
+          <span>Ficha completa de cada hotel: dirección, coordenadas GPS, horario de apertura, nº de socorristas necesarios (servicios), y equipamiento (DESA, oxigenoterapia, botiquín). Todo editable y sincronizado en tiempo real con la BD.</span>
+        </div>
+        <div class="hoteles-grid" id="hotelesGrid"></div>
+      </div>
+    </section>
+
+    </div><!-- /panel hoteles -->
 
     <!-- ============ PANEL: DOCUMENTACIÓN ============ -->
     <div class="tab-panel hidden" data-panel="documentacion">
@@ -734,6 +775,113 @@
       <button class="btn btn-primary" onclick="crearNuevoEmpleado()">
         <svg class="ic ic-16"><use href="#ic-plus"/></svg>
         Crear ficha
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL FICHA HOTEL ============ -->
+<div class="modal-backdrop" id="hotelModal">
+  <div class="modal ficha-modal">
+    <div class="ficha-head hotel-head">
+      <button class="modal-close" onclick="closeHotelModal()" style="position:absolute; top:14px; right:14px;">
+        <svg class="ic ic-16"><use href="#ic-x"/></svg>
+      </button>
+      <div class="hotel-icon-big">
+        <svg class="ic ic-24"><use href="#ic-pin"/></svg>
+      </div>
+      <div class="ficha-head-info">
+        <h2 id="hotelNombre">—</h2>
+        <div class="ficha-head-meta">
+          <span class="badge badge-info small" id="hotelGrupoBadge"></span>
+          <span class="text-muted small" id="hotelSubinfo">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="ficha-tabs">
+      <button class="ficha-tab active" data-htab="datos">Datos y ubicación</button>
+      <button class="ficha-tab" data-htab="horario">Horario</button>
+      <button class="ficha-tab" data-htab="servicios">Servicios</button>
+      <button class="ficha-tab" data-htab="equipamiento">Equipamiento</button>
+      <button class="ficha-tab" data-htab="acciones">Acciones</button>
+    </div>
+
+    <div class="ficha-body" id="hotelBody"></div>
+  </div>
+</div>
+
+<!-- ============ MODAL NUEVO HOTEL ============ -->
+<div class="modal-backdrop" id="nuevoHotelModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>Nuevo hotel / puesto</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;">Datos básicos. Podrás editar el resto (equipamiento, horarios detallados) desde la ficha.</p>
+      </div>
+      <button class="modal-close" onclick="closeNuevoHotelModal()">
+        <svg class="ic ic-16"><use href="#ic-x"/></svg>
+      </button>
+    </div>
+    <div class="field">
+      <label>Nombre del hotel / puesto *</label>
+      <input type="text" id="nhNombre" placeholder="p.ej. Hotel Cala Blanca" />
+    </div>
+    <div class="row gap-2">
+      <div class="field" style="flex:1;">
+        <label>Zona</label>
+        <input type="text" id="nhZona" placeholder="Cala d'Or" />
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Grupo hotelero</label>
+        <input type="text" id="nhGrupo" placeholder="INTUROTEL / GAVIMAR / ..." />
+      </div>
+    </div>
+    <div class="field">
+      <label>Dirección completa</label>
+      <input type="text" id="nhDireccion" placeholder="Calle, número, CP, ciudad" />
+    </div>
+    <div class="row gap-2">
+      <div class="field" style="flex:1;">
+        <label>Latitud GPS</label>
+        <input type="number" step="0.000001" id="nhLat" placeholder="39.5697" />
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Longitud GPS</label>
+        <input type="number" step="0.000001" id="nhLng" placeholder="2.6502" />
+      </div>
+      <button class="btn btn-outline" style="align-self:flex-end;" onclick="usarMiUbicacion()" title="Rellena GPS con tu ubicación actual">
+        <svg class="ic ic-16"><use href="#ic-signal"/></svg>
+        Mi ubicación
+      </button>
+    </div>
+    <div class="row gap-2">
+      <div class="field" style="flex:1;">
+        <label>Hora apertura</label>
+        <input type="time" id="nhHoraIni" value="10:00" />
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Hora cierre</label>
+        <input type="time" id="nhHoraFin" value="18:00" />
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Nº socorristas</label>
+        <input type="number" id="nhServicios" min="1" value="1" />
+      </div>
+    </div>
+    <div class="field">
+      <label>Equipamiento en el hotel</label>
+      <div class="row gap-3" style="margin-top:6px;">
+        <label style="display:flex; gap:6px; align-items:center; cursor:pointer;"><input type="checkbox" id="nhBotiquin" checked /> Botiquín</label>
+        <label style="display:flex; gap:6px; align-items:center; cursor:pointer;"><input type="checkbox" id="nhDesa" /> DESA</label>
+        <label style="display:flex; gap:6px; align-items:center; cursor:pointer;"><input type="checkbox" id="nhOxigeno" /> Oxigenoterapia</label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeNuevoHotelModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="crearNuevoHotel()">
+        <svg class="ic ic-16"><use href="#ic-plus"/></svg>
+        Crear hotel
       </button>
     </div>
   </div>
