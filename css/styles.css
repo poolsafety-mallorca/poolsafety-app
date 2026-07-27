@@ -1410,6 +1410,51 @@ img, svg { display: block; max-width: 100%; }
 }
 
 /* ==========================================================================
+   FIRMA MANUSCRITA (canvas)
+   ========================================================================== */
+.firma-canvas-wrap {
+  position: relative;
+  background: linear-gradient(180deg, #FFFFFF, #FAFAFA);
+  border: 2px dashed var(--sky-300, #FCA5A5);
+  border-radius: var(--r-3);
+  padding: 4px;
+  margin-top: 6px;
+}
+:root.theme-red .firma-canvas-wrap {
+  border-color: var(--red-300, #FCA5A5);
+}
+.firma-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2.5 / 1;
+  touch-action: none;
+  cursor: crosshair;
+  border-radius: 8px;
+}
+.firma-canvas-hint {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--ink-400, var(--ink-500));
+  pointer-events: none;
+  font-style: italic;
+  opacity: .6;
+}
+.firma-imagen {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px;
+  margin-top: 6px;
+}
+
+/* ==========================================================================
    LOGIN — pantalla de acceso
    ========================================================================== */
 .login-card {

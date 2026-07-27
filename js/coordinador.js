@@ -1215,31 +1215,52 @@
       }
     }
     else if (fichaTabActual === 'docs') {
-      const firmas = PS.firmasDeSocorrista(e.id);
-      const kitOk = firmas['kit-alta']?.completado === true;
-      body.innerHTML = `
-        <div class="ficha-action-row ${kitOk ? 'ok' : 'warn'}">
+      body.innerHTML = `<div class="text-muted" style="padding:20px;text-align:center;">Cargando firmas…</div>`;
+      // Cargar firmas reales de la BD
+      (async () => {
+        let firmasBD = [];
+        try {
+          const { data } = await window.sb.from('firmas_documentos')
+            .select('*')
+            .eq('empleado_id', fichaActualId)
+            .order('fecha_firma', { ascending: false });
+          firmasBD = data || [];
+        } catch (err) { console.warn('firmas:', err.message); }
+
+        const kitFirma = firmasBD.find(f => f.documento_codigo === 'kit-alta');
+        const jornadas = firmasBD.filter(f => f.documento_codigo.startsWith('jornada'));
+
+        body.innerHTML = `
+        <div class="ficha-action-row ${kitFirma ? 'ok' : 'warn'}">
           <div class="icon"><svg class="ic ic-18"><use href="#ic-shield"/></svg></div>
           <div class="ficha-action-body">
             <div class="ficha-action-title">Kit Alta Empresa</div>
-            <div class="ficha-action-sub">${kitOk ? 'Firmado el ' + new Date(firmas['kit-alta'].fecha).toLocaleDateString('es-ES') + ' desde ' + firmas['kit-alta'].dispositivo : 'Pendiente de firma'}</div>
+            <div class="ficha-action-sub">${kitFirma ? 'Firmado el ' + new Date(kitFirma.fecha_firma).toLocaleString('es-ES') + '<br>Desde: ' + (kitFirma.dispositivo || 'móvil') : 'Pendiente de firma'}</div>
+            ${kitFirma?.firma_imagen ? `<img src="${kitFirma.firma_imagen}" class="firma-imagen" style="max-width:220px;margin-top:8px;" alt="Firma"/>` : ''}
+            ${kitFirma?.ubicacion_lat ? `<div class="small text-muted mt-1">📍 <a href="https://www.google.com/maps?q=${kitFirma.ubicacion_lat},${kitFirma.ubicacion_lng}" target="_blank">${(+kitFirma.ubicacion_lat).toFixed(4)}, ${(+kitFirma.ubicacion_lng).toFixed(4)}</a></div>` : ''}
           </div>
-          ${!kitOk ? `<button class="btn btn-primary btn-sm" onclick="firmarKitEnTablet('${e.id}')">Firmar en tablet</button>` : ''}
+          ${!kitFirma ? `<button class="btn btn-primary btn-sm" onclick="firmarKitEnTablet('${e.id}')">Firmar en tablet</button>` : ''}
         </div>
-        <div class="ficha-action-row ${firmas['jornada-2026-07'] ? 'ok' : 'warn'}">
-          <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
-          <div class="ficha-action-body">
-            <div class="ficha-action-title">Registro jornada · julio 2026</div>
-            <div class="ficha-action-sub">${firmas['jornada-2026-07'] ? 'Firmado' : 'Pendiente de firma (último día del mes)'}</div>
+        ${jornadas.map(j => `
+          <div class="ficha-action-row ok">
+            <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
+            <div class="ficha-action-body">
+              <div class="ficha-action-title">${j.documento_codigo}</div>
+              <div class="ficha-action-sub">Firmado el ${new Date(j.fecha_firma).toLocaleString('es-ES')}</div>
+              ${j.firma_imagen ? `<img src="${j.firma_imagen}" class="firma-imagen" style="max-width:180px;margin-top:8px;" alt="Firma"/>` : ''}
+            </div>
           </div>
-        </div>
-        <div class="ficha-action-row ok">
-          <div class="icon"><svg class="ic ic-18"><use href="#ic-check-circle"/></svg></div>
-          <div class="ficha-action-body">
-            <div class="ficha-action-title">Registro jornada · junio 2026</div>
-            <div class="ficha-action-sub">Firmado el 30/06/2026</div>
-          </div>
-        </div>`;
+        `).join('')}
+        ${jornadas.length === 0 ? `
+          <div class="ficha-action-row warn">
+            <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
+            <div class="ficha-action-body">
+              <div class="ficha-action-title">Registro mensual de jornada</div>
+              <div class="ficha-action-sub">Sin firmas mensuales aún. Se firma el último día trabajado del mes.</div>
+            </div>
+          </div>` : ''}
+        `;
+      })();
     }
     else if (fichaTabActual === 'tareas') {
       body.innerHTML = `

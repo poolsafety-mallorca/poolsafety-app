@@ -832,21 +832,31 @@
         requiereCampos: sub.requiereCampos
       })),
       {
-        titulo: 'Firma final',
-        subtitulo: 'Escribe tu nombre completo tal como aparece en tu DNI para firmar todos los documentos.',
+        titulo: 'Firma manuscrita',
+        subtitulo: 'Firma con el dedo o lápiz digital dentro del recuadro. Vale con firma manuscrita normal.',
         contenido: `
           <div class="wizard-sign-box">
             <div class="wizard-sign-info">
-              Firmando en: <b>${new Date().toLocaleString('es-ES')}</b><br>
-              Desde: <b>Dispositivo del empleado</b> · IP registrada por el sistema
+              📅 Fecha: <b>${new Date().toLocaleString('es-ES')}</b><br>
+              📱 Desde: <b>Dispositivo del empleado</b> · dispositivo, IP y GPS registrados
             </div>
             <div class="field mt-3">
               <label>Nombre y apellidos</label>
-              <input type="text" id="wiz-firma" placeholder="${me.nombre}" />
+              <input type="text" id="wiz-firma" placeholder="${nombreLogueado}" />
             </div>
             <div class="field">
               <label>DNI</label>
               <input type="text" id="wiz-dni" placeholder="00000000A" />
+            </div>
+            <div class="field">
+              <label>Firma manuscrita</label>
+              <div class="firma-canvas-wrap">
+                <canvas id="firmaCanvas" width="600" height="240"></canvas>
+                <div class="firma-canvas-hint">Firma aquí dentro con el dedo, lápiz o ratón</div>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" onclick="limpiarFirma()" style="margin-top:8px;">
+                <svg class="ic ic-14"><use href="#ic-x"/></svg> Limpiar firma
+              </button>
             </div>
           </div>
         `,
@@ -871,6 +881,72 @@
     wizardNextBtn.innerHTML = wizardStep === total - 1
       ? `<svg class="ic ic-16"><use href="#ic-pen"/></svg> Firmar todo`
       : `Siguiente <svg class="ic ic-16"><use href="#ic-chevron-right"/></svg>`;
+
+    // Iniciar canvas de firma si estamos en el paso final
+    if (step.esFirma) {
+      setTimeout(initFirmaCanvas, 50);
+    }
+  }
+
+  /* ==== FIRMA MANUSCRITA (canvas) ==== */
+  function initFirmaCanvas() {
+    const canvas = document.getElementById('firmaCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#0F172A';
+    ctx.lineWidth = 2.8;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    let drawing = false, lastX = 0, lastY = 0;
+
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: (clientX - rect.left) * canvas.width / rect.width,
+        y: (clientY - rect.top) * canvas.height / rect.height
+      };
+    }
+    function start(e) { e.preventDefault(); drawing = true; const p = getPos(e); lastX = p.x; lastY = p.y; }
+    function move(e) {
+      if (!drawing) return;
+      e.preventDefault();
+      const p = getPos(e);
+      ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
+      lastX = p.x; lastY = p.y;
+    }
+    function end() { drawing = false; }
+
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    canvas.addEventListener('mouseup', end);
+    canvas.addEventListener('mouseleave', end);
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove', move, { passive: false });
+    canvas.addEventListener('touchend', end);
+
+    window.__firmaCanvas = canvas;
+  }
+
+  window.limpiarFirma = function () {
+    const c = window.__firmaCanvas;
+    if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
+  };
+
+  function firmaEstaVacia() {
+    const c = window.__firmaCanvas;
+    if (!c) return true;
+    const data = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] > 0) return false;
+    }
+    return true;
+  }
+
+  function getFirmaImagen() {
+    const c = window.__firmaCanvas;
+    return c ? c.toDataURL('image/png') : null;
   }
 
   window.wizardBack = function () {
@@ -902,18 +978,47 @@
       const dni = document.getElementById('wiz-dni')?.value.trim();
       if (!firma) { toast('Escribe tu nombre completo para firmar'); return; }
       if (!dni) { toast('Escribe tu DNI para firmar'); return; }
-      // Firmar todo
-      PS.firmarDocumento(me.id, 'kit-alta', {
-        completado: true,
-        firma, dni,
-        dispositivo: 'móvil empleado',
-        aceptados: wizardData.aceptados,
-        campos: wizardData.campos
-      });
-      document.getElementById('kitAltaModal').classList.remove('open');
-      toast('Kit Alta firmado correctamente ✓');
-      renderDocsHeader();
-      renderDocsLists();
+      if (firmaEstaVacia()) { toast('Firma con el dedo dentro del recuadro'); return; }
+
+      const firmaImagen = getFirmaImagen();
+      const empleadoId = empleadoReal?.id || me.id;
+      const ubicacion = ultimaPosicion || null;
+
+      // Guardar en BD (Supabase) + fallback a localStorage
+      (async () => {
+        try {
+          if (empleadoReal && window.sb) {
+            const { error } = await window.sb.from('firmas_documentos').insert({
+              empleado_id: empleadoId,
+              documento_codigo: 'kit-alta',
+              firma_nombre: firma,
+              dni,
+              dispositivo: 'móvil empleado · ' + (navigator.userAgent.split(' ')[0] || 'web'),
+              aceptados_json: wizardData.aceptados,
+              campos_json: wizardData.campos,
+              firma_imagen: firmaImagen,
+              ubicacion_lat: ubicacion?.lat || null,
+              ubicacion_lng: ubicacion?.lng || null
+            });
+            if (error) throw error;
+          }
+          // También en localStorage para respuesta inmediata
+          PS.firmarDocumento(me.id, 'kit-alta', {
+            completado: true,
+            firma, dni,
+            dispositivo: 'móvil empleado',
+            aceptados: wizardData.aceptados,
+            campos: wizardData.campos,
+            firmaImagen
+          });
+          document.getElementById('kitAltaModal').classList.remove('open');
+          toast('✓ Kit Alta firmado y guardado en el sistema');
+          renderDocsHeader();
+          renderDocsLists();
+        } catch (err) {
+          toast('Error al guardar la firma: ' + err.message);
+        }
+      })();
       return;
     }
 
@@ -977,6 +1082,16 @@
         <label>Firma (nombre completo)</label>
         <input type="text" id="jornada-firma" placeholder="${me.nombre}" />
       </div>
+      <div class="field">
+        <label>Firma manuscrita</label>
+        <div class="firma-canvas-wrap">
+          <canvas id="firmaCanvas" width="500" height="180"></canvas>
+          <div class="firma-canvas-hint">Firma aquí dentro con el dedo o ratón</div>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="limpiarFirma()" style="margin-top:8px;">
+          <svg class="ic ic-14"><use href="#ic-x"/></svg> Limpiar firma
+        </button>
+      </div>
       <label class="wizard-accept-line mt-2">
         <input type="checkbox" id="jornada-accept" />
         <span>Confirmo que los datos del registro de jornada son correctos y firmo el documento mensual.</span>
@@ -990,17 +1105,39 @@
       </button>
     `;
     document.getElementById('docViewModal').classList.add('open');
+    setTimeout(initFirmaCanvas, 50);
   }
 
-  window.submitJornada = function (docId) {
+  window.submitJornada = async function (docId) {
     const firma = document.getElementById('jornada-firma')?.value.trim();
     const accept = document.getElementById('jornada-accept')?.checked;
-    if (!firma || !accept) { toast('Firma y marca la casilla para continuar'); return; }
-    PS.firmarDocumento(me.id, docId, { firma, dispositivo: 'móvil empleado' });
-    closeDocView();
-    toast('Jornada mensual firmada ✓');
-    renderDocsHeader();
-    renderDocsLists();
+    if (!firma || !accept) { toast('Firma, marca la casilla y dibuja tu firma'); return; }
+    if (firmaEstaVacia()) { toast('Dibuja tu firma manuscrita en el recuadro'); return; }
+
+    const firmaImagen = getFirmaImagen();
+    const empleadoId = empleadoReal?.id || me.id;
+
+    try {
+      if (empleadoReal && window.sb) {
+        const { error } = await window.sb.from('firmas_documentos').insert({
+          empleado_id: empleadoId,
+          documento_codigo: docId,
+          firma_nombre: firma,
+          dispositivo: 'móvil empleado',
+          firma_imagen: firmaImagen,
+          ubicacion_lat: ultimaPosicion?.lat || null,
+          ubicacion_lng: ultimaPosicion?.lng || null
+        });
+        if (error) throw error;
+      }
+      PS.firmarDocumento(me.id, docId, { firma, dispositivo: 'móvil empleado', firmaImagen });
+      closeDocView();
+      toast('✓ Jornada mensual firmada y guardada');
+      renderDocsHeader();
+      renderDocsLists();
+    } catch (err) {
+      toast('Error: ' + err.message);
+    }
   };
 
   window.closeDocView = () => document.getElementById('docViewModal').classList.remove('open');
