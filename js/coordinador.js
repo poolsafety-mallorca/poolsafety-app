@@ -1352,8 +1352,9 @@
     toast(`${nombre} creado. Recibirá invitación por email para completar Kit Alta.`);
   };
 
-  /* ---------- Logout ---------- */
+  /* ---------- Logout (real: cierra sesión en Supabase) ---------- */
   window.logout = function () {
+    if (window.logoutReal) return window.logoutReal();
     PS.clearSession();
     window.location.href = 'index.html';
   };

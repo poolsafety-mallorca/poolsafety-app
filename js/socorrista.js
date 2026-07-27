@@ -793,8 +793,9 @@
     setTimeout(() => openKitAltaWizard(), 700);
   }
 
-  /* ---------- Logout ---------- */
+  /* ---------- Logout (real: cierra sesión en Supabase) ---------- */
   window.logout = function () {
+    if (window.logoutReal) return window.logoutReal();
     PS.clearSession();
     window.location.href = 'index.html';
   };

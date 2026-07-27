@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
   <meta name="theme-color" content="#0A1E3F" />
-  <title>PoolSafety · Panel operativo</title>
+  <title>PoolSafety · Acceso</title>
   <link rel="icon" type="image/png" href="assets/logo-blanco.png" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
@@ -12,79 +12,148 @@
 
 <div class="splash">
 
-  <!-- Wave decorativa inferior -->
   <svg class="splash-wave" viewBox="0 0 1440 120" preserveAspectRatio="none">
     <path d="M0,80 C240,40 480,110 720,80 C960,50 1200,110 1440,80 L1440,120 L0,120 Z" fill="#22D3EE" fill-opacity=".08"/>
     <path d="M0,90 C240,60 480,120 720,90 C960,60 1200,120 1440,90 L1440,120 L0,120 Z" fill="#0EA5E9" fill-opacity=".12"/>
   </svg>
 
-  <div class="splash-card">
+  <div class="splash-card login-card">
     <div class="splash-logo-wrap">
       <img src="assets/logo-blanco.png" alt="PoolSafety" />
     </div>
 
-    <h1 class="splash-title">Seguridad<br/>acuática, al día.</h1>
-    <p class="splash-sub">Fichaje, control de horas, botiquín y coordinación de puestos. Todo en un solo lugar para el equipo de PoolSafety Mallorca.</p>
+    <h1 class="splash-title" style="font-size: 28px;">Acceso a la app</h1>
+    <p class="splash-sub">Inicia sesión con tu correo y contraseña. Tu rol se detecta automáticamente.</p>
 
-    <div class="role-picker">
-
-      <button class="role-btn socorrista" data-role="socorrista">
-        <div class="role-icon">
-          <svg class="ic ic-22"><use href="#ic-lifebuoy"/></svg>
-        </div>
-        <div class="role-body">
-          <div class="role-name">Soy socorrista</div>
-          <div class="role-desc">Fichaje, tareas del turno y botiquín</div>
-        </div>
-        <svg class="ic ic-18 role-arrow"><use href="#ic-arrow-right"/></svg>
+    <form id="loginForm" class="login-form" autocomplete="on">
+      <div class="field">
+        <label for="loginEmail">Correo electrónico</label>
+        <input type="email" id="loginEmail" placeholder="tu@correo.com" required autocomplete="username" />
+      </div>
+      <div class="field">
+        <label for="loginPass">Contraseña</label>
+        <input type="password" id="loginPass" placeholder="Contraseña" required autocomplete="current-password" />
+      </div>
+      <div id="loginError" class="login-error" style="display:none;"></div>
+      <button type="submit" class="btn btn-primary btn-lg btn-block" id="loginBtn">
+        <svg class="ic ic-18"><use href="#ic-arrow-right"/></svg>
+        <span id="loginBtnText">Entrar</span>
       </button>
+    </form>
 
-      <button class="role-btn coordinador" data-role="coordinador">
-        <div class="role-icon">
-          <svg class="ic ic-22"><use href="#ic-clipboard"/></svg>
-        </div>
-        <div class="role-body">
-          <div class="role-name">Soy coordinador</div>
-          <div class="role-desc">Dashboard, alertas y asignaciones</div>
-        </div>
-        <svg class="ic ic-18 role-arrow"><use href="#ic-arrow-right"/></svg>
-      </button>
-
-      <button class="role-btn dueno" data-role="dueno">
-        <div class="role-icon">
-          <svg class="ic ic-22"><use href="#ic-briefcase"/></svg>
-        </div>
-        <div class="role-body">
-          <div class="role-name">Dirección</div>
-          <div class="role-desc">Vista general, horas y facturación</div>
-        </div>
-        <svg class="ic ic-18 role-arrow"><use href="#ic-arrow-right"/></svg>
-      </button>
-
+    <div class="login-help">
+      <a href="#" onclick="resetPassword(); return false;">¿Olvidaste la contraseña?</a>
     </div>
   </div>
 
-  <div class="splash-footer">PROTOTIPO v0.2 · Datos simulados · Mallorca</div>
+  <div class="splash-footer">
+    <span>PoolSafety Des Llevant, S.L. · Producción</span>
+    <span id="connStatus" style="opacity:.7; font-size:10px;"></span>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-client.js"></script>
 <script src="js/icons.js"></script>
-<script src="js/data.js"></script>
 <script>
-  document.querySelectorAll('.role-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const role = btn.dataset.role;
-      if (role === 'socorrista') {
-        PS.setSession({ role, id: 's01', nombre: 'María Fernández' });
+(async function () {
+  // Si ya hay sesión activa, redirige directamente
+  const { data: { session } } = await window.sb.auth.getSession();
+  if (session) {
+    await redirectByRole(session.user);
+  }
+
+  const form = document.getElementById('loginForm');
+  const errBox = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+  const btnText = document.getElementById('loginBtnText');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errBox.style.display = 'none';
+    btn.disabled = true;
+    btnText.textContent = 'Entrando…';
+
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPass').value;
+
+    try {
+      const { data, error } = await window.sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      await redirectByRole(data.user);
+    } catch (err) {
+      errBox.textContent = err.message === 'Invalid login credentials'
+        ? 'Email o contraseña incorrectos.'
+        : 'Error al conectar: ' + err.message;
+      errBox.style.display = 'block';
+      btn.disabled = false;
+      btnText.textContent = 'Entrar';
+    }
+  });
+
+  async function redirectByRole(user) {
+    try {
+      const { data: usuario, error } = await window.sb
+        .from('usuarios')
+        .select('rol, empresa_id, activo')
+        .eq('id', user.id)
+        .single();
+
+      if (error || !usuario) {
+        errBox.textContent = 'Usuario válido pero sin perfil asignado. Contacta con el administrador.';
+        errBox.style.display = 'block';
+        btn.disabled = false;
+        btnText.textContent = 'Entrar';
+        await window.sb.auth.signOut();
+        return;
+      }
+      if (!usuario.activo) {
+        errBox.textContent = 'Tu cuenta está desactivada. Contacta con el coordinador.';
+        errBox.style.display = 'block';
+        btn.disabled = false;
+        btnText.textContent = 'Entrar';
+        await window.sb.auth.signOut();
+        return;
+      }
+
+      // Guardar sesión ligera para acceso rápido en el resto de páginas
+      localStorage.setItem('ps-session', JSON.stringify({
+        userId: user.id,
+        email: user.email,
+        rol: usuario.rol,
+        empresa_id: usuario.empresa_id
+      }));
+
+      if (usuario.rol === 'socorrista') {
         window.location.href = 'socorrista.html';
       } else {
-        const label = role === 'coordinador' ? 'Jaume Ferrer' : 'Antonio Ruiz';
-        PS.setSession({ role, nombre: label });
+        // dueño y coordinador -> mismo dashboard
         window.location.href = 'coordinador.html';
       }
+    } catch (err) {
+      errBox.textContent = 'Error obteniendo perfil: ' + err.message;
+      errBox.style.display = 'block';
+      btn.disabled = false;
+      btnText.textContent = 'Entrar';
+    }
+  }
+
+  window.resetPassword = async function () {
+    const email = document.getElementById('loginEmail').value.trim();
+    if (!email) { alert('Escribe primero tu correo arriba'); return; }
+    const { error } = await window.sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/index.html'
     });
-  });
+    if (error) alert('Error: ' + error.message);
+    else alert('Te hemos enviado un email con instrucciones para restablecer la contraseña.');
+  };
+
+  // Estado de conexión discreto en el footer
+  setTimeout(() => {
+    const el = document.getElementById('connStatus');
+    if (el) el.textContent = '· BD conectada';
+  }, 1200);
+})();
 </script>
 </body>
 </html>
