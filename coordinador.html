@@ -143,6 +143,10 @@
         <svg class="ic ic-16"><use href="#ic-pin"/></svg>
         Hoteles
       </button>
+      <button class="dash-menu-item" data-section="coordinacion">
+        <svg class="ic ic-16"><use href="#ic-clipboard"/></svg>
+        Coordinación
+      </button>
       <button class="dash-menu-item" data-section="documentacion">
         <svg class="ic ic-16"><use href="#ic-file-text"/></svg>
         Documentación
@@ -317,6 +321,71 @@
     </section>
 
     </div><!-- /panel hoteles -->
+
+    <!-- ============ PANEL: COORDINACIÓN ============ -->
+    <div class="tab-panel hidden" data-panel="coordinacion">
+
+      <!-- ADMIN VIEW (Adam) -->
+      <section class="panel" id="coordAdminPanel" style="margin-bottom: 20px; display:none;">
+        <div class="panel-head">
+          <div class="panel-title-wrap">
+            <div class="kpi-icon" style="width: 30px; height: 30px; background: linear-gradient(135deg, #0F2C5F, #0A1E3F); color:#fff;">
+              <svg class="ic ic-16"><use href="#ic-clipboard"/></svg>
+            </div>
+            <h3 class="panel-title">Actividad de coordinadores en vivo</h3>
+            <span class="panel-count" id="coordStats">— eventos hoy</span>
+          </div>
+          <div class="row gap-2">
+            <select id="coordFilterCoord" class="upload-select">
+              <option value="todos">Todos los coordinadores</option>
+            </select>
+            <select id="coordFilterTipo" class="upload-select">
+              <option value="todos">Actividades + visitas</option>
+              <option value="actividades">Solo actividades</option>
+              <option value="visitas">Solo visitas a hoteles</option>
+              <option value="notas">Solo notas para Adam</option>
+            </select>
+            <button class="btn btn-outline btn-icon" onclick="cargarCoordinacion()" title="Refrescar">
+              <svg class="ic ic-16"><use href="#ic-refresh"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="coordTimeline"></div>
+        </div>
+      </section>
+
+      <!-- COORDINATOR VIEW (Alex, Oscar) -->
+      <section class="panel" id="coordSelfPanel" style="margin-bottom: 20px; display:none;">
+        <div class="panel-head">
+          <div class="panel-title-wrap">
+            <div class="kpi-icon" style="width: 30px; height: 30px; background: linear-gradient(135deg, #0EA5E9, #22D3EE); color:#fff;">
+              <svg class="ic ic-16"><use href="#ic-clipboard"/></svg>
+            </div>
+            <h3 class="panel-title">Mi parte diario</h3>
+            <span class="panel-count" id="coordSelfStats">— eventos hoy</span>
+          </div>
+          <div class="row gap-2">
+            <button class="btn btn-primary" onclick="openNuevaActividad()">
+              <svg class="ic ic-16"><use href="#ic-plus"/></svg>
+              Nueva actividad
+            </button>
+            <button class="btn btn-primary" onclick="openNuevaVisita()" style="background: linear-gradient(135deg, #10B981, #22D3EE);">
+              <svg class="ic ic-16"><use href="#ic-pin"/></svg>
+              Visita a hotel
+            </button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="norma-banner" style="margin-bottom: 14px;">
+            <svg class="ic ic-14"><use href="#ic-shield"/></svg>
+            <span>Registra las actividades del día y cada visita a hoteles. Adam (dirección) lo ve en tiempo real. En visitas se captura hora exacta y GPS del hotel automáticamente.</span>
+          </div>
+          <div id="coordSelfTimeline"></div>
+        </div>
+      </section>
+
+    </div><!-- /panel coordinacion -->
 
     <!-- ============ PANEL: DOCUMENTACIÓN ============ -->
     <div class="tab-panel hidden" data-panel="documentacion">
@@ -882,6 +951,98 @@
       <button class="btn btn-primary" onclick="crearNuevoHotel()">
         <svg class="ic ic-16"><use href="#ic-plus"/></svg>
         Crear hotel
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL NUEVA ACTIVIDAD ============ -->
+<div class="modal-backdrop" id="actividadModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>Nueva actividad</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;">Registra lo que estás haciendo ahora. Adam lo ve al momento.</p>
+      </div>
+      <button class="modal-close" onclick="closeActividadModal()">
+        <svg class="ic ic-16"><use href="#ic-x"/></svg>
+      </button>
+    </div>
+    <div class="field">
+      <label>Título de la actividad *</label>
+      <input type="text" id="actTitulo" placeholder="p.ej. Llamadas a socorristas, reunión con hotel, pedido botiquín…" />
+    </div>
+    <div class="field">
+      <label>Descripción / detalle</label>
+      <textarea id="actDesc" placeholder="Contexto o resultado de la actividad…"></textarea>
+    </div>
+    <div class="field">
+      <label>Nota para Adam (opcional)</label>
+      <textarea id="actNota" placeholder="Solo aparece si escribes algo aquí — mensaje directo a dirección"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeActividadModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="crearActividad()">
+        <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
+        Registrar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL NUEVA VISITA HOTEL ============ -->
+<div class="modal-backdrop" id="visitaModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>Visita a hotel</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;">Captura hora y GPS automáticamente al pulsar "Registrar llegada".</p>
+      </div>
+      <button class="modal-close" onclick="closeVisitaModal()">
+        <svg class="ic ic-16"><use href="#ic-x"/></svg>
+      </button>
+    </div>
+    <div class="field">
+      <label>Hotel *</label>
+      <select id="visHotel"></select>
+    </div>
+    <div class="row gap-2">
+      <div class="field" style="flex:1;">
+        <label>Hora de llegada</label>
+        <input type="text" id="visHora" readonly placeholder="Aún no capturada" />
+      </div>
+      <div class="field" style="flex:1;">
+        <label>GPS actual</label>
+        <input type="text" id="visGps" readonly placeholder="Aún no capturado" />
+      </div>
+      <button class="btn btn-outline" style="align-self:flex-end;" onclick="capturarLlegada()" id="btnCapturar">
+        <svg class="ic ic-16"><use href="#ic-signal"/></svg>
+        Capturar
+      </button>
+    </div>
+    <div class="field">
+      <label style="display:flex; gap:8px; align-items:center; cursor:pointer;">
+        <input type="checkbox" id="visVioDirector" />
+        <span>He visto / hablado con el director del hotel</span>
+      </label>
+    </div>
+    <div class="field">
+      <label>Qué dijo el director / de qué hablamos</label>
+      <textarea id="visDirNotas" placeholder="Solo si has visto al director"></textarea>
+    </div>
+    <div class="field">
+      <label>Qué he realizado en el hotel *</label>
+      <textarea id="visActividades" placeholder="p.ej. Revisar botiquín, comprobar DESA, formación al socorrista, incidencia con cliente…"></textarea>
+    </div>
+    <div class="field">
+      <label>Nota para Adam (opcional)</label>
+      <textarea id="visNotaAdmin" placeholder="Mensaje directo a dirección si hay algo importante"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeVisitaModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarVisita()">
+        <svg class="ic ic-16"><use href="#ic-check"/></svg>
+        Guardar visita
       </button>
     </div>
   </div>

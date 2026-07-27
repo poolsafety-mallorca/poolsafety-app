@@ -1796,6 +1796,266 @@
   // Arrancar carga de hoteles
   cargarHoteles();
 
+  /* ==========================================================================
+     MÓDULO COORDINACIÓN — actividades + visitas a hoteles (BD real)
+     ========================================================================== */
+
+  const coordAdminPanel = document.getElementById('coordAdminPanel');
+  const coordSelfPanel = document.getElementById('coordSelfPanel');
+  const coordTimeline = document.getElementById('coordTimeline');
+  const coordSelfTimeline = document.getElementById('coordSelfTimeline');
+  const coordFilterCoord = document.getElementById('coordFilterCoord');
+  const coordFilterTipo = document.getElementById('coordFilterTipo');
+
+  let coordUsuariosMap = {}; // id -> {nombre, email}
+  let coordFilterCoordVal = 'todos';
+  let coordFilterTipoVal = 'todos';
+  let lastVisitaCapture = null; // { hora, lat, lng }
+
+  // Muestra panel según rol
+  function ajustarPanelesCoord() {
+    const psSes = window.PS_SESSION || {};
+    const esAdmin = psSes.rol === 'dueno';
+    const esCoord = psSes.rol === 'coordinador';
+    if (coordAdminPanel) coordAdminPanel.style.display = esAdmin ? 'block' : 'none';
+    if (coordSelfPanel) coordSelfPanel.style.display = esCoord ? 'block' : 'none';
+  }
+
+  async function cargarUsuariosCoord() {
+    try {
+      const { data, error } = await window.sb.from('usuarios').select('id, nombre, email, rol').in('rol', ['coordinador','dueno']);
+      if (error) throw error;
+      coordUsuariosMap = {};
+      (data || []).forEach(u => coordUsuariosMap[u.id] = { nombre: u.nombre || u.email.split('@')[0], email: u.email, rol: u.rol });
+      if (coordFilterCoord) {
+        const coords = (data || []).filter(u => u.rol === 'coordinador');
+        coordFilterCoord.innerHTML = '<option value="todos">Todos los coordinadores</option>' +
+          coords.map(u => `<option value="${u.id}">${u.nombre || u.email.split('@')[0]}</option>`).join('');
+      }
+    } catch (e) { console.warn('[Coord] usuarios:', e.message); }
+  }
+
+  window.cargarCoordinacion = async function () {
+    ajustarPanelesCoord();
+    const psSes = window.PS_SESSION || {};
+    if (!psSes.empresa_id) { setTimeout(cargarCoordinacion, 400); return; }
+    await cargarUsuariosCoord();
+
+    // Cargar actividades y visitas de la empresa
+    let acts = [], vis = [];
+    try {
+      const r1 = await window.sb.from('actividades_coordinador')
+        .select('*')
+        .eq('empresa_id', psSes.empresa_id)
+        .order('fecha_hora', { ascending: false })
+        .limit(200);
+      if (r1.error) throw r1.error;
+      acts = r1.data || [];
+
+      const r2 = await window.sb.from('visitas_hoteles')
+        .select('*')
+        .eq('empresa_id', psSes.empresa_id)
+        .order('fecha_hora_llegada', { ascending: false })
+        .limit(200);
+      if (r2.error) throw r2.error;
+      vis = r2.data || [];
+    } catch (e) {
+      const msg = `<div class="coord-empty">Error cargando: ${e.message}</div>`;
+      if (coordTimeline) coordTimeline.innerHTML = msg;
+      if (coordSelfTimeline) coordSelfTimeline.innerHTML = msg;
+      return;
+    }
+
+    // Unificar items para timeline
+    const items = [
+      ...acts.map(a => ({ tipo: 'actividad', at: a.fecha_hora, ...a })),
+      ...vis.map(v => ({ tipo: 'visita', at: v.fecha_hora_llegada, ...v }))
+    ].sort((a,b) => new Date(b.at) - new Date(a.at));
+
+    // Vista admin
+    if (coordAdminPanel && coordAdminPanel.style.display !== 'none') {
+      renderTimeline(coordTimeline, items, { admin: true });
+      const hoy = new Date().toDateString();
+      const eventosHoy = items.filter(i => new Date(i.at).toDateString() === hoy).length;
+      const stats = document.getElementById('coordStats');
+      if (stats) stats.textContent = `${eventosHoy} eventos hoy · ${items.length} totales`;
+    }
+
+    // Vista self coordinator
+    if (coordSelfPanel && coordSelfPanel.style.display !== 'none') {
+      const mios = items.filter(i => i.coordinador_id === psSes.userId);
+      renderTimeline(coordSelfTimeline, mios, { admin: false });
+      const hoy = new Date().toDateString();
+      const eventosHoy = mios.filter(i => new Date(i.at).toDateString() === hoy).length;
+      const stats = document.getElementById('coordSelfStats');
+      if (stats) stats.textContent = `${eventosHoy} eventos hoy · ${mios.length} totales`;
+    }
+  };
+
+  function renderTimeline(container, items, opts) {
+    if (!container) return;
+
+    // Aplica filtros solo en vista admin
+    let visibles = items;
+    if (opts.admin) {
+      if (coordFilterCoordVal !== 'todos') visibles = visibles.filter(i => i.coordinador_id === coordFilterCoordVal);
+      if (coordFilterTipoVal === 'actividades') visibles = visibles.filter(i => i.tipo === 'actividad');
+      else if (coordFilterTipoVal === 'visitas') visibles = visibles.filter(i => i.tipo === 'visita');
+      else if (coordFilterTipoVal === 'notas') visibles = visibles.filter(i => (i.nota_para_admin || '').trim());
+    }
+
+    if (visibles.length === 0) {
+      container.innerHTML = `<div class="coord-empty">
+        <svg class="ic ic-24"><use href="#ic-clipboard"/></svg>
+        <div>Sin eventos aún. Cuando registres actividades o visitas aparecerán aquí.</div>
+      </div>`;
+      return;
+    }
+
+    container.className = 'coord-timeline';
+    container.innerHTML = visibles.map(i => {
+      const u = coordUsuariosMap[i.coordinador_id] || { nombre: '—' };
+      const dt = new Date(i.at);
+      const fecha = dt.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+      const hora = dt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      const claseNota = (i.nota_para_admin || '').trim() ? 'nota-admin' : '';
+      if (i.tipo === 'actividad') {
+        return `
+          <div class="coord-item actividad ${claseNota}">
+            <div class="coord-item-head">
+              <div class="coord-item-title">${i.titulo || 'Actividad'}</div>
+              <div class="coord-item-time">${fecha} · ${hora}</div>
+            </div>
+            ${i.descripcion ? `<div class="coord-item-body">${escapeHtml(i.descripcion)}</div>` : ''}
+            <div class="coord-item-meta">
+              <span><svg class="ic ic-14"><use href="#ic-user"/></svg>${u.nombre}</span>
+            </div>
+            ${(i.nota_para_admin || '').trim() ? `<div class="coord-nota-box">${escapeHtml(i.nota_para_admin)}</div>` : ''}
+          </div>`;
+      } else {
+        const hotel = (PS.puestos.find(p => p.id === i.puesto_id) || {}).nombre || '—';
+        const dirBadge = i.vio_director
+          ? '<span class="badge badge-ok small"><span class="dot"></span>Vio al director</span>'
+          : '<span class="badge badge-neutral small"><span class="dot"></span>Sin director</span>';
+        const gps = (i.gps_lat && i.gps_lng)
+          ? `<a href="https://www.google.com/maps?q=${i.gps_lat},${i.gps_lng}" target="_blank" style="text-decoration:none;color:inherit;"><svg class="ic ic-14"><use href="#ic-pin"/></svg>${(+i.gps_lat).toFixed(4)}, ${(+i.gps_lng).toFixed(4)}</a>`
+          : '<span><svg class="ic ic-14"><use href="#ic-pin"/></svg>sin GPS</span>';
+        return `
+          <div class="coord-item visita ${claseNota}">
+            <div class="coord-item-head">
+              <div class="coord-item-title">📍 Visita a ${escapeHtml(hotel)}</div>
+              <div class="coord-item-time">${fecha} · ${hora}</div>
+            </div>
+            ${i.actividades_realizadas ? `<div class="coord-item-body"><b>Realizado:</b> ${escapeHtml(i.actividades_realizadas)}</div>` : ''}
+            ${(i.vio_director && i.director_notas) ? `<div class="coord-item-body" style="margin-top:4px;"><b>Director:</b> ${escapeHtml(i.director_notas)}</div>` : ''}
+            <div class="coord-item-meta">
+              <span><svg class="ic ic-14"><use href="#ic-user"/></svg>${u.nombre}</span>
+              ${gps}
+              ${dirBadge}
+            </div>
+            ${(i.nota_para_admin || '').trim() ? `<div class="coord-nota-box">${escapeHtml(i.nota_para_admin)}</div>` : ''}
+          </div>`;
+      }
+    }).join('');
+  }
+
+  function escapeHtml(s) {
+    return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  if (coordFilterCoord) coordFilterCoord.addEventListener('change', e => { coordFilterCoordVal = e.target.value; cargarCoordinacion(); });
+  if (coordFilterTipo) coordFilterTipo.addEventListener('change', e => { coordFilterTipoVal = e.target.value; cargarCoordinacion(); });
+
+  // Cargar al inicio y después de que auth-guard confirme sesión
+  cargarCoordinacion();
+  document.addEventListener('ps-session-updated', () => cargarCoordinacion());
+
+  /* ---------- Modal nueva actividad ---------- */
+  window.openNuevaActividad = () => document.getElementById('actividadModal').classList.add('open');
+  window.closeActividadModal = () => document.getElementById('actividadModal').classList.remove('open');
+  window.crearActividad = async function () {
+    const titulo = document.getElementById('actTitulo').value.trim();
+    if (!titulo) { toast('Escribe un título'); return; }
+    const psSes = window.PS_SESSION || {};
+    try {
+      const { error } = await window.sb.from('actividades_coordinador').insert({
+        coordinador_id: psSes.userId,
+        empresa_id: psSes.empresa_id,
+        titulo,
+        descripcion: document.getElementById('actDesc').value.trim(),
+        nota_para_admin: document.getElementById('actNota').value.trim() || null
+      });
+      if (error) throw error;
+      ['actTitulo','actDesc','actNota'].forEach(id => document.getElementById(id).value = '');
+      closeActividadModal();
+      toast('Actividad registrada');
+      cargarCoordinacion();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  /* ---------- Modal nueva visita a hotel ---------- */
+  window.openNuevaVisita = function () {
+    const sel = document.getElementById('visHotel');
+    sel.innerHTML = PS.puestos.map(p => `<option value="${p.id}">${p.nombre}${p.zona ? ' — ' + p.zona : ''}</option>`).join('');
+    document.getElementById('visHora').value = '';
+    document.getElementById('visGps').value = '';
+    lastVisitaCapture = null;
+    document.getElementById('visitaModal').classList.add('open');
+  };
+  window.closeVisitaModal = () => document.getElementById('visitaModal').classList.remove('open');
+  window.capturarLlegada = function () {
+    const btn = document.getElementById('btnCapturar');
+    btn.disabled = true; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-signal"/></svg> Capturando…';
+    const ahora = new Date();
+    if (!navigator.geolocation) {
+      document.getElementById('visHora').value = ahora.toLocaleTimeString('es-ES');
+      lastVisitaCapture = { hora: ahora.toISOString(), lat: null, lng: null };
+      document.getElementById('visGps').value = 'no soportado';
+      btn.disabled = false; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-check"/></svg> Capturado';
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(pos => {
+      document.getElementById('visHora').value = ahora.toLocaleTimeString('es-ES');
+      document.getElementById('visGps').value = `${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`;
+      lastVisitaCapture = { hora: ahora.toISOString(), lat: pos.coords.latitude, lng: pos.coords.longitude };
+      btn.disabled = false; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-check"/></svg> Capturado';
+      toast('Hora y GPS capturados');
+    }, err => {
+      document.getElementById('visHora').value = ahora.toLocaleTimeString('es-ES');
+      document.getElementById('visGps').value = 'error GPS';
+      lastVisitaCapture = { hora: ahora.toISOString(), lat: null, lng: null };
+      btn.disabled = false; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-signal"/></svg> Capturar';
+      toast('GPS bloqueado, se ha guardado solo la hora');
+    }, { enableHighAccuracy: true, timeout: 8000 });
+  };
+  window.guardarVisita = async function () {
+    if (!lastVisitaCapture) { toast('Pulsa Capturar primero para registrar hora y GPS'); return; }
+    const hotelId = document.getElementById('visHotel').value;
+    const acts = document.getElementById('visActividades').value.trim();
+    if (!acts) { toast('Describe qué has realizado en el hotel'); return; }
+    const psSes = window.PS_SESSION || {};
+    try {
+      const { error } = await window.sb.from('visitas_hoteles').insert({
+        coordinador_id: psSes.userId,
+        empresa_id: psSes.empresa_id,
+        puesto_id: hotelId,
+        fecha_hora_llegada: lastVisitaCapture.hora,
+        gps_lat: lastVisitaCapture.lat,
+        gps_lng: lastVisitaCapture.lng,
+        vio_director: document.getElementById('visVioDirector').checked,
+        director_notas: document.getElementById('visDirNotas').value.trim() || null,
+        actividades_realizadas: acts,
+        nota_para_admin: document.getElementById('visNotaAdmin').value.trim() || null
+      });
+      if (error) throw error;
+      ['visActividades','visDirNotas','visNotaAdmin'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('visVioDirector').checked = false;
+      closeVisitaModal();
+      toast('Visita registrada');
+      cargarCoordinacion();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
   /* ---------- Logout (real: cierra sesión en Supabase) ---------- */
   window.logout = function () {
     if (window.logoutReal) return window.logoutReal();
