@@ -1262,6 +1262,35 @@
         `;
       })();
     }
+    else if (fichaTabActual === 'titulaciones') {
+      body.innerHTML = `
+        <div class="section-eyebrow" style="margin-top:0;">
+          <span class="eyebrow">Titulaciones, DNI, PRL y contrato</span>
+          <button class="btn btn-primary btn-sm" onclick="openTitulacionCoord()">
+            <svg class="ic ic-14"><use href="#ic-plus"/></svg>
+            Añadir documento
+          </button>
+        </div>
+        <div id="titsCoordList"><div class="tit-empty">Cargando…</div></div>`;
+      (async () => {
+        const items = await window.PSTit.cargar(fichaActualId);
+        const el = document.getElementById('titsCoordList');
+        if (!el) return;
+        el.innerHTML = window.PSTit.renderLista(items, { canEdit: true });
+        el.querySelectorAll('[data-editar]').forEach(b => b.addEventListener('click', () => {
+          const t = items.find(x => x.id === b.dataset.editar);
+          openTitulacionCoord(t);
+        }));
+        el.querySelectorAll('[data-eliminar]').forEach(b => b.addEventListener('click', async () => {
+          if (!confirm('¿Eliminar este documento?')) return;
+          try {
+            await window.PSTit.eliminar(b.dataset.eliminar);
+            toast('Eliminado');
+            renderFichaBody();
+          } catch (err) { toast('Error: ' + err.message); }
+        }));
+      })();
+    }
     else if (fichaTabActual === 'tareas') {
       body.innerHTML = `
         <div class="ficha-body-title">Enviar tarea o nota a ${e.nombre.split(' ')[0]}</div>
@@ -2257,6 +2286,63 @@
       closeVisitaModal();
       toast('Visita registrada');
       cargarCoordinacion();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  /* ==========================================================================
+     TITULACIONES desde ficha coordinador (usa módulo compartido PSTit)
+     ========================================================================== */
+  window.openTitulacionCoord = function (t) {
+    document.getElementById('titulacionModalBody').innerHTML = window.PSTit.modalHTML(t || null);
+    document.getElementById('titulacionModal').classList.add('open');
+    onTitTipoChange();
+  };
+  window.closeTitulacionModal = () => document.getElementById('titulacionModal').classList.remove('open');
+
+  window.onTitTipoChange = function () {
+    const tipo = document.getElementById('titTipo')?.value;
+    if (!tipo) return;
+    const info = window.PSTit.TIPOS[tipo];
+    const wrapCad = document.getElementById('titCad')?.closest('.field');
+    const wrapRec = document.getElementById('titRec')?.closest('.field');
+    const wrapObt = document.getElementById('titObt')?.closest('.field');
+    if (wrapCad) wrapCad.style.opacity = info.needCaducidad ? '1' : '.4';
+    if (wrapRec) wrapRec.style.opacity = info.needReciclaje ? '1' : '.4';
+    if (wrapObt) wrapObt.style.opacity = info.needObtencion ? '1' : '.4';
+  };
+
+  window.onTitFileChange = function (e) {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024) { toast('Archivo demasiado grande (máx 5MB)'); e.target.value = ''; return; }
+    document.getElementById('titFileName').textContent = f.name;
+    const reader = new FileReader();
+    reader.onload = ev => { document.getElementById('titFileData').value = ev.target.result; };
+    reader.readAsDataURL(f);
+  };
+
+  window.submitTitulacion = async function () {
+    if (!fichaActualId) { toast('Sin empleado seleccionado'); return; }
+    const tipo = document.getElementById('titTipo').value;
+    const fileData = document.getElementById('titFileData').value;
+    const fileName = document.getElementById('titFile').files[0]?.name || null;
+    try {
+      await window.PSTit.guardar(fichaActualId, {
+        id: document.getElementById('titId').value || null,
+        tipo,
+        nombre: document.getElementById('titNombre').value.trim() || window.PSTit.TIPOS[tipo].label,
+        entidad_emisora: document.getElementById('titEntidad').value.trim(),
+        numero_referencia: document.getElementById('titRef').value.trim(),
+        fecha_obtencion: document.getElementById('titObt').value || null,
+        fecha_caducidad: document.getElementById('titCad').value || null,
+        fecha_reciclaje: document.getElementById('titRec').value || null,
+        documento_url: fileData || undefined,
+        documento_nombre: fileName || undefined,
+        notas: document.getElementById('titNotas').value.trim()
+      });
+      closeTitulacionModal();
+      toast('✓ Documento guardado');
+      renderFichaBody();
     } catch (err) { toast('Error: ' + err.message); }
   };
 

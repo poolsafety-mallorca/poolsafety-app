@@ -1410,6 +1410,108 @@ img, svg { display: block; max-width: 100%; }
 }
 
 /* ==========================================================================
+   TITULACIONES Y DOCUMENTACIÓN LABORAL
+   ========================================================================== */
+.tit-alert-faltan {
+  padding: 12px 14px;
+  background: #FEE2E2;
+  border-left: 4px solid #DC2626;
+  color: #7F1D1D;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.tit-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  padding: 14px;
+  margin-bottom: 10px;
+  position: relative;
+  transition: all .15s ease;
+}
+.tit-card:hover { border-color: var(--sky-300, #FCA5A5); box-shadow: 0 4px 12px rgba(220,38,38,.08); }
+.tit-card.caducado { border-left: 4px solid #DC2626; background: linear-gradient(90deg, #FEF2F2, #fff 40%); }
+.tit-card.proximo { border-left: 4px solid #F59E0B; background: linear-gradient(90deg, #FFFBEB, #fff 40%); }
+.tit-card.cerca { border-left: 4px solid #FCD34D; }
+
+.tit-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.tit-icon {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  color: #fff;
+  flex-shrink: 0;
+}
+.tit-title-wrap { flex: 1; min-width: 0; }
+.tit-title { font-weight: 700; font-size: 14.5px; color: var(--ink-900); line-height: 1.25; }
+.tit-sub { font-size: 11.5px; color: var(--ink-500); margin-top: 2px; }
+.tit-badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+.tit-badge.ok { background: #DCFCE7; color: #166534; }
+.tit-badge.cerca { background: #FEF3C7; color: #92400E; }
+.tit-badge.proximo { background: #FED7AA; color: #9A3412; }
+.tit-badge.caducado { background: #FEE2E2; color: #7F1D1D; }
+
+.tit-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 6px 14px;
+  padding: 8px 0;
+  border-top: 1px dashed var(--ink-200);
+}
+.tit-fecha-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.tit-fecha-row b {
+  color: var(--ink-900);
+  font-weight: 600;
+  font-size: 12.5px;
+}
+.tit-notas {
+  padding: 10px 12px;
+  background: var(--ink-50, #F8FAFC);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--ink-700);
+  margin-top: 8px;
+  font-style: italic;
+}
+.tit-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.tit-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--ink-500);
+  background: var(--ink-50, #F8FAFC);
+  border-radius: var(--r-3);
+  border: 2px dashed var(--ink-200);
+}
+
+/* ==========================================================================
    FIRMA MANUSCRITA (canvas)
    ========================================================================== */
 .firma-canvas-wrap {

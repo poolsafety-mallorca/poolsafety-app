@@ -1,5 +1,6 @@
 /* PoolSafety · Service Worker (PWA offline básico) */
-const CACHE = 'poolsafety-v5';
+const CACHE = 'poolsafety-v6';
+// Añadir titulaciones.js al cache
 const CORE = [
   '/',
   '/index.html',
@@ -14,6 +15,8 @@ const CORE = [
   '/js/socorrista.js',
   '/js/coordinador.js',
   '/js/pwa-install.js',
+  '/js/titulaciones.js',
+  '/js/theme-toggle.js',
   '/assets/logo-blanco.png',
   '/manifest.webmanifest'
 ];

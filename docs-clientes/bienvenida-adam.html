@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>PoolSafety App · Guía Administrador</title>
+<style>
+  @page { size: A4; margin: 14mm 12mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    color: #1a1a1a;
+    margin: 0;
+    line-height: 1.55;
+    font-size: 12pt;
+  }
+  /* Portada */
+  .cover {
+    background: linear-gradient(135deg, #7F1D1D 0%, #B91C1C 60%, #DC2626 100%);
+    color: #fff;
+    padding: 60mm 20mm 40mm;
+    text-align: center;
+    page-break-after: always;
+    margin: -14mm -12mm 14mm;
+    min-height: 260mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .cover-logo {
+    max-width: 340px;
+    margin: 0 auto 30px;
+    filter: brightness(0) invert(1);
+  }
+  .cover h1 {
+    font-size: 34pt;
+    font-weight: 800;
+    margin: 20px 0 8px;
+    letter-spacing: -0.02em;
+  }
+  .cover .subtitle {
+    font-size: 16pt;
+    opacity: .92;
+    margin: 0 0 40px;
+    font-weight: 300;
+  }
+  .cover .role {
+    background: rgba(255,255,255,.12);
+    padding: 14px 28px;
+    border-radius: 999px;
+    display: inline-block;
+    font-size: 12pt;
+    font-weight: 600;
+    letter-spacing: .5px;
+    border: 1px solid rgba(255,255,255,.3);
+  }
+  .cover .empresa {
+    margin-top: 60px;
+    font-size: 11pt;
+    opacity: .85;
+  }
+  /* Contenido */
+  h2 {
+    color: #B91C1C;
+    font-size: 20pt;
+    font-weight: 800;
+    margin: 30px 0 8px;
+    padding-bottom: 6px;
+    border-bottom: 3px solid #FEE2E2;
+    letter-spacing: -0.01em;
+  }
+  h3 {
+    color: #7F1D1D;
+    font-size: 14pt;
+    font-weight: 700;
+    margin: 22px 0 6px;
+  }
+  h4 {
+    color: #B91C1C;
+    font-size: 12pt;
+    margin: 16px 0 4px;
+    font-weight: 700;
+  }
+  p, li { font-size: 11pt; color: #333; }
+  a { color: #B91C1C; text-decoration: none; font-weight: 500; }
+
+  /* Callouts */
+  .box {
+    background: #FEF2F2;
+    border-left: 4px solid #DC2626;
+    padding: 14px 18px;
+    margin: 14px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .box-info {
+    background: #EFF6FF;
+    border-left-color: #2563EB;
+  }
+  .box-warning {
+    background: #FFFBEB;
+    border-left-color: #F59E0B;
+  }
+  .box-success {
+    background: #F0FDF4;
+    border-left-color: #16A34A;
+  }
+  .box b { color: #7F1D1D; }
+  .box-info b { color: #1E40AF; }
+  .box-warning b { color: #92400E; }
+  .box-success b { color: #166534; }
+
+  /* Credenciales */
+  .credenciales {
+    background: #fff;
+    border: 2px solid #B91C1C;
+    border-radius: 12px;
+    padding: 16px;
+    margin: 16px 0;
+    page-break-inside: avoid;
+  }
+  .credenciales-titulo {
+    color: #B91C1C;
+    font-weight: 800;
+    font-size: 13pt;
+    margin-bottom: 8px;
+  }
+  .credenciales table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11pt;
+  }
+  .credenciales td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #FEE2E2;
+  }
+  .credenciales td:first-child {
+    font-weight: 600;
+    color: #7F1D1D;
+    width: 32%;
+  }
+  .credenciales tr:last-child td { border-bottom: none; }
+  .placeholder {
+    background: #FEE2E2;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    color: #7F1D1D;
+  }
+
+  /* Steps */
+  .steps { counter-reset: step; padding-left: 0; list-style: none; }
+  .steps li {
+    counter-increment: step;
+    padding: 8px 0 8px 46px;
+    position: relative;
+  }
+  .steps li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 6px;
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, #DC2626, #B91C1C);
+    color: #fff;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 32px;
+    font-weight: 800;
+    font-size: 12pt;
+  }
+
+  /* Tabla módulos */
+  .modulos {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 10.5pt;
+  }
+  .modulos th {
+    background: #B91C1C;
+    color: #fff;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 700;
+  }
+  .modulos td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #FEE2E2;
+    vertical-align: top;
+  }
+  .modulos tr:nth-child(even) td { background: #FEF2F2; }
+  .estado-ok { color: #16A34A; font-weight: 700; }
+  .estado-pend { color: #F59E0B; font-weight: 700; }
+
+  /* Footer */
+  .footer {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 2px solid #FEE2E2;
+    text-align: center;
+    color: #7F1D1D;
+    font-size: 10pt;
+  }
+  .footer-empresa {
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  ul li { margin: 4px 0; }
+  strong { color: #B91C1C; }
+
+  .page-break { page-break-before: always; }
+  .avoid-break { page-break-inside: avoid; }
+
+  /* Checklist */
+  .check-list { list-style: none; padding-left: 0; }
+  .check-list li {
+    padding: 6px 0 6px 30px;
+    position: relative;
+    font-size: 11pt;
+  }
+  .check-list li::before {
+    content: '☐';
+    position: absolute; left: 0; top: 4px;
+    color: #B91C1C;
+    font-size: 16pt;
+    font-weight: 900;
+  }
+</style>
+</head>
+<body>
+
+<!-- ====================== PORTADA ====================== -->
+<section class="cover">
+  <img src="../assets/logo-blanco.png" class="cover-logo" alt="PoolSafety">
+  <h1>App Operativa PoolSafety</h1>
+  <p class="subtitle">Guía completa del Administrador</p>
+  <div class="role">👤 Rol: Dirección / Administrador</div>
+  <div class="empresa">
+    Pool Safety Des Llevant, S.L.<br>
+    CIF B75828418 · Portocolom, Baleares<br>
+    Piloto · Julio 2026
+  </div>
+</section>
+
+<!-- ====================== BIENVENIDA ====================== -->
+<h2>Bienvenido, Adam</h2>
+<p>Este documento te guía por la nueva <strong>app operativa de PoolSafety</strong> — un sistema completo para gestionar tus 20 hoteles, tu equipo de coordinadores y socorristas, y toda la documentación laboral, todo desde móvil, tablet u ordenador.</p>
+
+<div class="box">
+  <b>URL de acceso:</b><br>
+  <span style="font-size: 14pt; font-family: monospace; color:#B91C1C;">https://poolsafety-app.netlify.app</span>
+</div>
+
+<h3>¿Qué es esto?</h3>
+<p>Es la <strong>versión de piloto real</strong> de la app. Ya funciona con base de datos en producción, login seguro y todos los módulos principales. Sirve para que tú, tus coordinadores y un socorrista de confianza (Carlos) la uséis durante 1-2 semanas antes de darla al resto del equipo.</p>
+
+<h3>¿Por qué es útil?</h3>
+<ul>
+  <li>🎯 <strong>Sustituye WhatsApp + Excel + hojas de papel</strong> para toda la operativa diaria</li>
+  <li>📍 <strong>Fichajes con GPS real</strong> — sabes al momento quién está en su puesto</li>
+  <li>🏥 <strong>Botiquín + DESA + oxigenoterapia según normativa balear</strong> (Decreto 53/1995 y 137/2008)</li>
+  <li>📄 <strong>Documentación laboral firmada digitalmente</strong> (Kit Alta, RGPD, jornada mensual)</li>
+  <li>👥 <strong>Panel único</strong> desde el que tú controlas todo</li>
+</ul>
+
+<!-- ====================== CREDENCIALES ====================== -->
+<h2>Tus credenciales de acceso</h2>
+<p>Estas son las 4 cuentas del piloto. Tú (Adam) tienes acceso a todo. Los coordinadores gestionan el día a día. Carlos es el socorrista de prueba.</p>
+
+<div class="credenciales">
+  <div class="credenciales-titulo">👑 Tu cuenta · Administrador</div>
+  <table>
+    <tr><td>Email</td><td>info@poolsafety.es</td></tr>
+    <tr><td>Contraseña</td><td><span class="placeholder">_____________________</span></td></tr>
+    <tr><td>Rol en la app</td><td>Dirección — acceso total</td></tr>
+  </table>
+</div>
+
+<div class="credenciales">
+  <div class="credenciales-titulo">🧑‍💼 Coordinador 1 · Alex (RRHH)</div>
+  <table>
+    <tr><td>Email</td><td>Rrhh@poolsafety.es</td></tr>
+    <tr><td>Contraseña</td><td><span class="placeholder">_____________________</span></td></tr>
+    <tr><td>Rol en la app</td><td>Coordinador</td></tr>
+  </table>
+</div>
+
+<div class="credenciales">
+  <div class="credenciales-titulo">🧑‍💼 Coordinador 2 · Óscar (Laboral)</div>
+  <table>
+    <tr><td>Email</td><td>Laboral@poolsafety.es</td></tr>
+    <tr><td>Contraseña</td><td><span class="placeholder">_____________________</span></td></tr>
+    <tr><td>Rol en la app</td><td>Coordinador</td></tr>
+  </table>
+</div>
+
+<div class="credenciales">
+  <div class="credenciales-titulo">🏊 Socorrista de prueba · Carlos Biosca</div>
+  <table>
+    <tr><td>Email</td><td>carlosbiosca24@gmail.com</td></tr>
+    <tr><td>Contraseña</td><td><span class="placeholder">_____________________</span></td></tr>
+    <tr><td>Rol en la app</td><td>Socorrista</td></tr>
+    <tr><td>Puesto asignado</td><td>Petra — Piscina Municipal</td></tr>
+  </table>
+</div>
+
+<div class="box-info box">
+  <b>Recuperación de contraseña:</b> Si olvidas la tuya, en la pantalla de login pulsa <strong>"¿Olvidaste la contraseña?"</strong> y sigue el enlace del email.
+</div>
+
+<!-- ====================== INSTALAR ====================== -->
+<h2 class="page-break">Cómo instalar la app en tu móvil</h2>
+<p>La app se puede instalar como una app nativa (icono en la pantalla de inicio, pantalla completa, sin barra del navegador). Es gratis y no ocupa espacio.</p>
+
+<h3>📱 Android (Chrome / Edge)</h3>
+<ol class="steps">
+  <li>Abre <strong>https://poolsafety-app.netlify.app</strong> en Chrome</li>
+  <li>Aparecerá un modal automático "Instala PoolSafety" → pulsa <strong>"Instalar app"</strong></li>
+  <li>Confirma → icono aparece en tu pantalla de inicio</li>
+</ol>
+
+<h3>📱 iPhone / iPad (Safari)</h3>
+<ol class="steps">
+  <li>Abre la URL en Safari (importante: no en Chrome)</li>
+  <li>Pulsa el botón <strong>Compartir ⬆️</strong> abajo</li>
+  <li>Desliza y elige <strong>"Añadir a pantalla de inicio"</strong></li>
+  <li>Confirma con <strong>"Añadir"</strong> arriba a la derecha</li>
+</ol>
+
+<h3>💻 Ordenador (Chrome / Edge)</h3>
+<ol class="steps">
+  <li>Abre la URL en Chrome</li>
+  <li>Barra de direcciones → icono de instalación (⬇️ en un cuadrado)</li>
+  <li>Confirma → se instala como aplicación de escritorio</li>
+</ol>
+
+<!-- ====================== TU PANEL ====================== -->
+<h2 class="page-break">Tu panel — recorrido completo</h2>
+
+<p>Al hacer login como <strong>Adam</strong>, entras al <strong>Panel Operativo</strong> con 6 secciones en el menú superior:</p>
+
+<h3>1. Vista general</h3>
+<p>KPIs en tiempo real: puestos operativos, fichajes tarde, fuera de zona, sin fichar. Grid de puestos en vivo con estado de cada socorrista. Alertas de botiquín. Acciones rápidas.</p>
+
+<h3>2. Empleados 👥</h3>
+<ul>
+  <li>Grid con todos los empleados de la BD (activos, pendientes, baja)</li>
+  <li>Click en una ficha → datos completos, horario, docs, tareas, acciones</li>
+  <li>Botón <strong>"+ Nuevo empleado"</strong> → puedes crear socorristas, coordinadores u otros admins con contraseña inicial</li>
+  <li>Subir foto de la persona</li>
+  <li>Enviar tarea o email de recuperación de contraseña</li>
+  <li>Dar de baja o eliminar ficha</li>
+</ul>
+
+<h3>3. Hoteles 🏨</h3>
+<ul>
+  <li>Los 20 hoteles reales del cuadrante (Ona Luna Park, Inturotel, Gavimar, Palma Aquarium, Petra, etc.)</li>
+  <li>Cada uno con GPS, horario, nº socorristas necesarios, equipamiento (DESA / O₂ / botiquín)</li>
+  <li>Ficha con pestañas: Datos y ubicación · Horario · Servicios · Equipamiento · Acciones</li>
+  <li>Botón <strong>"Ver en Google Maps"</strong> con las coordenadas</li>
+  <li>Añadir hoteles nuevos con GPS auto-capturado desde tu ubicación</li>
+</ul>
+
+<h3>4. Coordinación 📋</h3>
+<ul>
+  <li>Timeline en vivo con todo lo que hacen Alex y Óscar</li>
+  <li>Actividades del parte diario</li>
+  <li>Visitas a hoteles con hora exacta y GPS de dónde estaban</li>
+  <li>Si hablaron con el director del hotel → lo ves con notas</li>
+  <li>Notas específicas para ti aparecen destacadas en amarillo</li>
+  <li>Filtros por coordinador, tipo, notas para admin</li>
+</ul>
+
+<h3>5. Documentación 📄</h3>
+<ul>
+  <li>Estado de firmas laborales de todo el equipo</li>
+  <li>Ves quién ha firmado Kit Alta, jornada mensual, etc.</li>
+  <li>Puedes firmar en tu tablet en nombre del empleado si su móvil no funciona</li>
+  <li>Subir docs a socorristas específicos (contratos, nóminas, formaciones)</li>
+</ul>
+
+<h3>6. Horarios 📅</h3>
+<ul>
+  <li>Subida masiva del cuadrante mensual en PDF, Excel o CSV</li>
+  <li>Sistema detecta socorristas, hoteles y turnos automáticamente</li>
+  <li>Revisas y aplicas → cada socorrista ve su horario en su móvil al instante</li>
+  <li>También asignación manual uno a uno</li>
+</ul>
+
+<h3>7. Botiquín + DESA 🚑</h3>
+<ul>
+  <li>41 productos según Decreto 53/1995 Baleares + Decreto 137/2008 (DESA)</li>
+  <li>Stock por hotel, alertas de stock bajo automáticas</li>
+  <li>Puedes añadir productos personalizados</li>
+</ul>
+
+<h3>8. Horas del mes 📊</h3>
+<ul>
+  <li>Tabla con horas normales, extras y total por socorrista</li>
+  <li>Filtros por horas extra o top 10</li>
+</ul>
+
+<!-- ====================== TESTS ====================== -->
+<h2 class="page-break">Qué probar (checklist)</h2>
+
+<div class="box box-success">
+  <b>Recomendación:</b> haz estas pruebas durante los próximos 3-4 días con normalidad. Cualquier problema o mejora, escríbenos.
+</div>
+
+<h3>Como Adam (dirección)</h3>
+<ul class="check-list">
+  <li>Login con tu email + contraseña</li>
+  <li>Instalar app en tu móvil (Android/iPhone)</li>
+  <li>Instalar app en tu ordenador</li>
+  <li>Recorrer las 8 secciones del menú y revisar que los datos coinciden con la realidad</li>
+  <li>Crear un nuevo hotel de prueba y luego eliminarlo</li>
+  <li>Editar un hotel existente (horario, equipamiento, GPS)</li>
+  <li>Ver el timeline de Coordinación (verás actividades de Alex y Óscar cuando las registren)</li>
+  <li>Ver la ficha de Carlos → pestaña Documentación → cuando firme el Kit Alta, verás su firma real</li>
+  <li>Crear una nueva cuenta de coordinador ficticia y luego eliminarla</li>
+  <li>Probar el modo oscuro/claro del móvil</li>
+</ul>
+
+<h3>Como Coordinador (loguéate con Rrhh@ o Laboral@)</h3>
+<ul class="check-list">
+  <li>Login con las credenciales de coordinador</li>
+  <li>Verificar que solo ves opciones de tu rol (no puedes tocar cosas de admin)</li>
+  <li>Registrar una "Nueva actividad" en Coordinación</li>
+  <li>Registrar una "Visita a hotel" — pulsa Capturar para hora + GPS automático</li>
+  <li>Crear un socorrista de prueba (solo tú y admin podéis)</li>
+  <li>Enviar tarea a Carlos desde su ficha</li>
+</ul>
+
+<h3>Como Socorrista (loguéate con carlosbiosca24@gmail.com)</h3>
+<ul class="check-list">
+  <li>Login con Carlos → deberías ver "Petra — Piscina Municipal" en la cabecera</li>
+  <li>Pulsar "Fichar entrada" cuando estés en Petra (miércoles) → validar GPS real</li>
+  <li>Explorar tabs: Inicio, Tareas, Botiquín, Docs, Perfil</li>
+  <li>Firmar el Kit Alta al primer login (wizard de 9 pasos con firma manuscrita)</li>
+  <li>Subir foto de perfil</li>
+  <li>Reportar falta de material en el botiquín</li>
+</ul>
+
+<!-- ====================== ESTADO PILOTO ====================== -->
+<h2 class="page-break">Estado del piloto</h2>
+
+<table class="modulos">
+  <thead>
+    <tr><th>Módulo</th><th>Estado</th><th>Notas</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Login + roles</td><td class="estado-ok">Listo</td><td>Real con Supabase Auth</td></tr>
+    <tr><td>Empleados (BD real)</td><td class="estado-ok">Listo</td><td>CRUD completo, foto, alta/baja</td></tr>
+    <tr><td>Hoteles (BD real)</td><td class="estado-ok">Listo</td><td>20 hoteles + GPS + equipamiento</td></tr>
+    <tr><td>Coordinación (actividades + visitas GPS)</td><td class="estado-ok">Listo</td><td>Timeline vivo, filtros</td></tr>
+    <tr><td>Firmas manuscritas Kit Alta y jornada</td><td class="estado-ok">Listo</td><td>Canvas dibujo, se guarda imagen + GPS</td></tr>
+    <tr><td>Fichaje GPS con geocerca</td><td class="estado-ok">Listo</td><td>Distancia real, valida radio del puesto</td></tr>
+    <tr><td>Botiquín + DESA + O₂</td><td class="estado-ok">Listo</td><td>41 items normativa Baleares</td></tr>
+    <tr><td>Recuperación contraseña</td><td class="estado-ok">Listo</td><td>Email desde info@poolsafety.es cuando DNS active</td></tr>
+    <tr><td>PWA instalable</td><td class="estado-ok">Listo</td><td>Android + iOS + Desktop</td></tr>
+    <tr><td>Responsive móvil + tablet</td><td class="estado-ok">Listo</td><td>Optimizado para pantallas 4"–12"</td></tr>
+    <tr><td>Storage nube para fotos</td><td class="estado-pend">Próximo</td><td>De momento se guarda comprimido en BD</td></tr>
+    <tr><td>Excel horarios auto-parse</td><td class="estado-pend">Próximo</td><td>Sube el Excel y muestra preview; falta aplicar a BD real</td></tr>
+    <tr><td>PDF firmado descargable</td><td class="estado-pend">Próximo</td><td>Ahora se guarda la imagen; falta generar PDF completo</td></tr>
+  </tbody>
+</table>
+
+<!-- ====================== BUGS ====================== -->
+<h2>Cómo reportar problemas</h2>
+<p>Durante el piloto es normal encontrar cosas raras. Cuando pase algo:</p>
+<ol>
+  <li>Toma una <strong>captura de pantalla</strong> del error</li>
+  <li>Anota <strong>qué estabas intentando hacer</strong></li>
+  <li>Anota <strong>desde qué dispositivo</strong> (móvil / tablet / PC + navegador)</li>
+  <li>Envíanoslo por WhatsApp o email para arreglarlo</li>
+</ol>
+
+<div class="box-warning box">
+  <b>Importante:</b> los datos que introducís durante el piloto se guardan de verdad en la base de datos. No metáis información sensible o confidencial hasta que la app esté 100% validada.
+</div>
+
+<!-- ====================== FOOTER ====================== -->
+<div class="footer">
+  <div class="footer-empresa">Pool Safety Des Llevant, S.L. · CIF B75828418</div>
+  <div>C/ Hernán Cortés, 8, 2º Dcha., 07670, Portocolom, Baleares</div>
+  <div>info@poolsafety.es</div>
+  <div style="margin-top: 8px; opacity: .7;">Documento generado para el piloto de la app · Julio 2026</div>
+</div>
+
+</body>
+</html>

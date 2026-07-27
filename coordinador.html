@@ -790,7 +790,8 @@
     <div class="ficha-tabs">
       <button class="ficha-tab active" data-ftab="datos">Datos</button>
       <button class="ficha-tab" data-ftab="horario">Horario</button>
-      <button class="ficha-tab" data-ftab="docs">Documentación</button>
+      <button class="ficha-tab" data-ftab="docs">Firmas</button>
+      <button class="ficha-tab" data-ftab="titulaciones">Titulaciones y DNI</button>
       <button class="ficha-tab" data-ftab="tareas">Tareas y notas</button>
       <button class="ficha-tab" data-ftab="acciones">Acciones</button>
     </div>
@@ -1087,6 +1088,11 @@
   </div>
 </div>
 
+<!-- Modal Titulaciones (compartido con socorrista) -->
+<div class="modal-backdrop" id="titulacionModal">
+  <div class="modal" id="titulacionModalBody" style="max-width:520px;"></div>
+</div>
+
 <div class="toast" id="toast">
   <svg class="ic ic-16"><use href="#ic-check-circle"/></svg>
   <span id="toastText"></span>
@@ -1098,6 +1104,7 @@
 <script src="js/pwa-install.js"></script>
 <script src="js/icons.js"></script>
 <script src="js/data.js"></script>
+<script src="js/titulaciones.js"></script>
 <script src="js/coordinador.js"></script>
 </body>
 </html>

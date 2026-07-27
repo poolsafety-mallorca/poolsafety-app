@@ -319,6 +319,15 @@
         </div>
       </div>
 
+      <div class="section-eyebrow">
+        <span class="eyebrow">Mi documentación laboral</span>
+        <button class="btn btn-primary btn-sm" onclick="openTitulacionModal()">
+          <svg class="ic ic-14"><use href="#ic-plus"/></svg>
+          Añadir
+        </button>
+      </div>
+      <div id="titulacionesList"></div>
+
       <div class="section-eyebrow"><span class="eyebrow">Ajustes</span></div>
       <div class="list">
         <div class="li">
@@ -467,6 +476,11 @@
   </div>
 </div>
 
+<!-- Modal Titulaciones -->
+<div class="modal-backdrop" id="titulacionModal">
+  <div class="modal" id="titulacionModalBody" style="max-width:520px;"></div>
+</div>
+
 <div class="toast" id="toast">
   <svg class="ic ic-16"><use href="#ic-check-circle"/></svg>
   <span id="toastText"></span>
@@ -478,6 +492,7 @@
 <script src="js/pwa-install.js"></script>
 <script src="js/icons.js"></script>
 <script src="js/data.js"></script>
+<script src="js/titulaciones.js"></script>
 <script src="js/socorrista.js"></script>
 </body>
 </html>
