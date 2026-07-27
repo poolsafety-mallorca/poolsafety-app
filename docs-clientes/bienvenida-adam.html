@@ -457,11 +457,24 @@
     <tr><td>Recuperación contraseña</td><td class="estado-ok">Listo</td><td>Email desde info@poolsafety.es cuando DNS active</td></tr>
     <tr><td>PWA instalable</td><td class="estado-ok">Listo</td><td>Android + iOS + Desktop</td></tr>
     <tr><td>Responsive móvil + tablet</td><td class="estado-ok">Listo</td><td>Optimizado para pantallas 4"–12"</td></tr>
-    <tr><td>Storage nube para fotos</td><td class="estado-pend">Próximo</td><td>De momento se guarda comprimido en BD</td></tr>
-    <tr><td>Excel horarios auto-parse</td><td class="estado-pend">Próximo</td><td>Sube el Excel y muestra preview; falta aplicar a BD real</td></tr>
-    <tr><td>PDF firmado descargable</td><td class="estado-pend">Próximo</td><td>Ahora se guarda la imagen; falta generar PDF completo</td></tr>
+    <tr><td>Storage nube para fotos</td><td class="estado-ok">Listo</td><td>Foto sube a Supabase Storage y se ve desde cualquier dispositivo</td></tr>
+    <tr><td>Excel horarios auto-parse</td><td class="estado-ok">Listo</td><td>Detecta hoteles, turnos y socorristas del Excel/CSV y guarda en BD real</td></tr>
+    <tr><td>PDF firmado descargable</td><td class="estado-ok">Listo</td><td>Genera PDF con cláusulas + firma manuscrita, descargable y guardado en Storage</td></tr>
+    <tr><td>Titulaciones y DNI</td><td class="estado-ok">Listo</td><td>DNI, SVB, DEA, socorrismo, PRL con fechas y alertas de caducidad</td></tr>
+    <tr><td>Emails automáticos (Resend)</td><td class="estado-pend">DNS en proceso</td><td>Esperando validación DNS del informático del cliente</td></tr>
   </tbody>
 </table>
+
+<h3>Novedades importantes esta semana</h3>
+<div class="box box-success">
+  <b>🎯 Todo el flujo laboral en la app:</b>
+  <ul>
+    <li><b>Foto perfil en la nube:</b> se ve desde el móvil del socorrista, la tablet del coordinador y tu ordenador</li>
+    <li><b>PDF descargable de firmas:</b> desde la ficha de cualquier empleado → tab "Firmas" → "Descargar PDF" del Kit Alta o Jornada firmados. El PDF incluye todas las cláusulas + firma manuscrita + GPS + timestamp — válido como evidencia legal</li>
+    <li><b>Excel horarios real:</b> arrastra el cuadrante mensual en Horarios → detecta socorristas + hoteles + turnos → aplicas y los socorristas ven su turno al instante</li>
+    <li><b>Titulaciones + PRL + DNI:</b> nueva pestaña en la ficha del empleado con caducidades. Alerta en rojo si algo caduca en menos de 30 días</li>
+  </ul>
+</div>
 
 <!-- ====================== BUGS ====================== -->
 <h2>Cómo reportar problemas</h2>

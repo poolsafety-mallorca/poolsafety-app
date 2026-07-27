@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>PoolSafety App · Guía Socorrista</title>
+<style>
+  @page { size: A4; margin: 14mm 12mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    color: #1a1a1a;
+    margin: 0;
+    line-height: 1.55;
+    font-size: 12pt;
+  }
+  .cover {
+    background: linear-gradient(135deg, #7F1D1D 0%, #B91C1C 60%, #DC2626 100%);
+    color: #fff;
+    padding: 60mm 20mm 40mm;
+    text-align: center;
+    page-break-after: always;
+    margin: -14mm -12mm 14mm;
+    min-height: 260mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .cover-logo {
+    max-width: 340px;
+    margin: 0 auto 30px;
+    filter: brightness(0) invert(1);
+  }
+  .cover h1 {
+    font-size: 34pt;
+    font-weight: 800;
+    margin: 20px 0 8px;
+    letter-spacing: -0.02em;
+  }
+  .cover .subtitle {
+    font-size: 16pt;
+    opacity: .92;
+    margin: 0 0 40px;
+    font-weight: 300;
+  }
+  .cover .role {
+    background: rgba(255,255,255,.12);
+    padding: 14px 28px;
+    border-radius: 999px;
+    display: inline-block;
+    font-size: 12pt;
+    font-weight: 600;
+    letter-spacing: .5px;
+    border: 1px solid rgba(255,255,255,.3);
+  }
+  .cover .empresa {
+    margin-top: 60px;
+    font-size: 11pt;
+    opacity: .85;
+  }
+  h2 {
+    color: #B91C1C;
+    font-size: 20pt;
+    font-weight: 800;
+    margin: 30px 0 8px;
+    padding-bottom: 6px;
+    border-bottom: 3px solid #FEE2E2;
+    letter-spacing: -0.01em;
+  }
+  h3 {
+    color: #7F1D1D;
+    font-size: 14pt;
+    font-weight: 700;
+    margin: 22px 0 6px;
+  }
+  h4 {
+    color: #B91C1C;
+    font-size: 12pt;
+    margin: 16px 0 4px;
+    font-weight: 700;
+  }
+  p, li { font-size: 11pt; color: #333; }
+  a { color: #B91C1C; text-decoration: none; font-weight: 500; }
+  strong { color: #B91C1C; }
+
+  .box {
+    background: #FEF2F2;
+    border-left: 4px solid #DC2626;
+    padding: 14px 18px;
+    margin: 14px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .box-info { background: #EFF6FF; border-left-color: #2563EB; }
+  .box-warning { background: #FFFBEB; border-left-color: #F59E0B; }
+  .box-success { background: #F0FDF4; border-left-color: #16A34A; }
+  .box b { color: #7F1D1D; }
+  .box-info b { color: #1E40AF; }
+  .box-warning b { color: #92400E; }
+  .box-success b { color: #166534; }
+
+  .credenciales {
+    background: #fff;
+    border: 2px solid #B91C1C;
+    border-radius: 12px;
+    padding: 16px;
+    margin: 16px 0;
+    page-break-inside: avoid;
+  }
+  .credenciales-titulo {
+    color: #B91C1C;
+    font-weight: 800;
+    font-size: 13pt;
+    margin-bottom: 8px;
+  }
+  .credenciales table { width: 100%; border-collapse: collapse; font-size: 11pt; }
+  .credenciales td { padding: 8px 10px; border-bottom: 1px solid #FEE2E2; }
+  .credenciales td:first-child { font-weight: 600; color: #7F1D1D; width: 32%; }
+  .credenciales tr:last-child td { border-bottom: none; }
+  .placeholder {
+    background: #FEE2E2;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    color: #7F1D1D;
+  }
+
+  .steps { counter-reset: step; padding-left: 0; list-style: none; }
+  .steps li {
+    counter-increment: step;
+    padding: 8px 0 8px 46px;
+    position: relative;
+  }
+  .steps li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 6px;
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, #DC2626, #B91C1C);
+    color: #fff;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 32px;
+    font-weight: 800;
+    font-size: 12pt;
+  }
+
+  .card-flow {
+    background: #fff;
+    border: 1px solid #FCA5A5;
+    border-radius: 12px;
+    padding: 16px;
+    margin: 12px 0;
+    page-break-inside: avoid;
+  }
+  .card-flow-title {
+    color: #B91C1C;
+    font-weight: 700;
+    font-size: 13pt;
+    margin: 0 0 8px;
+  }
+
+  .tab-tour {
+    display: flex;
+    gap: 12px;
+    padding: 14px;
+    background: #FEF2F2;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    page-break-inside: avoid;
+  }
+  .tab-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #DC2626, #B91C1C);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+  .tab-body { flex: 1; }
+  .tab-name {
+    font-weight: 700;
+    font-size: 13pt;
+    color: #7F1D1D;
+    margin: 0 0 4px;
+  }
+  .tab-desc {
+    font-size: 11pt;
+    color: #333;
+    margin: 0;
+  }
+
+  .tip {
+    background: linear-gradient(135deg, #FFFBEB, #FEF3C7);
+    border: 1px dashed #F59E0B;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 11pt;
+  }
+  .tip::before {
+    content: '💡 CONSEJO: ';
+    font-weight: 700;
+    color: #92400E;
+  }
+
+  .warning-hard {
+    background: #FEE2E2;
+    border: 2px solid #DC2626;
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin: 14px 0;
+    page-break-inside: avoid;
+  }
+  .warning-hard::before {
+    content: '⚠️ IMPORTANTE: ';
+    font-weight: 800;
+    color: #7F1D1D;
+  }
+
+  .footer {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 2px solid #FEE2E2;
+    text-align: center;
+    color: #7F1D1D;
+    font-size: 10pt;
+  }
+  .footer-empresa { font-weight: 700; margin-bottom: 4px; }
+
+  ul li { margin: 4px 0; }
+  .page-break { page-break-before: always; }
+
+  .check-list { list-style: none; padding-left: 0; }
+  .check-list li {
+    padding: 6px 0 6px 30px;
+    position: relative;
+    font-size: 11pt;
+  }
+  .check-list li::before {
+    content: '☐';
+    position: absolute; left: 0; top: 4px;
+    color: #B91C1C;
+    font-size: 16pt;
+    font-weight: 900;
+  }
+</style>
+</head>
+<body>
+
+<!-- ====================== PORTADA ====================== -->
+<section class="cover">
+  <img src="../assets/logo-blanco.png" class="cover-logo" alt="PoolSafety">
+  <h1>App Operativa PoolSafety</h1>
+  <p class="subtitle">Guía para el Socorrista</p>
+  <div class="role">🏊 Tu app operativa · fichaje, botiquín, documentación</div>
+  <div class="empresa">
+    Pool Safety Des Llevant, S.L.<br>
+    CIF B75828418 · Portocolom, Baleares<br>
+    Piloto · Julio 2026
+  </div>
+</section>
+
+<!-- ====================== BIENVENIDA ====================== -->
+<h2>Bienvenido al equipo PoolSafety 🏊</h2>
+<p>Esta es <strong>tu herramienta diaria</strong>. La instalas en tu móvil y desde ahí:</p>
+<ul>
+  <li>📍 <strong>Fichas entrada y salida</strong> con GPS automático</li>
+  <li>📋 <strong>Ves las tareas y notas</strong> del coordinador para el día</li>
+  <li>🚑 <strong>Revisas el botiquín, DESA y oxigenoterapia</strong> de tu puesto</li>
+  <li>✍️ <strong>Firmas documentos laborales</strong> desde tu teléfono</li>
+  <li>🎓 <strong>Subes y actualizas tus titulaciones</strong> (DNI, SVB, DEA, socorrismo, PRL) con caducidades</li>
+  <li>👤 <strong>Personalizas tu perfil</strong> con foto</li>
+</ul>
+
+<div class="box">
+  <b>URL de acceso:</b><br>
+  <span style="font-size: 14pt; font-family: monospace; color:#B91C1C;">https://poolsafety-app.netlify.app</span>
+</div>
+
+<!-- ====================== CREDENCIALES ====================== -->
+<h2>Tus credenciales</h2>
+<div class="credenciales">
+  <div class="credenciales-titulo">🏊 Tu cuenta · Socorrista</div>
+  <table>
+    <tr><td>Email</td><td><span class="placeholder">________________________</span></td></tr>
+    <tr><td>Contraseña</td><td><span class="placeholder">________________________</span></td></tr>
+    <tr><td>Puesto asignado</td><td><span class="placeholder">________________________</span></td></tr>
+  </table>
+</div>
+
+<div class="box-info box">
+  <b>¿Olvidaste la contraseña?</b> En el login pulsa <strong>"¿Olvidaste la contraseña?"</strong> → escribes tu email → recibes email con enlace para poner una nueva. También puede resetarla tu coordinador si te ayuda mejor.
+</div>
+
+<!-- ====================== INSTALAR ====================== -->
+<h2 class="page-break">Cómo instalar la app en tu móvil</h2>
+<p>La app se instala como una app nativa (icono en tu pantalla de inicio, pantalla completa, funciona sin conexión para lo básico). Gratis y no ocupa apenas espacio.</p>
+
+<h3>📱 Android (Chrome)</h3>
+<ol class="steps">
+  <li>Abre <strong>https://poolsafety-app.netlify.app</strong> en Chrome</li>
+  <li>En 1-2 seg aparece un modal <strong>"Instala PoolSafety"</strong> → <strong>"Instalar app"</strong></li>
+  <li>Icono aparece en tu pantalla de inicio como una app normal</li>
+</ol>
+
+<h3>📱 iPhone / iPad (Safari)</h3>
+<ol class="steps">
+  <li>Abre la URL en <strong>Safari</strong> (importante: no en Chrome)</li>
+  <li>Pulsa el botón <strong>Compartir ⬆️</strong> abajo</li>
+  <li>Desliza y elige <strong>"Añadir a pantalla de inicio"</strong></li>
+  <li>Confirma con <strong>"Añadir"</strong></li>
+</ol>
+
+<div class="tip">
+  Una vez instalada, ábrela desde el icono directamente. Funciona más rápido y ocupa toda la pantalla.
+</div>
+
+<!-- ====================== PRIMER LOGIN ====================== -->
+<h2>Al primer login: firma el Kit Alta</h2>
+
+<div class="warning-hard">
+  Es obligatorio antes de poder fichar. Son <strong>9 pasos</strong> — te lleva unos 3-5 minutos.
+</div>
+
+<p>Cuando entres por primera vez, se abre un asistente (wizard) que te explica y pide firmar:</p>
+
+<ol class="steps">
+  <li><strong>Bienvenida</strong> — presentación del proceso</li>
+  <li><strong>Política de privacidad · RGPD</strong> — cómo usamos tus datos → tickar y aceptar</li>
+  <li><strong>Geolocalización del móvil</strong> — autorizas que la app use tu GPS para fichajes → tickar y aceptar</li>
+  <li><strong>Recepción documentación electrónica</strong> — meter tu email personal y móvil</li>
+  <li><strong>Captación de imagen</strong> — opcional, para foto en web/redes</li>
+  <li><strong>Vigilancia salud laboral</strong> (Ley 31/1995 PRL) → tickar</li>
+  <li><strong>Desconexión digital</strong> → tickar</li>
+  <li><strong>Entrega de EPIs</strong> — reconoces haber recibido uniforme completo (sudadera, camisetas, bañadores, pantalón, gafas, gorra, crema solar) → tickar</li>
+  <li><strong>Firma manuscrita</strong> — dibujas tu firma con el dedo en el recuadro + escribes nombre y DNI → <strong>Firmar todo</strong></li>
+</ol>
+
+<div class="tip">
+  La firma se dibuja con el dedo (o Apple Pencil / stylus) directamente en la pantalla del móvil. Si no te sale bien pulsa <strong>"Limpiar firma"</strong> y vuelve a intentarlo.
+</div>
+
+<!-- ====================== TABS ====================== -->
+<h2 class="page-break">Las 5 pestañas de la app</h2>
+
+<div class="tab-tour">
+  <div class="tab-icon">🏠</div>
+  <div class="tab-body">
+    <p class="tab-name">Inicio</p>
+    <p class="tab-desc">Tu turno de hoy, botón para fichar entrada/salida, chip de GPS, tu puesto en el mapa, tareas pendientes y estado del botiquín.</p>
+  </div>
+</div>
+
+<div class="tab-tour">
+  <div class="tab-icon">📋</div>
+  <div class="tab-body">
+    <p class="tab-name">Tareas</p>
+    <p class="tab-desc">Notas del coordinador para hoy + checklist de tareas. Marca las que hagas.</p>
+  </div>
+</div>
+
+<div class="tab-tour">
+  <div class="tab-icon">🚑</div>
+  <div class="tab-body">
+    <p class="tab-name">Botiquín</p>
+    <p class="tab-desc">Inventario completo con 3 secciones (Botiquín · DESA · Oxigenoterapia) según normativa balear. Marca cada item como revisado hoy y reporta lo que falte.</p>
+  </div>
+</div>
+
+<div class="tab-tour">
+  <div class="tab-icon">📄</div>
+  <div class="tab-body">
+    <p class="tab-name">Docs</p>
+    <p class="tab-desc">Tu Kit Alta firmado, tu registro mensual de jornada (a firmar al final del mes). Si te dan de baja, aparece el finiquito.</p>
+  </div>
+</div>
+
+<div class="tab-tour">
+  <div class="tab-icon">👤</div>
+  <div class="tab-body">
+    <p class="tab-name">Perfil</p>
+    <p class="tab-desc">Foto de perfil, tus titulaciones (DNI, SVB, DEA, socorrismo, PRL) con caducidades, ajustes, cerrar sesión.</p>
+  </div>
+</div>
+
+<!-- ====================== FLUJOS ====================== -->
+<h2 class="page-break">Cómo hacer las cosas importantes</h2>
+
+<div class="card-flow">
+  <p class="card-flow-title">📍 Fichar entrada al llegar al puesto</p>
+  <ol class="steps">
+    <li>Abre la app cuando estés en tu puesto</li>
+    <li>Pantalla Inicio → chip GPS te dice si estás dentro o fuera del área permitida</li>
+    <li>Pulsa el botón grande <strong>"Fichar entrada"</strong></li>
+    <li>El navegador pide permiso GPS la primera vez → <strong>Permitir</strong></li>
+    <li>Se registra con la hora exacta y tu ubicación real. Si estás dentro del radio → toast verde. Si estás fuera → se registra pero con aviso al coordinador</li>
+  </ol>
+  <div class="tip">Al final del turno, pulsa <strong>"Fichar salida"</strong> del mismo modo.</div>
+</div>
+
+<div class="card-flow">
+  <p class="card-flow-title">🚑 Revisar el botiquín cada día</p>
+  <ol class="steps">
+    <li>Tab <strong>Botiquín</strong> → 3 secciones: Botiquín · DESA · Oxigenoterapia</li>
+    <li>Repasa cada item físicamente en el botiquín del puesto</li>
+    <li>Marca el checkbox verde ✓ de cada uno que hayas comprobado</li>
+    <li>Contador arriba: <em>"revisión diaria X/41 comprobados"</em></li>
+  </ol>
+  <div class="tip">Los productos <strong>obligatorios según Decreto 53/1995 y 137/2008 Baleares</strong> están marcados con badge. La revisión es tu responsabilidad legal.</div>
+</div>
+
+<div class="card-flow">
+  <p class="card-flow-title">⚠️ Reportar que falta material</p>
+  <ol class="steps">
+    <li>Tab <strong>Botiquín</strong> → botón grande <strong>"Reportar falta de material"</strong></li>
+    <li>Selector con los productos (los que están bajo mínimo salen primero)</li>
+    <li>Elige cantidad y añade nota opcional</li>
+    <li>Enviar → llega alerta al panel del coordinador al instante</li>
+  </ol>
+</div>
+
+<div class="card-flow">
+  <p class="card-flow-title">📸 Cambiar tu foto de perfil</p>
+  <ol class="steps">
+    <li>Tab <strong>Perfil</strong> → pulsa el iconito de lápiz ✏️ sobre tu foto/iniciales</li>
+    <li>Elige foto (cámara o galería)</li>
+    <li>Se sube a la nube y se ve desde cualquier dispositivo (tu móvil, la tablet del coordinador, el ordenador del admin)</li>
+  </ol>
+</div>
+
+<div class="card-flow">
+  <p class="card-flow-title">🎓 Subir tus titulaciones (DNI, SVB, DEA, socorrismo, PRL)</p>
+  <ol class="steps">
+    <li>Tab <strong>Perfil</strong> → baja a <strong>"Mi documentación laboral"</strong></li>
+    <li>Pulsa <strong>"+ Añadir"</strong></li>
+    <li>Elige tipo (DNI, Socorrismo Acuático, SVB, DEA, PRL, Contrato...)</li>
+    <li>Rellena entidad emisora, nº referencia, fecha obtención, caducidad y reciclaje</li>
+    <li>Sube la foto o PDF del documento (máx 5MB)</li>
+    <li>Guardar</li>
+  </ol>
+  <div class="tip">Cada tarjeta tiene <strong>badge de estado</strong>: verde si válido, amarillo si caduca pronto, rojo si caducado. Renueva antes de que expire.</div>
+</div>
+
+<div class="card-flow">
+  <p class="card-flow-title">✍️ Firmar el registro mensual de jornada</p>
+  <p>El último día trabajado del mes tienes que firmar el registro de horas laborales.</p>
+  <ol class="steps">
+    <li>Tab <strong>Docs</strong> → verás una tarjeta ámbar "Registro jornada · [mes] · Pendiente"</li>
+    <li>Pulsa <strong>"Firmar"</strong></li>
+    <li>Repasa el total de horas del mes (solo aparecen las 40h/semana pactadas — las extras solo salen si hiciste menos de 40)</li>
+    <li>Escribes tu nombre completo + marcas "Confirmo" + dibujas la firma con el dedo</li>
+    <li>Firmar jornada</li>
+  </ol>
+  <div class="tip">Cumple con el Real Decreto-ley 8/2019 de registro horario obligatorio. Tu firma queda con timestamp y GPS.</div>
+</div>
+
+<!-- ====================== AVISOS ====================== -->
+<h2 class="page-break">A tener en cuenta</h2>
+
+<div class="warning-hard">
+  <strong>El GPS del móvil tiene que estar activo</strong> cuando fichas. Si lo tienes desactivado o has bloqueado el permiso al navegador, la app te avisará. Actívalo desde Ajustes → Ubicación.
+</div>
+
+<div class="warning-hard">
+  <strong>No puedes fichar sin haber firmado el Kit Alta.</strong> Es lo primero que te pedirá al primer login.
+</div>
+
+<div class="box-warning box">
+  <b>Si haces jornadas partidas o cambios de puesto:</b> ficha salida cuando terminas cada turno y entrada cuando empiezas el siguiente. La app suma horas del día automáticamente.
+</div>
+
+<div class="box-info box">
+  <b>Sin conexión a internet:</b> la app funciona parcialmente offline (puedes ver tus datos), pero para fichar necesitas conexión. Con datos móviles o WiFi del hotel es suficiente.
+</div>
+
+<!-- ====================== CHECKLIST ====================== -->
+<h2>Checklist primer día</h2>
+<ul class="check-list">
+  <li>Instalar app en tu móvil (Android/iPhone)</li>
+  <li>Login con tu email + contraseña</li>
+  <li>Firmar Kit Alta completo (los 9 pasos)</li>
+  <li>Subir foto de perfil</li>
+  <li>Añadir DNI en Perfil → Mi documentación</li>
+  <li>Añadir titulación de Socorrismo Acuático</li>
+  <li>Añadir SVB / DEA</li>
+  <li>Añadir PRL</li>
+  <li>Autorizar GPS al navegador</li>
+  <li>Fichar entrada al llegar al puesto</li>
+  <li>Ver la sección Tareas para las notas del día</li>
+  <li>Revisar botiquín + marcar los items comprobados</li>
+  <li>Fichar salida al terminar</li>
+</ul>
+
+<!-- ====================== REPORTAR ====================== -->
+<h2>Cómo pedir ayuda o reportar un fallo</h2>
+<p>Si algo no funciona o no encuentras dónde está:</p>
+<ol>
+  <li>Escribe por WhatsApp a tu coordinador (Alex o Óscar) explicando qué te pasa</li>
+  <li>Si es un fallo técnico de la app, envía una captura de pantalla</li>
+  <li>Indica desde qué dispositivo lo hacías (móvil / tablet + Android/iPhone)</li>
+</ol>
+
+<div class="box-success box">
+  <b>Estamos en piloto:</b> vuestro uso real ayuda a mejorar la app. Cualquier idea o sugerencia también es bienvenida.
+</div>
+
+<!-- ====================== FOOTER ====================== -->
+<div class="footer">
+  <div class="footer-empresa">Pool Safety Des Llevant, S.L. · CIF B75828418</div>
+  <div>C/ Hernán Cortés, 8, 2º Dcha., 07670, Portocolom, Baleares</div>
+  <div>info@poolsafety.es</div>
+  <div style="margin-top: 8px; opacity: .7;">Documento generado para el piloto de la app · Julio 2026</div>
+</div>
+
+</body>
+</html>
