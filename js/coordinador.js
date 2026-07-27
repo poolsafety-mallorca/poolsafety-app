@@ -614,6 +614,281 @@
   }
   renderDocsAdmin();
 
+  /* ==========================================================================
+     NAVEGACIÓN POR SECCIONES DEL DASHBOARD
+     ========================================================================== */
+
+  document.querySelectorAll('.dash-menu-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sec = btn.dataset.section;
+      document.querySelectorAll('.dash-menu-item').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== sec));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
+  // Actualizar badge del menú Documentación con nº pendientes
+  function actualizarBadgeDocs() {
+    const badge = document.getElementById('menuBadgeDocs');
+    if (!badge) return;
+    const pendientes = PS.socorristas.slice(0, 30).filter(s => estadoDocsSocorrista(s.id).total > 0).length;
+    if (pendientes > 0) {
+      badge.textContent = pendientes;
+      badge.style.display = 'inline-flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+  actualizarBadgeDocs();
+
+  /* ==========================================================================
+     SUBIR DOCUMENTO PARA UN SOCORRISTA (contrato, nómina, etc.)
+     ========================================================================== */
+
+  const docUploadSoc = document.getElementById('docUploadSoc');
+  if (docUploadSoc) {
+    docUploadSoc.innerHTML = PS.socorristas.slice(0, 30).map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
+  }
+  const docUploadFile = document.getElementById('docUploadFile');
+  if (docUploadFile) {
+    docUploadFile.addEventListener('change', e => {
+      const f = e.target.files[0];
+      document.getElementById('docUploadFileName').textContent = f ? f.name : 'Seleccionar archivo';
+    });
+  }
+  window.subirDocumentoSocorrista = function () {
+    const socId = document.getElementById('docUploadSoc').value;
+    const tipo = document.getElementById('docUploadTipo').value;
+    const file = document.getElementById('docUploadFile').files[0];
+    if (!file) { toast('Selecciona un archivo primero'); return; }
+    const s = PS.socorristas.find(x => x.id === socId);
+    // Guardamos en localStorage la lista de docs enviados por el coordinador (mock)
+    const key = 'poolsafety-docs-empresa-v1';
+    const raw = localStorage.getItem(key);
+    const all = raw ? JSON.parse(raw) : {};
+    if (!all[socId]) all[socId] = [];
+    all[socId].push({
+      id: 'de-' + Date.now(),
+      tipo,
+      nombre: file.name,
+      subidoEl: new Date().toISOString(),
+      pendienteFirma: tipo === 'contrato' || tipo === 'anexo'
+    });
+    localStorage.setItem(key, JSON.stringify(all));
+    document.getElementById('docUploadFile').value = '';
+    document.getElementById('docUploadFileName').textContent = 'Seleccionar archivo';
+    toast(`"${file.name}" enviado a ${s.nombre}`);
+  };
+
+  /* ==========================================================================
+     HORARIOS — subida masiva PDF/Excel + asignación manual
+     ========================================================================== */
+
+  // Cargar horarios personalizados desde localStorage (persiste)
+  function getHorarios() {
+    const raw = localStorage.getItem('poolsafety-horarios-v1');
+    return raw ? JSON.parse(raw) : {};
+  }
+  function saveHorarios(h) { localStorage.setItem('poolsafety-horarios-v1', JSON.stringify(h)); }
+
+  function horarioSocorrista(socId) {
+    const h = getHorarios();
+    if (h[socId]) return h[socId];
+    // Por defecto usar el puesto asignado en data.js
+    const soc = PS.socorristas.find(s => s.id === socId);
+    if (!soc || !soc.puestoId) return null;
+    const p = PS.puestoById(soc.puestoId);
+    return { puestoId: soc.puestoId, hora: p.hora, duracion: p.duracion, dias: 'Lun-Vie' };
+  }
+
+  // Selectores del formulario manual
+  const hmSoc = document.getElementById('hmSoc');
+  const hmPuesto = document.getElementById('hmPuesto');
+  if (hmSoc) hmSoc.innerHTML = PS.socorristas.slice(0, 30).map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
+  if (hmPuesto) hmPuesto.innerHTML = PS.puestos.map(p => `<option value="${p.id}">${p.nombre} — ${p.zona}</option>`).join('');
+
+  function renderHorariosTable() {
+    const tbody = document.querySelector('#horariosTable tbody');
+    if (!tbody) return;
+    const rows = PS.socorristas.slice(0, 30).map(s => {
+      const h = horarioSocorrista(s.id);
+      if (!h) return null;
+      const p = PS.puestoById(h.puestoId);
+      const finTurno = `${(parseInt(h.hora) + h.duracion).toString().padStart(2,'0')}:00`;
+      return { s, p, hora: h.hora, fin: finTurno, dur: h.duracion, dias: h.dias };
+    }).filter(Boolean);
+
+    const stats = document.getElementById('horariosStats');
+    if (stats) stats.textContent = `${rows.length} asignaciones activas`;
+
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td><div class="hours-name"><div class="mini-av sky">${r.s.iniciales}</div><span style="font-weight:500;">${r.s.nombre}</span></div></td>
+        <td class="text-muted">${r.p.nombre}<br><span class="small">${r.p.zona}</span></td>
+        <td class="num"><b>${r.hora}–${r.fin}</b><br><span class="small text-muted">${r.dur}h</span></td>
+        <td>${r.dias}</td>
+        <td><button class="btn-icon" data-hdel="${r.s.id}" title="Quitar asignación"><svg class="ic ic-14"><use href="#ic-x"/></svg></button></td>
+      </tr>
+    `).join('');
+
+    tbody.querySelectorAll('[data-hdel]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.hdel;
+        const h = getHorarios();
+        delete h[id];
+        saveHorarios(h);
+        renderHorariosTable();
+        toast('Asignación eliminada');
+      });
+    });
+  }
+  renderHorariosTable();
+
+  window.asignarHorarioManual = function () {
+    const socId = document.getElementById('hmSoc').value;
+    const puestoId = document.getElementById('hmPuesto').value;
+    const hora = document.getElementById('hmHora').value;
+    const dur = parseInt(document.getElementById('hmDur').value);
+    const dias = document.getElementById('hmDias').value;
+    const h = getHorarios();
+    h[socId] = { puestoId, hora, duracion: dur, dias };
+    saveHorarios(h);
+    const s = PS.socorristas.find(x => x.id === socId);
+    const p = PS.puestoById(puestoId);
+    // También lo reflejamos en el modelo en memoria para que renderPosts lo use
+    s.puestoId = puestoId;
+    renderHorariosTable();
+    renderPosts();
+    toast(`Horario asignado: ${s.nombre} → ${p.nombre} ${hora}`);
+  };
+
+  /* ---------- Drag-drop upload de horario masivo (PDF/Excel/CSV) ---------- */
+  const uploadDrop = document.getElementById('uploadDrop');
+  const uploadInput = document.getElementById('uploadInput');
+  const horarioPreview = document.getElementById('horarioPreview');
+
+  if (uploadDrop && uploadInput) {
+    uploadDrop.addEventListener('click', () => uploadInput.click());
+    uploadDrop.addEventListener('dragover', e => { e.preventDefault(); uploadDrop.classList.add('dragover'); });
+    uploadDrop.addEventListener('dragleave', () => uploadDrop.classList.remove('dragover'));
+    uploadDrop.addEventListener('drop', e => {
+      e.preventDefault();
+      uploadDrop.classList.remove('dragover');
+      const f = e.dataTransfer.files[0];
+      if (f) procesarArchivoHorario(f);
+    });
+    uploadInput.addEventListener('change', e => {
+      const f = e.target.files[0];
+      if (f) procesarArchivoHorario(f);
+    });
+  }
+
+  function procesarArchivoHorario(file) {
+    // Mostrar procesando
+    horarioPreview.style.display = 'block';
+    horarioPreview.innerHTML = `
+      <div class="horario-preview-box">
+        <div class="horario-preview-head">
+          <svg class="ic ic-22" style="color: var(--sky-500);"><use href="#ic-file-text"/></svg>
+          <div>
+            <div class="horario-preview-title">Procesando ${file.name}…</div>
+            <div class="horario-preview-sub">Extrayendo socorristas, hoteles y turnos del archivo</div>
+          </div>
+        </div>
+        <div class="processing-spinner"></div>
+      </div>`;
+
+    setTimeout(() => mostrarPreviewExtraido(file), 1800);
+  }
+
+  function mostrarPreviewExtraido(file) {
+    // "Extrae" datos del archivo (mock realista): usa los primeros 20 socorristas con turnos variados
+    const turnos = ['09:30','10:00','10:00','10:30','11:00'];
+    const durs = [7, 8, 8, 8, 9];
+    const diasOpts = ['Lun-Vie','Lun-Sáb','Todos','Lun-Vie','Lun-Sáb'];
+
+    const extraidos = PS.socorristas.slice(0, 25).map((s, i) => {
+      const p = PS.puestos[i % PS.puestos.length];
+      return {
+        socId: s.id,
+        nombre: s.nombre,
+        puestoId: p.id,
+        puesto: p.nombre,
+        hora: turnos[i % turnos.length],
+        dur: durs[i % durs.length],
+        dias: diasOpts[i % diasOpts.length]
+      };
+    });
+
+    horarioPreview.innerHTML = `
+      <div class="horario-preview-box">
+        <div class="horario-preview-head">
+          <svg class="ic ic-22" style="color: #10B981;"><use href="#ic-check-circle"/></svg>
+          <div style="flex:1;">
+            <div class="horario-preview-title">Archivo procesado correctamente</div>
+            <div class="horario-preview-sub">${file.name} · ${extraidos.length} asignaciones detectadas</div>
+          </div>
+          <span class="badge badge-ok"><span class="dot"></span>Listo para revisar</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="hours-table">
+            <thead>
+              <tr>
+                <th>Socorrista detectado</th>
+                <th>Hotel / puesto</th>
+                <th class="num">Turno</th>
+                <th class="num">Duración</th>
+                <th>Días</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${extraidos.slice(0, 15).map(e => `
+                <tr>
+                  <td><b>${e.nombre}</b></td>
+                  <td>${e.puesto}</td>
+                  <td class="num"><b>${e.hora}</b></td>
+                  <td class="num">${e.dur} h</td>
+                  <td>${e.dias}</td>
+                </tr>
+              `).join('')}
+              ${extraidos.length > 15 ? `<tr><td colspan="5" class="text-muted" style="text-align:center; padding:12px;">…y ${extraidos.length-15} filas más</td></tr>` : ''}
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-actions" style="margin-top: 14px; padding: 0;">
+          <button class="btn btn-outline" onclick="cancelarImportHorario()">Descartar</button>
+          <button class="btn btn-primary" onclick='aplicarImportHorario(${JSON.stringify(extraidos).replace(/'/g,"&#39;")})'>
+            <svg class="ic ic-16"><use href="#ic-check"/></svg>
+            Aplicar a los ${extraidos.length} socorristas
+          </button>
+        </div>
+      </div>`;
+  }
+
+  window.cancelarImportHorario = function () {
+    horarioPreview.style.display = 'none';
+    horarioPreview.innerHTML = '';
+    uploadInput.value = '';
+    toast('Importación cancelada');
+  };
+
+  window.aplicarImportHorario = function (rows) {
+    const h = getHorarios();
+    rows.forEach(r => {
+      h[r.socId] = { puestoId: r.puestoId, hora: r.hora, duracion: r.dur, dias: r.dias };
+      // Reflejar en el modelo en memoria
+      const s = PS.socorristas.find(x => x.id === r.socId);
+      if (s) s.puestoId = r.puestoId;
+    });
+    saveHorarios(h);
+    horarioPreview.style.display = 'none';
+    horarioPreview.innerHTML = '';
+    uploadInput.value = '';
+    renderHorariosTable();
+    renderPosts();
+    toast(`${rows.length} horarios aplicados. Los socorristas ya lo ven en su app.`);
+  };
+
   /* ---------- Logout ---------- */
   window.logout = function () {
     PS.clearSession();

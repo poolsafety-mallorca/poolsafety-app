@@ -129,6 +129,34 @@
       </div>
     </div>
 
+    <!-- ============ MENÚ DE SECCIONES ============ -->
+    <nav class="dash-menu">
+      <button class="dash-menu-item active" data-section="general">
+        <svg class="ic ic-16"><use href="#ic-home"/></svg>
+        Vista general
+      </button>
+      <button class="dash-menu-item" data-section="documentacion">
+        <svg class="ic ic-16"><use href="#ic-file-text"/></svg>
+        Documentación
+        <span class="menu-badge" id="menuBadgeDocs" style="display:none;"></span>
+      </button>
+      <button class="dash-menu-item" data-section="horarios">
+        <svg class="ic ic-16"><use href="#ic-calendar"/></svg>
+        Horarios
+      </button>
+      <button class="dash-menu-item" data-section="botiquin">
+        <svg class="ic ic-16"><use href="#ic-medkit"/></svg>
+        Botiquín + DESA
+      </button>
+      <button class="dash-menu-item" data-section="horas">
+        <svg class="ic ic-16"><use href="#ic-bar-chart"/></svg>
+        Horas del mes
+      </button>
+    </nav>
+
+    <!-- ============ PANEL: VISTA GENERAL ============ -->
+    <div class="tab-panel active" data-panel="general">
+
     <!-- Grid principal -->
     <div class="dash-grid">
 
@@ -203,6 +231,11 @@
       </aside>
     </div>
 
+    </div><!-- /panel general -->
+
+    <!-- ============ PANEL: DOCUMENTACIÓN ============ -->
+    <div class="tab-panel hidden" data-panel="documentacion">
+
     <!-- Documentación laboral -->
     <section class="panel" id="docsSection" style="margin-bottom: 20px;">
       <div class="panel-head">
@@ -227,8 +260,134 @@
           <span>Kit Alta obligatorio (RGPD, geolocalización, EPIs, salud). Registro mensual firmado el último día trabajado. Puedes firmar en tu tablet en nombre del empleado si su móvil no funciona.</span>
         </div>
         <div id="docsAdminList" class="docs-admin-list"></div>
+
+        <div class="section-eyebrow" style="margin-top: 20px;">
+          <span class="eyebrow">Subir documento para un socorrista</span>
+          <span class="text-muted small">Se enviará a su ficha y le aparecerá pendiente de firma</span>
+        </div>
+        <div class="upload-mini-form">
+          <select id="docUploadSoc" class="upload-select"></select>
+          <select id="docUploadTipo" class="upload-select">
+            <option value="contrato">Contrato de trabajo</option>
+            <option value="anexo">Anexo o modificación</option>
+            <option value="nomina">Nómina</option>
+            <option value="prl">Formación PRL</option>
+            <option value="titulacion">Titulación (RCP, socorrismo, DEA)</option>
+            <option value="otro">Otro documento</option>
+          </select>
+          <label class="btn btn-outline">
+            <svg class="ic ic-16"><use href="#ic-download"/></svg>
+            <span id="docUploadFileName">Seleccionar archivo</span>
+            <input type="file" id="docUploadFile" style="display:none;" accept=".pdf,.doc,.docx,.jpg,.png" />
+          </label>
+          <button class="btn btn-primary" onclick="subirDocumentoSocorrista()">
+            <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
+            Enviar al socorrista
+          </button>
+        </div>
       </div>
     </section>
+
+    </div><!-- /panel documentacion -->
+
+    <!-- ============ PANEL: HORARIOS ============ -->
+    <div class="tab-panel hidden" data-panel="horarios">
+
+    <!-- Subida de horarios masivos -->
+    <section class="panel" style="margin-bottom: 20px;">
+      <div class="panel-head">
+        <div class="panel-title-wrap">
+          <div class="kpi-icon" style="width: 30px; height: 30px; background: linear-gradient(135deg, #10B981, #22D3EE); color:#fff;">
+            <svg class="ic ic-16"><use href="#ic-calendar"/></svg>
+          </div>
+          <h3 class="panel-title">Horarios del mes</h3>
+          <span class="panel-count" id="horariosStats">— asignaciones</span>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="norma-banner" style="margin-bottom: 14px;">
+          <svg class="ic ic-14"><use href="#ic-shield"/></svg>
+          <span>Sube el cuadrante mensual en <b>PDF, Excel o CSV</b> y el sistema detecta automáticamente los socorristas, hoteles/puestos y turnos. También puedes asignar horarios manualmente uno a uno. Cualquier cambio se refleja al momento en la app de cada socorrista.</span>
+        </div>
+
+        <!-- Drag-drop upload -->
+        <div class="upload-drop" id="uploadDrop">
+          <input type="file" id="uploadInput" accept=".pdf,.xlsx,.xls,.csv" style="display:none;" />
+          <div class="upload-drop-icon">
+            <svg class="ic ic-24"><use href="#ic-download"/></svg>
+          </div>
+          <div class="upload-drop-title">Arrastra aquí el cuadrante mensual</div>
+          <div class="upload-drop-sub">o haz click para seleccionar · admite PDF, Excel (.xlsx, .xls) y CSV</div>
+          <div class="upload-drop-cta">
+            <button class="btn btn-primary" onclick="document.getElementById('uploadInput').click()">
+              <svg class="ic ic-16"><use href="#ic-download"/></svg>
+              Seleccionar archivo
+            </button>
+          </div>
+        </div>
+
+        <!-- Preview extraído -->
+        <div id="horarioPreview" style="display:none;"></div>
+      </div>
+    </section>
+
+    <!-- Asignación manual + tabla actual -->
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title-wrap">
+          <h3 class="panel-title">Asignación manual y horarios actuales</h3>
+          <span class="panel-count">Julio · aplicable de inmediato en app socorrista</span>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="horario-manual-form">
+          <select id="hmSoc" class="upload-select"></select>
+          <select id="hmPuesto" class="upload-select"></select>
+          <select id="hmHora" class="upload-select">
+            <option value="09:00">09:00</option><option value="09:30">09:30</option>
+            <option value="10:00" selected>10:00</option><option value="10:30">10:30</option>
+            <option value="11:00">11:00</option><option value="12:00">12:00</option>
+            <option value="13:00">13:00</option><option value="14:00">14:00</option>
+          </select>
+          <select id="hmDur" class="upload-select">
+            <option value="6">6 h</option>
+            <option value="7">7 h</option>
+            <option value="8" selected>8 h</option>
+            <option value="9">9 h</option>
+          </select>
+          <select id="hmDias" class="upload-select">
+            <option>Lun-Vie</option>
+            <option>Lun-Sáb</option>
+            <option>Todos</option>
+            <option>Fin de semana</option>
+          </select>
+          <button class="btn btn-primary" onclick="asignarHorarioManual()">
+            <svg class="ic ic-16"><use href="#ic-plus"/></svg>
+            Asignar
+          </button>
+        </div>
+
+        <div style="overflow-x:auto; margin-top: 14px;">
+          <table class="hours-table" id="horariosTable">
+            <thead>
+              <tr>
+                <th>Socorrista</th>
+                <th>Puesto / hotel</th>
+                <th class="num">Turno</th>
+                <th>Días</th>
+                <th style="width:40px;"></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    </div><!-- /panel horarios -->
+
+    <!-- ============ PANEL: BOTIQUÍN ============ -->
+    <div class="tab-panel hidden" data-panel="botiquin">
 
     <!-- Gestión del botiquín -->
     <section class="panel" id="botiquinSection" style="margin-bottom: 20px;">
@@ -271,6 +430,11 @@
       </div>
     </section>
 
+    </div><!-- /panel botiquin -->
+
+    <!-- ============ PANEL: HORAS DEL MES ============ -->
+    <div class="tab-panel hidden" data-panel="horas">
+
     <!-- Horas del mes -->
     <section class="panel hours-panel" id="hoursSection">
       <div class="panel-head">
@@ -305,6 +469,8 @@
         </table>
       </div>
     </section>
+
+    </div><!-- /panel horas -->
 
   </div>
 </div>

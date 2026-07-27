@@ -9,14 +9,26 @@
     PS.setSession({ role: 'socorrista', id: 's01', nombre: 'María Fernández' });
   }
   const me = PS.socorristas.find(s => s.id === 's01');
-  const miPuesto = PS.puestoById(me.puestoId);
+
+  // Leer horario personalizado asignado por el coordinador (si existe)
+  function miHorarioAsignado() {
+    const raw = localStorage.getItem('poolsafety-horarios-v1');
+    if (!raw) return null;
+    const all = JSON.parse(raw);
+    return all[me.id] || null;
+  }
+  const asignado = miHorarioAsignado();
+  const puestoId = asignado?.puestoId || me.puestoId;
+  const miPuesto = PS.puestoById(puestoId);
+  const horaInicio = asignado?.hora || miPuesto.hora;
+  const dur = asignado?.duracion || miPuesto.duracion;
 
   // Cabecera
   document.getElementById('userName').textContent = me.nombre;
   document.getElementById('userInitials').textContent = me.iniciales;
   document.getElementById('puestoName').textContent = miPuesto.nombre;
-  const finTurno = `${(parseInt(miPuesto.hora) + miPuesto.duracion).toString().padStart(2,'0')}:00`;
-  document.getElementById('turnoText').textContent = `${miPuesto.hora} – ${finTurno}`;
+  const finTurno = `${(parseInt(horaInicio) + dur).toString().padStart(2,'0')}:00`;
+  document.getElementById('turnoText').textContent = `${horaInicio} – ${finTurno}`;
   const h = new Date().getHours();
   document.getElementById('greetingText').textContent =
     h < 6 ? 'Buenas noches' : h < 13 ? 'Buenos días' : h < 20 ? 'Buenas tardes' : 'Buenas noches';

@@ -1409,6 +1409,155 @@ img, svg { display: block; max-width: 100%; }
   .doc-modal { max-width: 96vw; }
 }
 
+/* ==========================================================================
+   MENÚ DE SECCIONES DEL DASHBOARD COORDINADOR
+   ========================================================================== */
+.dash-menu {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 20px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  overflow-x: auto;
+  box-shadow: 0 1px 2px rgba(11,30,63,.04);
+  scrollbar-width: none;
+}
+.dash-menu::-webkit-scrollbar { display: none; }
+.dash-menu-item {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--r-full);
+  background: transparent;
+  border: none;
+  color: var(--ink-600);
+  font-weight: 600;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: all .2s ease;
+  white-space: nowrap;
+  position: relative;
+}
+.dash-menu-item:hover {
+  background: var(--foam, #F0F9FF);
+  color: var(--sky-700);
+}
+.dash-menu-item.active {
+  background: linear-gradient(135deg, var(--deepsea, #0A1E3F), var(--ocean, #0F2C5F));
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(11,30,63,.25);
+}
+.menu-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-panel { animation: fade-in .25s ease; }
+.tab-panel.hidden { display: none; }
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+   HORARIOS — upload drag-drop + tabla + mini forms
+   ========================================================================== */
+.upload-drop {
+  border: 2px dashed var(--sky-300, #7DD3FC);
+  border-radius: var(--r-4);
+  padding: 32px 20px;
+  background: linear-gradient(135deg, var(--foam, #F0F9FF), #fff);
+  text-align: center;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+.upload-drop:hover, .upload-drop.dragover {
+  border-color: var(--sky-500, #0EA5E9);
+  background: linear-gradient(135deg, #E0F2FE, var(--foam, #F0F9FF));
+  transform: translateY(-1px);
+}
+.upload-drop-icon {
+  width: 60px; height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0EA5E9, #22D3EE);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 12px;
+}
+.upload-drop-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-900);
+  margin-bottom: 4px;
+}
+.upload-drop-sub {
+  font-size: 12.5px;
+  color: var(--ink-500);
+  margin-bottom: 16px;
+}
+
+.upload-select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font-size: 13px;
+  color: var(--ink-700);
+  min-width: 140px;
+}
+
+.upload-mini-form, .horario-manual-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 14px;
+  background: var(--foam, #F0F9FF);
+  border-radius: var(--r-3);
+  align-items: center;
+}
+
+/* Preview de horario extraído */
+.horario-preview-box {
+  margin-top: 16px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+}
+.horario-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+.horario-preview-title { font-weight: 700; font-size: 15px; color: var(--ink-900); }
+.horario-preview-sub { font-size: 12px; color: var(--ink-500); }
+
+.processing-spinner {
+  width: 32px; height: 32px;
+  border: 3px solid var(--sky-200, #BAE6FD);
+  border-top-color: var(--sky-500, #0EA5E9);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  margin: 20px auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* Docs admin (coordinador) */
 .docs-admin-list { display: flex; flex-direction: column; gap: 8px; }
 .doc-admin-row {
