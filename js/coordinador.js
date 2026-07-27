@@ -3,9 +3,16 @@
    ========================================================================== */
 
 (function () {
-  const session = PS.getSession() || { role: 'coordinador', nombre: 'Jaume Ferrer' };
-  const nombre = session.nombre || 'Jaume Ferrer';
-  const rolLabel = session.role === 'dueno' ? 'Dirección' : 'Coordinador';
+  // Sesión real de Supabase (set por auth-guard.js). Fallback a mock por compatibilidad.
+  const psSession = window.PS_SESSION || PS.getSession() || {};
+  const rol = psSession.rol || psSession.role || 'coordinador';
+  const email = psSession.email || 'usuario@poolsafety.es';
+
+  // Nombre por defecto: parte del email antes de la @, capitalizada
+  let nombre = email.split('@')[0];
+  nombre = nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase();
+
+  const rolLabel = rol === 'dueno' ? 'Administrador' : 'Coordinador';
 
   document.getElementById('userName').textContent = nombre;
   document.getElementById('userRoleLabel').textContent = rolLabel;

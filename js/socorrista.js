@@ -3,12 +3,20 @@
    ========================================================================== */
 
 (function () {
-  // Sesión (aseguramos que hay usuario aunque venga directo)
-  const session = PS.getSession();
-  if (!session || session.role !== 'socorrista') {
-    PS.setSession({ role: 'socorrista', id: 's01', nombre: 'María Fernández' });
-  }
+  // Sesión real de Supabase (set por auth-guard.js). Fallback a mock por compatibilidad.
+  const psSession = window.PS_SESSION || PS.getSession() || {};
+  const email = psSession.email || 'maria@poolsafety.es';
+
+  // Nombre por defecto: parte del email antes de la @, capitalizada
+  let nombreLogueado = email.split('@')[0];
+  nombreLogueado = nombreLogueado.charAt(0).toUpperCase() + nombreLogueado.slice(1).toLowerCase();
+  // Si el email es de Carlos Biosca lo mostramos completo
+  if (email.toLowerCase().includes('carlosbiosca')) nombreLogueado = 'Carlos Biosca';
+
   const me = PS.socorristas.find(s => s.id === 's01');
+  // Sobreescribimos con el usuario logueado (temporalmente hasta migración total a BD)
+  me.nombre = nombreLogueado;
+  me.iniciales = nombreLogueado.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
 
   // Leer horario personalizado asignado por el coordinador (si existe)
   function miHorarioAsignado() {
