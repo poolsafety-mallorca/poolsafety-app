@@ -38,18 +38,33 @@ create table if not exists puestos (
   id uuid primary key default gen_random_uuid(),
   empresa_id uuid not null references empresas(id) on delete cascade,
   nombre text not null,
+  grupo_hotel text,
   zona text,
   direccion text,
   hora_inicio_default time default '10:00',
+  hora_fin_default time default '18:00',
   duracion_default int default 8,
+  servicios_necesarios int default 1,
+  notas text,
   gps_lat numeric(10,7),
   gps_lng numeric(10,7),
   gps_radio_m int default 50,
   contacto_hotel_nombre text,
   contacto_hotel_tel text,
+  tiene_botiquin boolean default true,
+  tiene_desa boolean default false,
+  tiene_oxigeno boolean default false,
   activo boolean default true,
   created_at timestamptz default now()
 );
+-- Migración idempotente para BDs existentes:
+alter table puestos add column if not exists grupo_hotel text;
+alter table puestos add column if not exists hora_fin_default time default '18:00';
+alter table puestos add column if not exists servicios_necesarios int default 1;
+alter table puestos add column if not exists notas text;
+alter table puestos add column if not exists tiene_botiquin boolean default true;
+alter table puestos add column if not exists tiene_desa boolean default false;
+alter table puestos add column if not exists tiene_oxigeno boolean default false;
 
 -- ---------------------------------------------------------------------------
 -- 4. EMPLEADOS (ficha completa - un empleado por usuario tipo 'socorrista')
