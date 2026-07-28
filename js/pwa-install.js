@@ -14,7 +14,9 @@ let deferredPrompt = null;
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('/sw.js');
+      // updateViaCache:'none' fuerza al navegador a NO cachear el propio sw.js
+      // (por si algún proxy/CDN ignora el Cache-Control del _headers)
+      const reg = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
 
       // Chequeos periódicos de actualización
       const check = () => reg.update().catch(() => {});

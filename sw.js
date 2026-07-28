@@ -1,5 +1,5 @@
 /* PoolSafety · Service Worker (PWA offline básico) */
-const CACHE = 'poolsafety-v13';
+const CACHE = 'poolsafety-v14';
 const CORE = [
   '/',
   '/index.html',
@@ -52,21 +52,22 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
 
   // Peticiones a la API de Supabase o CDNs: siempre red directa (datos frescos)
-  if (url.hostname.includes('supabase.co') || url.hostname.includes('jsdelivr.net') || url.hostname.includes('esm.sh')) {
+  if (url.hostname.includes('supabase.co') || url.hostname.includes('jsdelivr.net') || url.hostname.includes('esm.sh') || url.hostname.includes('cdnjs.cloudflare.com') || url.hostname.includes('sheetjs.com')) {
     return; // dejar pasar sin cache
   }
 
-  // Estrategia stale-while-revalidate para el resto (nuestra app)
+  // Estrategia NETWORK-FIRST para nuestra app (HTML/JS/CSS).
+  // Si hay red, siempre servimos lo último → los cambios aparecen al primer refresh.
+  // Si no hay red, caemos a cache → la app sigue funcionando offline.
   event.respondWith(
-    caches.match(req).then(cached => {
-      const fetching = fetch(req).then(response => {
+    fetch(req)
+      .then(response => {
         if (response && response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
           caches.open(CACHE).then(cache => cache.put(req, clone));
         }
         return response;
-      }).catch(() => cached);
-      return cached || fetching;
-    })
+      })
+      .catch(() => caches.match(req).then(cached => cached || Response.error()))
   );
 });
