@@ -308,13 +308,31 @@
   let currentBotPuesto = 'p01';
   let currentBotSeccion = 'botiquin';
 
-  // Llenar selector con todos los puestos
+  // Llenar selector con todos los puestos — lee de BD (hoteles reales)
+  async function refrescarSelectBotiquin() {
+    if (!botiquinPuestoSelect) return;
+    botiquinPuestoSelect.innerHTML = '<option value="">Cargando…</option>';
+    try {
+      const { data } = await window.sb
+        .from('puestos').select('id, nombre').eq('activo', true).order('nombre');
+      const rows = data || [];
+      botiquinPuestoSelect.innerHTML = rows.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+      if (rows.length) {
+        currentBotPuesto = rows[0].id;
+        botiquinPuestoSelect.value = currentBotPuesto;
+        renderBotiquinAdmin();
+      }
+    } catch (err) { console.warn('refrescarSelectBotiquin:', err.message); }
+  }
   if (botiquinPuestoSelect) {
-    botiquinPuestoSelect.innerHTML = PS.puestos.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
-    botiquinPuestoSelect.value = currentBotPuesto;
+    refrescarSelectBotiquin();
     botiquinPuestoSelect.addEventListener('change', e => {
       currentBotPuesto = e.target.value;
       renderBotiquinAdmin();
+    });
+    // Refrescar al entrar en la sección Botiquín
+    document.querySelectorAll('[data-view="botiquin"], [data-nav="botiquin"]').forEach(el => {
+      el.addEventListener('click', () => setTimeout(refrescarSelectBotiquin, 100));
     });
   }
 
@@ -721,11 +739,32 @@
     return { puestoId: soc.puestoId, hora: p.hora, duracion: p.duracion, dias: 'Lun-Vie' };
   }
 
-  // Selectores del formulario manual
+  // Selectores del formulario manual — leen SIEMPRE de BD real
   const hmSoc = document.getElementById('hmSoc');
   const hmPuesto = document.getElementById('hmPuesto');
-  if (hmSoc) hmSoc.innerHTML = PS.socorristas.slice(0, 30).map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
-  if (hmPuesto) hmPuesto.innerHTML = PS.puestos.map(p => `<option value="${p.id}">${p.nombre} — ${p.zona}</option>`).join('');
+  async function refrescarSelectoresHorariosManual() {
+    if (hmPuesto) {
+      hmPuesto.innerHTML = '<option value="">Cargando…</option>';
+      try {
+        const { data } = await window.sb
+          .from('puestos').select('id, nombre, zona').eq('activo', true).order('nombre');
+        hmPuesto.innerHTML = (data || []).map(p => `<option value="${p.id}">${p.nombre}${p.zona ? ' — ' + p.zona : ''}</option>`).join('');
+      } catch (err) { hmPuesto.innerHTML = ''; }
+    }
+    if (hmSoc) {
+      hmSoc.innerHTML = '<option value="">Cargando…</option>';
+      try {
+        const { data } = await window.sb
+          .from('empleados').select('id, nombre').is('fecha_baja', null).order('nombre');
+        hmSoc.innerHTML = (data || []).map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
+      } catch (err) { hmSoc.innerHTML = ''; }
+    }
+  }
+  refrescarSelectoresHorariosManual();
+  // Refrescar cada vez que el usuario entra a la sección Horarios
+  document.querySelectorAll('[data-view="horarios"], [data-nav="horarios"]').forEach(el => {
+    el.addEventListener('click', () => setTimeout(refrescarSelectoresHorariosManual, 100));
+  });
 
   function renderHorariosTable() {
     const tbody = document.querySelector('#horariosTable tbody');
@@ -2361,13 +2400,18 @@
   };
 
   /* ---------- Modal nueva visita a hotel ---------- */
-  window.openNuevaVisita = function () {
+  window.openNuevaVisita = async function () {
     const sel = document.getElementById('visHotel');
-    sel.innerHTML = PS.puestos.map(p => `<option value="${p.id}">${p.nombre}${p.zona ? ' — ' + p.zona : ''}</option>`).join('');
+    sel.innerHTML = '<option value="">Cargando…</option>';
     document.getElementById('visHora').value = '';
     document.getElementById('visGps').value = '';
     lastVisitaCapture = null;
     document.getElementById('visitaModal').classList.add('open');
+    try {
+      const { data } = await window.sb
+        .from('puestos').select('id, nombre, zona').eq('activo', true).order('nombre');
+      sel.innerHTML = (data || []).map(p => `<option value="${p.id}">${p.nombre}${p.zona ? ' — ' + p.zona : ''}</option>`).join('');
+    } catch (err) { console.warn('openNuevaVisita:', err.message); sel.innerHTML = '<option value="">Sin hoteles</option>'; }
   };
   window.closeVisitaModal = () => document.getElementById('visitaModal').classList.remove('open');
   window.capturarLlegada = function () {
