@@ -1856,6 +1856,27 @@
     btn.disabled = true;
     btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-signal"/></svg> Creando cuenta…';
 
+    // Pre-check: ¿ya existe en usuarios?
+    try {
+      const { data: existe } = await window.sb.from('usuarios')
+        .select('id, rol, nombre').eq('email', email).maybeSingle();
+      if (existe) {
+        const resultado = document.getElementById('neResultado');
+        resultado.style.display = 'block';
+        resultado.innerHTML = `
+          <div class="alert-strip warn" style="flex-direction:column;align-items:stretch;">
+            <div><b>${existe.nombre || email}</b> ya existe como ${existe.rol}.</div>
+            <div class="small text-muted" style="margin-top:6px;">Si perdió la contraseña, envíale un enlace de recuperación:</div>
+            <button class="btn btn-primary btn-sm" style="margin-top:8px;align-self:flex-start;" onclick="(async()=>{const r=await window.enviarAccesoEmailRaw('${email}'); toast(r.ok?'✓ Enviado a ${email}':'Error: '+r.err);})()">
+              <svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg> Enviar acceso por email
+            </button>
+          </div>`;
+        btn.disabled = false;
+        btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-plus"/></svg> Crear cuenta';
+        return;
+      }
+    } catch (_) {}
+
     // Cliente Supabase SEPARADO para no perder la sesión del admin
     const tmpClient = window.supabase.createClient(
       'https://msdjsbegqpjpshnxoilh.supabase.co',
@@ -1941,10 +1962,26 @@
 
       toast(`✓ Cuenta creada: ${email}`);
     } catch (err) {
-      let msg = err.message || 'Error desconocido';
-      if (msg.includes('already registered')) msg = 'Ese email ya está registrado.';
-      if (msg.includes('confirm')) msg = 'Desactiva "Confirm email" en Supabase → Auth → Providers → Email.';
-      toast('Error: ' + msg);
+      const msg = err.message || 'Error desconocido';
+      // Cuenta huérfana en auth.users (creación previa que falló a la mitad).
+      // Solución: enviar email de acceso; al entrar, auth-guard auto-crea las filas
+      // que falten en usuarios/empleados desde los metadatos del signUp.
+      if (msg.includes('already registered')) {
+        const resultado = document.getElementById('neResultado');
+        resultado.style.display = 'block';
+        resultado.innerHTML = `
+          <div class="alert-strip warn" style="flex-direction:column;align-items:stretch;">
+            <div><b>Cuenta huérfana detectada</b> en el sistema de autenticación.</div>
+            <div class="small text-muted" style="margin-top:6px;">La creación anterior de <b>${email}</b> falló a la mitad. Envíale el enlace de acceso — al entrar, la ficha se completa sola con rol <b>${rol}</b> y nombre <b>${nombre}</b>.</div>
+            <button class="btn btn-primary btn-sm" style="margin-top:8px;align-self:flex-start;" onclick="(async()=>{const r=await window.enviarAccesoEmailRaw('${email}'); toast(r.ok?'✓ Enlace enviado a ${email}':'Error: '+r.err);})()">
+              <svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg> Enviar enlace de acceso a ${email}
+            </button>
+          </div>`;
+      } else if (msg.includes('confirm')) {
+        toast('Error: Desactiva "Confirm email" en Supabase → Auth → Providers → Email.');
+      } else {
+        toast('Error: ' + msg);
+      }
       console.error('[crearNuevoEmpleado]', err);
     } finally {
       btn.disabled = false;
