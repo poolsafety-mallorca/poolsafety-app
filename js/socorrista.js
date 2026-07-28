@@ -520,7 +520,6 @@
             </div>
           </div>`;
       }).join('');
-    tareasList.querySelectorAll('.li').forEach(el => {
       tareasList.querySelectorAll('.li').forEach(el => {
         el.addEventListener('click', async () => {
           const id = el.dataset.task;
