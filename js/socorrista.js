@@ -3,9 +3,29 @@
    ========================================================================== */
 
 (function () {
+  // Botón logout SIEMPRE disponible aunque falle todo lo demás (safety net)
+  document.addEventListener('click', function (e) {
+    const t = e.target.closest('#logoutBtn');
+    if (!t) return;
+    try {
+      if (window.sb) window.sb.auth.signOut().finally(() => {
+        localStorage.removeItem('ps-session');
+        window.location.replace('index.html');
+      });
+      else { localStorage.removeItem('ps-session'); window.location.replace('index.html'); }
+    } catch (_) { window.location.replace('index.html'); }
+  }, true);
+
   // Sesión real de Supabase (set por auth-guard.js). Fallback a mock por compatibilidad.
   const psSession = window.PS_SESSION || PS.getSession() || {};
   const email = psSession.email || 'maria@poolsafety.es';
+
+  // Si es coord o admin y cayó en socorrista.html por error → fuera
+  if (psSession.rol && !['socorrista','dueno'].includes(psSession.rol)) {
+    window.location.replace('coordinador.html');
+    return;
+  }
+  // (Admin puede probar la vista socorrista, pero coordinador no)
 
   function nombreDe(session) {
     let n = session.nombre;
@@ -16,9 +36,15 @@
     return n;
   }
 
-  const me = PS.socorristas.find(s => s.id === 's01');
-  me.nombre = nombreDe(psSession);
-  me.iniciales = me.nombre.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
+  // Ficha 'me' minimalista — sin datos mock. Se rellenará con empleadoReal al cargar BD.
+  const me = {
+    id: psSession.userId || 'anonimo',
+    nombre: nombreDe(psSession),
+    iniciales: (nombreDe(psSession) || '?').split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase(),
+    puestoId: null,
+    fotoUrl: null,
+    horasNormales: 0, horasExtra: 0, diasTrabajados: 0
+  };
 
   // Cuando llegue el nombre real de la BD, refresca cabecera + perfil
   document.addEventListener('ps-session-updated', (e) => {
@@ -34,25 +60,15 @@
     if (pa && !pa.style.backgroundImage) pa.textContent = me.iniciales;
   });
 
-  // Leer horario personalizado asignado por el coordinador (si existe)
-  function miHorarioAsignado() {
-    const raw = localStorage.getItem('poolsafety-horarios-v1');
-    if (!raw) return null;
-    const all = JSON.parse(raw);
-    return all[me.id] || null;
-  }
-  const asignado = miHorarioAsignado();
-  const puestoId = asignado?.puestoId || me.puestoId;
-  const miPuesto = PS.puestoById(puestoId);
-  const horaInicio = asignado?.hora || miPuesto.hora;
-  const dur = asignado?.duracion || miPuesto.duracion;
-
-  // Cabecera
-  document.getElementById('userName').textContent = me.nombre;
-  document.getElementById('userInitials').textContent = me.iniciales;
-  document.getElementById('puestoName').textContent = miPuesto.nombre;
-  const finTurno = `${(parseInt(horaInicio) + dur).toString().padStart(2,'0')}:00`;
-  document.getElementById('turnoText').textContent = `${horaInicio} – ${finTurno}`;
+  // Cabecera con placeholders — datos reales llegan tras cargarMiFicha()
+  const uName = document.getElementById('userName');
+  const uInit = document.getElementById('userInitials');
+  const pName = document.getElementById('puestoName');
+  const tText = document.getElementById('turnoText');
+  if (uName) uName.textContent = me.nombre;
+  if (uInit) uInit.textContent = me.iniciales;
+  if (pName) pName.textContent = 'Cargando puesto…';
+  if (tText) tText.textContent = '—';
 
   // Foto de perfil (compartida con la ficha del coordinador)
   function miFoto() {
