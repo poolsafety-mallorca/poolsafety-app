@@ -202,6 +202,7 @@ Todos con GPS real, horario, servicios necesarios y flags de equipamiento (DESA/
 - ✅ **Miembros del equipo** (admin only): sección en Coordinación que lista todos los usuarios `dueno`/`coordinador` con acciones "Enviar acceso por email" y "Desactivar".
 - ✅ **Enviar email de invitación al crear cuenta**: checkbox en modal Nuevo Usuario (ON por defecto para dueno/coordinador, OFF para socorrista). Usa `sb.auth.resetPasswordForEmail(email, {redirectTo: reset.html})`.
 - ✅ **Creación masiva de cuentas**: modal con textarea `rol,nombre,email` una por línea. Parser + creación secuencial + resumen credenciales.
+- ✅ **Templates de email personalizados** (`email-templates/`): 3 plantillas HTML en español con branding PoolSafety (rojo #B91C1C, logo blanco, footer con dirección). Reset password, Confirm signup, Invite user. Se pegan manualmente en Supabase → Auth → Email Templates. Envío ya funcionando por SMTP Resend con sender `info@poolsafety.es` (verificado en Resend dashboard, Delivered).
 - ✅ Titulaciones + PRL + DNI con caducidades y alertas
 - ✅ Módulo Empleados / Hoteles / Coordinación / Horarios / Botiquín / Docs / Empleados / Horas
 - ✅ PWA instalable (Android + iOS con instrucciones + Desktop)
