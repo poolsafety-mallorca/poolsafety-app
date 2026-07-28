@@ -3169,6 +3169,58 @@ img, svg { display: block; max-width: 100%; }
 }
 
 /* ==========================================================================
+   PWA · Banner de actualización automática
+   ========================================================================== */
+.pwa-update-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translate(-50%, 120%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #111827;
+  color: #fff;
+  padding: 12px 14px 12px 16px;
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.25);
+  min-width: 280px;
+  max-width: calc(100vw - 32px);
+  transition: transform .35s cubic-bezier(.2,.9,.3,1.2);
+}
+.pwa-update-banner.show { transform: translate(-50%, 0); }
+.pwa-update-icon {
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.12);
+  display: flex; align-items: center; justify-content: center;
+  color: #FCA5A5;
+  flex-shrink: 0;
+}
+.pwa-update-text { flex: 1; min-width: 0; }
+.pwa-update-title { font-weight: 700; font-size: 13.5px; }
+.pwa-update-sub { font-size: 11.5px; opacity: .75; margin-top: 1px; }
+.pwa-update-btn {
+  background: #B91C1C;
+  color: #fff;
+  border: 0;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s;
+}
+.pwa-update-btn:hover { background: #DC2626; }
+.pwa-update-btn:active { background: #991B1B; }
+@media (max-width: 480px) {
+  .pwa-update-banner { left: 12px; right: 12px; transform: translateY(120%); bottom: 12px; min-width: 0; }
+  .pwa-update-banner.show { transform: translateY(0); }
+}
+
+/* ==========================================================================
    PSHor · bloque compartido de horarios (ficha hotel + ficha socorrista)
    ========================================================================== */
 .hor-block { border: 1px solid var(--ink-100, #E5E7EB); border-radius: 12px; padding: 12px; background: #fff; margin-top: 12px; }

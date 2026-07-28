@@ -4,11 +4,106 @@
 
 let deferredPrompt = null;
 
-/* Registrar service worker */
+/* Registrar service worker + auto-update
+   Cuando el server tiene una nueva versión del SW:
+   1. registration.update() la detecta (llamado al cargar + cada 60s + al enfocar la pestaña).
+   2. updatefound → cuando el nuevo SW pasa a 'installed' con controller existente = hay update lista.
+   3. Mostramos banner "Nueva versión" con botón Actualizar; auto-recarga a los 12s si el
+      usuario no está tocando ningún input/textarea/canvas (para no interrumpir firma o formulario).
+*/
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(err => console.warn('[SW]', err.message));
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js');
+
+      // Chequeos periódicos de actualización
+      const check = () => reg.update().catch(() => {});
+      setInterval(check, 60_000); // cada 60s
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') check();
+      });
+
+      // Detecta un nuevo SW instalándose
+      reg.addEventListener('updatefound', () => {
+        const nuevo = reg.installing;
+        if (!nuevo) return;
+        nuevo.addEventListener('statechange', () => {
+          if (nuevo.state === 'installed' && navigator.serviceWorker.controller) {
+            // Hay nueva versión lista Y ya había SW previo → mostrar banner
+            mostrarBannerUpdate(nuevo);
+          }
+        });
+      });
+
+      // Cuando el SW toma control (post-skipWaiting) → recargar
+      let recargando = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (recargando) return;
+        recargando = true;
+        window.location.reload();
+      });
+    } catch (err) {
+      console.warn('[SW]', err.message);
+    }
   });
+}
+
+function usuarioEstaEscribiendo() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = (el.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable) return true;
+  // Canvas activo (firma)
+  if (tag === 'canvas') return true;
+  return false;
+}
+
+function mostrarBannerUpdate(nuevoSW) {
+  if (document.getElementById('pwaUpdateBanner')) return; // ya mostrado
+  const banner = document.createElement('div');
+  banner.id = 'pwaUpdateBanner';
+  banner.className = 'pwa-update-banner';
+  banner.innerHTML = `
+    <div class="pwa-update-icon">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"></polyline>
+        <path d="M20.49 15A9 9 0 1 1 5.64 5.64L23 10"></path>
+      </svg>
+    </div>
+    <div class="pwa-update-text">
+      <div class="pwa-update-title">Nueva versión disponible</div>
+      <div class="pwa-update-sub" id="pwaUpdateSub">Se actualizará en <span id="pwaUpdateCount">12</span>s</div>
+    </div>
+    <button class="pwa-update-btn" id="pwaUpdateNow">Actualizar</button>
+  `;
+  document.body.appendChild(banner);
+  requestAnimationFrame(() => banner.classList.add('show'));
+
+  const aplicar = () => {
+    try { nuevoSW.postMessage({ type: 'SKIP_WAITING' }); }
+    catch (_) {}
+    // Fallback: si no responde, forzar recarga a los 2s
+    setTimeout(() => window.location.reload(), 2000);
+  };
+
+  document.getElementById('pwaUpdateNow').addEventListener('click', aplicar);
+
+  // Cuenta atrás con auto-reload solo si el usuario no está escribiendo
+  let seg = 12;
+  const countEl = document.getElementById('pwaUpdateCount');
+  const subEl = document.getElementById('pwaUpdateSub');
+  const tick = setInterval(() => {
+    if (usuarioEstaEscribiendo()) {
+      subEl.textContent = 'Actualiza cuando termines';
+      return;
+    }
+    seg--;
+    if (countEl) countEl.textContent = seg;
+    if (seg <= 0) {
+      clearInterval(tick);
+      aplicar();
+    }
+  }, 1000);
 }
 
 /* Detectar prompt de instalación (Chrome/Edge/Android) */

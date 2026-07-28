@@ -1,5 +1,5 @@
 /* PoolSafety · Service Worker (PWA offline básico) */
-const CACHE = 'poolsafety-v10';
+const CACHE = 'poolsafety-v11';
 const CORE = [
   '/',
   '/index.html',
@@ -29,6 +29,13 @@ self.addEventListener('install', event => {
       .then(cache => cache.addAll(CORE))
       .then(() => self.skipWaiting())
   );
+});
+
+// La app envía este mensaje al pulsar "Actualizar" (o al pasar la cuenta atrás)
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', event => {

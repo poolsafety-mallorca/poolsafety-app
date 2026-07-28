@@ -201,6 +201,7 @@ Todos con GPS real, horario, servicios necesarios y flags de equipamiento (DESA/
 - ✅ Titulaciones + PRL + DNI con caducidades y alertas
 - ✅ Módulo Empleados / Hoteles / Coordinación / Horarios / Botiquín / Docs / Empleados / Horas
 - ✅ PWA instalable (Android + iOS con instrucciones + Desktop)
+- ✅ **Auto-actualización de la PWA**: al detectar nueva versión del SW (check al cargar + cada 60s + al enfocar pestaña), banner "Nueva versión disponible" con botón Actualizar y cuenta atrás de 12s. Auto-recarga silencio si el usuario no está en un input/textarea/canvas (para no interrumpir firmas o formularios). Usa `postMessage SKIP_WAITING` + `controllerchange` para recargar limpio.
 - ✅ Tema rojo marca (theme-red permanente)
 - ✅ Responsive móvil + tablet 12"
 - ✅ Docs de bienvenida PDF (Admin + Coordinadores + Socorrista)
