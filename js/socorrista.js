@@ -706,7 +706,41 @@
   const docAltaBadge = document.getElementById('docAltaBadge');
   const docsPendingDot = document.getElementById('docsPendingDot');
 
-  function misFirmas() { return PS.firmasDeSocorrista(me.id); }
+  // Cache de firmas reales desde BD (mucho más fiable que localStorage)
+  let firmasBDCache = {};
+  async function cargarFirmasBD() {
+    try {
+      const empId = empleadoReal?.id;
+      if (!empId || !window.sb) return;
+      const { data, error } = await window.sb.from('firmas_documentos')
+        .select('*').eq('empleado_id', empId).order('fecha_firma', { ascending: false });
+      if (error) throw error;
+      const map = {};
+      (data || []).forEach(f => {
+        // Solo la más reciente por documento_codigo
+        if (!map[f.documento_codigo]) {
+          map[f.documento_codigo] = {
+            completado: true,
+            firma: f.firma_nombre,
+            dni: f.dni,
+            fecha: f.fecha_firma,
+            dispositivo: f.dispositivo,
+            aceptados: f.aceptados_json || {},
+            campos: f.campos_json || {},
+            firmaImagen: f.firma_imagen,
+            archivoPdfUrl: f.archivo_pdf_url,
+            idBD: f.id
+          };
+        }
+      });
+      firmasBDCache = map;
+    } catch (err) { console.warn('[cargarFirmasBD]', err.message); }
+  }
+  function misFirmas() {
+    // Mezcla: BD (prioridad) + localStorage (fallback si aún no cargó)
+    const local = PS.firmasDeSocorrista(me.id) || {};
+    return { ...local, ...firmasBDCache };
+  }
 
   // Horas del mes actuales (para el registro mensual)
   // Regla del cliente: solo 40h/semana ordinarias (~160/mes).
@@ -1054,6 +1088,7 @@
           });
           document.getElementById('kitAltaModal').classList.remove('open');
           toast('✓ Kit Alta firmado y guardado en el sistema');
+          await cargarFirmasBD();
           renderDocsHeader();
           renderDocsLists();
         } catch (err) {
@@ -1297,7 +1332,12 @@
   // Cargar mis titulaciones cuando el empleado esté disponible
   const _origCargarMiFicha = null; // solo por documentar
   // renderMisTitulaciones se llama cuando ya se cargó empleadoReal
-  document.addEventListener('ps-session-updated', () => setTimeout(renderMisTitulaciones, 300));
+  document.addEventListener('ps-session-updated', () => setTimeout(async () => {
+    await cargarFirmasBD();
+    renderDocsHeader();
+    renderDocsLists();
+    renderMisTitulaciones();
+  }, 400));
   setTimeout(renderMisTitulaciones, 800); // primera carga
 
   /* ---------- Contactar coordinador (lee usuarios reales de BD) ---------- */

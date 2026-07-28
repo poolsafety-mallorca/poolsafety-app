@@ -2792,6 +2792,57 @@
   };
 
   /* ==========================================================================
+     TOGGLE DISPONIBLE / LIBRE (dueno + coordinador)
+     ========================================================================== */
+  async function renderDisponibleBlock() {
+    const cont = document.getElementById('coordDisponibleBlock');
+    if (!cont) return;
+    const psSes = window.PS_SESSION || {};
+    if (!['dueno','coordinador'].includes(psSes.rol)) { cont.innerHTML = ''; return; }
+    let disponible = true;
+    try {
+      const { data } = await window.sb.from('usuarios').select('disponible').eq('id', psSes.userId).single();
+      disponible = data && data.disponible !== false;
+    } catch (_) {}
+    cont.innerHTML = `
+      <div class="disp-panel ${disponible ? 'on' : 'off'}">
+        <div class="disp-info">
+          <div class="disp-icon">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              ${disponible
+                ? '<circle cx="12" cy="12" r="9"></circle><path d="M8 12l3 3 5-6"></path>'
+                : '<circle cx="12" cy="12" r="9"></circle><path d="M12 8v4"></path><circle cx="12" cy="16" r="1" fill="currentColor"></circle>'}
+            </svg>
+          </div>
+          <div>
+            <div class="disp-title">${disponible ? 'Disponible' : 'Libre (no molestar)'}</div>
+            <div class="disp-sub">${disponible
+              ? 'Los socorristas te ven en la lista de contacto y recibes avisos.'
+              : 'Los socorristas NO te ven ni te llegarán avisos hasta que vuelvas a ponerte disponible.'}</div>
+          </div>
+        </div>
+        <button class="disp-toggle" onclick="toggleDisponible()">
+          ${disponible ? 'Ponerme libre' : 'Volver a estar disponible'}
+        </button>
+      </div>`;
+  }
+  window.renderDisponibleBlock = renderDisponibleBlock;
+
+  window.toggleDisponible = async function () {
+    const psSes = window.PS_SESSION || {};
+    if (!psSes.userId) return;
+    try {
+      const { data: cur } = await window.sb.from('usuarios').select('disponible').eq('id', psSes.userId).single();
+      const nuevo = !(cur && cur.disponible !== false);
+      const { error } = await window.sb.from('usuarios').update({ disponible: nuevo }).eq('id', psSes.userId);
+      if (error) throw error;
+      toast(nuevo ? '✓ Ahora estás disponible' : '✓ Marcado como libre — no recibirás avisos');
+      renderDisponibleBlock();
+      if (window.renderEquipoBlock) renderEquipoBlock();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  /* ==========================================================================
      MIEMBROS DEL EQUIPO (admin only) — lista dueno + coordinadores
      ========================================================================== */
   async function renderEquipoBlock() {
@@ -2803,7 +2854,7 @@
     cont.innerHTML = '<div class="text-muted small" style="padding:12px;">Cargando equipo…</div>';
     try {
       const { data, error } = await window.sb.from('usuarios')
-        .select('id, nombre, email, rol, activo, created_at')
+        .select('id, nombre, email, rol, activo, disponible, created_at')
         .in('rol', ['dueno','coordinador'])
         .order('rol', { ascending: true })
         .order('nombre', { ascending: true });
@@ -2823,7 +2874,7 @@
           </div>
           <div class="hor-table-wrap" style="padding:0 12px 12px;">
             <table class="hor-table">
-              <thead><tr><th>Nombre</th><th>Rol</th><th>Email</th><th>Estado</th><th></th></tr></thead>
+              <thead><tr><th>Nombre</th><th>Rol</th><th>Email</th><th>Estado</th><th>Ahora</th><th></th></tr></thead>
               <tbody>
                 ${rows.map(u => `
                   <tr>
@@ -2831,6 +2882,7 @@
                     <td>${u.rol === 'dueno' ? '<span class="hor-badge" style="background:#DBEAFE;color:#1D4ED8;">Administrador</span>' : '<span class="hor-badge" style="background:#DCFCE7;color:#166534;">Coordinador</span>'}</td>
                     <td class="small">${u.email}</td>
                     <td>${u.activo !== false ? '<span class="badge badge-ok"><span class="dot"></span>Activo</span>' : '<span class="badge badge-neutral"><span class="dot"></span>Inactivo</span>'}</td>
+                    <td>${u.disponible !== false ? '<span class="badge badge-ok"><span class="dot"></span>Disponible</span>' : '<span class="badge" style="background:#FEF3C7;color:#92400E;"><span class="dot" style="background:#F59E0B;"></span>Libre</span>'}</td>
                     <td class="hor-actions">
                       <button class="icon-btn-mini" title="Enviar acceso por email" onclick="enviarAccesoDesdeEquipo('${u.email}')"><svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg></button>
                       ${u.id !== psSes.userId ? `<button class="icon-btn-mini danger" title="Desactivar" onclick="desactivarMiembroEquipo('${u.id}','${(u.nombre||u.email).replace(/'/g,"&#39;")}')"><svg class="ic ic-14"><use href="#ic-x"/></svg></button>` : ''}
@@ -2865,10 +2917,11 @@
 
   // Renderizar cuando se entre a la sección Coordinación
   document.querySelectorAll('[data-section="coordinacion"]').forEach(el => {
-    el.addEventListener('click', () => setTimeout(renderEquipoBlock, 200));
+    el.addEventListener('click', () => setTimeout(() => { renderEquipoBlock(); renderDisponibleBlock(); }, 200));
   });
   // Y al arrancar
-  setTimeout(renderEquipoBlock, 1500);
+  setTimeout(() => { renderEquipoBlock(); renderDisponibleBlock(); }, 1500);
+  document.addEventListener('ps-session-updated', () => setTimeout(renderDisponibleBlock, 400));
 
   /* ==========================================================================
      CREACIÓN MASIVA DE CUENTAS

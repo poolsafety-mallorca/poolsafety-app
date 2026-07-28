@@ -170,10 +170,18 @@ create table if not exists firmas_documentos (
   ip_firma inet,
   aceptados_json jsonb default '{}'::jsonb,
   campos_json jsonb default '{}'::jsonb,
+  firma_imagen text,
+  ubicacion_lat numeric(10,7),
+  ubicacion_lng numeric(10,7),
   archivo_pdf_url text,
   fecha_firma timestamptz default now()
 );
 create index if not exists idx_firmas_empleado on firmas_documentos(empleado_id);
+-- Migración idempotente para BDs existentes:
+alter table firmas_documentos add column if not exists firma_imagen text;
+alter table firmas_documentos add column if not exists ubicacion_lat numeric(10,7);
+alter table firmas_documentos add column if not exists ubicacion_lng numeric(10,7);
+alter table firmas_documentos add column if not exists archivo_pdf_url text;
 
 -- ---------------------------------------------------------------------------
 -- 9. DOCUMENTOS SUBIDOS (contratos, nóminas, anexos - por coordinador)
