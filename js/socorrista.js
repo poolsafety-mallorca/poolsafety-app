@@ -192,16 +192,38 @@
   }
 
   function aplicarPuestoEnUI() {
+    const mapName = document.getElementById('mapName');
+    const mapAddr = document.getElementById('mapAddr');
+    const btnLlegar = document.getElementById('btnComoLlegar');
     if (puestoReal) {
       document.getElementById('puestoName').textContent = puestoReal.nombre;
       const hIni = (puestoReal.hora_inicio_default || '10:00:00').slice(0,5);
       const hFin = (puestoReal.hora_fin_default || '18:00:00').slice(0,5);
       document.getElementById('turnoText').textContent = `${hIni} – ${hFin}`;
+      if (mapName) mapName.textContent = puestoReal.nombre;
+      if (mapAddr) mapAddr.textContent = puestoReal.direccion || (puestoReal.zona || '') || '—';
+      if (btnLlegar) btnLlegar.disabled = false;
     } else {
       document.getElementById('puestoName').textContent = 'Sin puesto asignado';
       document.getElementById('turnoText').textContent = '—';
+      if (mapName) mapName.textContent = 'Sin puesto asignado';
+      if (mapAddr) mapAddr.textContent = 'El coordinador debe asignarte un hotel';
+      if (btnLlegar) btnLlegar.disabled = true;
     }
   }
+
+  window.comoLlegarPuesto = function () {
+    if (!puestoReal) { toast('Aún no tienes un puesto asignado'); return; }
+    let url;
+    if (puestoReal.gps_lat && puestoReal.gps_lng) {
+      url = `https://www.google.com/maps/dir/?api=1&destination=${puestoReal.gps_lat},${puestoReal.gps_lng}&travelmode=driving`;
+    } else if (puestoReal.direccion) {
+      url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(puestoReal.direccion + ', ' + (puestoReal.zona || 'Mallorca'))}&travelmode=driving`;
+    } else {
+      url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(puestoReal.nombre + ', ' + (puestoReal.zona || 'Mallorca'))}`;
+    }
+    window.open(url, '_blank');
+  };
 
   async function obtenerGPS() {
     return new Promise((resolve, reject) => {
@@ -1232,8 +1254,13 @@
   window.onTitFileChange = function (e) {
     const f = e.target.files[0];
     if (!f) return;
-    if (f.size > 5 * 1024 * 1024) { toast('Archivo demasiado grande (máx 5MB)'); e.target.value = ''; return; }
-    document.getElementById('titFileName').textContent = f.name;
+    const MAX_MB = 20;
+    if (f.size > MAX_MB * 1024 * 1024) {
+      const mb = (f.size / 1024 / 1024).toFixed(1);
+      toast(`Archivo demasiado grande (${mb} MB, máx ${MAX_MB} MB). Comprime el PDF o reduce la calidad del escaneo.`);
+      e.target.value = ''; return;
+    }
+    document.getElementById('titFileName').textContent = f.name + ' · ' + (f.size / 1024 / 1024).toFixed(1) + ' MB';
     const reader = new FileReader();
     reader.onload = ev => {
       document.getElementById('titFileData').value = ev.target.result;
@@ -1272,6 +1299,46 @@
   // renderMisTitulaciones se llama cuando ya se cargó empleadoReal
   document.addEventListener('ps-session-updated', () => setTimeout(renderMisTitulaciones, 300));
   setTimeout(renderMisTitulaciones, 800); // primera carga
+
+  /* ---------- Contactar coordinador (lee usuarios reales de BD) ---------- */
+  async function renderContactCoord() {
+    const cont = document.getElementById('contactCoordList');
+    if (!cont || !window.sb) return;
+    try {
+      const { data, error } = await window.sb.from('usuarios')
+        .select('id, nombre, email, rol, telefono, disponible')
+        .in('rol', ['dueno','coordinador'])
+        .eq('activo', true)
+        .order('rol', { ascending: true })
+        .order('nombre', { ascending: true });
+      if (error) throw error;
+      const rows = (data || []).filter(u => u.disponible !== false); // si viene false explicito no lo mostramos
+      if (rows.length === 0) {
+        cont.innerHTML = '<div class="li"><div class="li-body"><div class="li-title text-muted">Ningún coordinador disponible ahora mismo</div><div class="li-sub">Vuelve a intentarlo más tarde</div></div></div>';
+        return;
+      }
+      cont.innerHTML = rows.map(u => {
+        const rolLabel = u.rol === 'dueno' ? 'Administrador' : 'Coordinador';
+        const iniciales = (u.nombre || u.email).split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase();
+        const tel = u.telefono ? u.telefono.replace(/\s/g,'') : '';
+        return `
+        <div class="li interactive" onclick="window.location.href='mailto:${u.email}'">
+          <div class="li-icon" style="background:#DCFCE7;color:#166534;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;">${iniciales}</div>
+          <div class="li-body">
+            <div class="li-title">${u.nombre || u.email.split('@')[0]} · <span class="text-muted" style="font-weight:400;">${rolLabel}</span></div>
+            <div class="li-sub">${u.email}${tel ? ' · ' + u.telefono : ''}</div>
+          </div>
+          ${tel ? `<a href="tel:${tel}" onclick="event.stopPropagation()" class="btn-icon" title="Llamar" style="text-decoration:none;"><svg class="ic ic-16"><use href="#ic-phone"/></svg></a>` : `<svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>`}
+        </div>`;
+      }).join('');
+    } catch (err) {
+      cont.innerHTML = `<div class="li"><div class="li-body"><div class="li-title text-muted">Error cargando coordinadores</div></div></div>`;
+    }
+  }
+  document.addEventListener('ps-session-updated', () => setTimeout(renderContactCoord, 300));
+  setTimeout(renderContactCoord, 900);
+  // Refresca cada 2 min para reflejar quién está Libre
+  setInterval(renderContactCoord, 120_000);
 
   /* ---------- Logout (real: cierra sesión en Supabase) ---------- */
   window.logout = function () {

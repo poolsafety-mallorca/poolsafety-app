@@ -211,9 +211,15 @@
     renderPostsFromCache();
   });
   renderPosts();
-  // Refrescar cada 60s y al recuperar foco
-  setInterval(renderPosts, 60_000);
+  // Refrescar cada 25s + al recuperar foco. Realtime subscription para entrada/salida
+  // inmediatas cuando el socorrista ficha desde el móvil.
+  setInterval(renderPosts, 25_000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderPosts(); });
+  try {
+    window.sb.channel('fichajes-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fichajes' }, () => renderPosts())
+      .subscribe();
+  } catch (_) { /* si Realtime no está disponible, el interval basta */ }
 
   /* ---------- Modal detalle puesto ---------- */
   window.openPostModal = function (puestoId) {
@@ -784,19 +790,25 @@
     });
   });
 
-  // Actualizar badge del menú Documentación con nº pendientes
-  function actualizarBadgeDocs() {
+  // Actualizar badge del menú Documentación con nº REAL de socorristas con Kit Alta sin firmar
+  async function actualizarBadgeDocs() {
     const badge = document.getElementById('menuBadgeDocs');
-    if (!badge) return;
-    const pendientes = PS.socorristas.slice(0, 30).filter(s => estadoDocsSocorrista(s.id).total > 0).length;
-    if (pendientes > 0) {
-      badge.textContent = pendientes;
-      badge.style.display = 'inline-flex';
-    } else {
-      badge.style.display = 'none';
-    }
+    if (!badge || !window.sb) return;
+    try {
+      const { data: emps } = await window.sb.from('empleados')
+        .select('id').neq('estado', 'eliminado').is('fecha_baja', null);
+      if (!emps || emps.length === 0) { badge.style.display = 'none'; return; }
+      const { data: firmas } = await window.sb.from('firmas_documentos')
+        .select('empleado_id').eq('documento_codigo', 'kit-alta');
+      const yaFirmado = new Set((firmas || []).map(f => f.empleado_id));
+      const pendientes = emps.filter(e => !yaFirmado.has(e.id)).length;
+      if (pendientes > 0) { badge.textContent = pendientes; badge.style.display = 'inline-flex'; }
+      else { badge.style.display = 'none'; }
+    } catch (_) { badge.style.display = 'none'; }
   }
   actualizarBadgeDocs();
+  setInterval(actualizarBadgeDocs, 120_000);
+  document.addEventListener('ps-session-updated', () => setTimeout(actualizarBadgeDocs, 500));
 
   /* ==========================================================================
      SUBIR DOCUMENTO PARA UN SOCORRISTA (contrato, nómina, etc.)
@@ -2735,8 +2747,13 @@
   window.onTitFileChange = function (e) {
     const f = e.target.files[0];
     if (!f) return;
-    if (f.size > 5 * 1024 * 1024) { toast('Archivo demasiado grande (máx 5MB)'); e.target.value = ''; return; }
-    document.getElementById('titFileName').textContent = f.name;
+    const MAX_MB = 20;
+    if (f.size > MAX_MB * 1024 * 1024) {
+      const mb = (f.size / 1024 / 1024).toFixed(1);
+      toast(`Archivo demasiado grande (${mb} MB, máx ${MAX_MB} MB). Comprime el PDF o reduce la calidad del escaneo.`);
+      e.target.value = ''; return;
+    }
+    document.getElementById('titFileName').textContent = f.name + ' · ' + (f.size / 1024 / 1024).toFixed(1) + ' MB';
     const reader = new FileReader();
     reader.onload = ev => { document.getElementById('titFileData').value = ev.target.result; };
     reader.readAsDataURL(f);

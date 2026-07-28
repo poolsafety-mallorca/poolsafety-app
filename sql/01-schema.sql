@@ -99,6 +99,8 @@ create index if not exists idx_empleados_estado on empleados(estado);
 -- Migración idempotente para BDs existentes (por si las columnas no están):
 alter table empleados add column if not exists es_correturnos boolean default false;
 alter table usuarios add column if not exists activo boolean default true;
+alter table usuarios add column if not exists telefono text;
+alter table usuarios add column if not exists disponible boolean default true;
 
 -- ---------------------------------------------------------------------------
 -- 5. HORARIOS (asignación empleado -> puesto con turno y días)

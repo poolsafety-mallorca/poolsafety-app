@@ -207,7 +207,7 @@ window.PSTit = (function () {
           </label>
           ${t?.documento_url ? `<a href="${t.documento_url}" target="_blank" download="${t.documento_nombre || 'doc'}" class="btn btn-outline">👁️ Ver actual</a>` : ''}
         </div>
-        <div class="small text-muted mt-1">Se guarda comprimido en tu ficha. Máximo ~5 MB.</div>
+        <div class="small text-muted mt-1">Se guarda en tu ficha. Máximo 20 MB por archivo (PDF, JPG o PNG).</div>
       </div>
       <div class="field">
         <label>Notas (opcional)</label>

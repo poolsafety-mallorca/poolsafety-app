@@ -163,10 +163,10 @@
         </div>
         <div class="map-info">
           <div class="map-info-left">
-            <div class="map-name">Hotel Bellamar</div>
-            <div class="map-addr">C/ Marbella, 32 · Palma de Mallorca</div>
+            <div class="map-name" id="mapName">Sin puesto asignado</div>
+            <div class="map-addr" id="mapAddr">—</div>
           </div>
-          <button class="btn btn-outline">
+          <button class="btn btn-outline" id="btnComoLlegar" onclick="comoLlegarPuesto()">
             <svg class="ic ic-16"><use href="#ic-compass"/></svg>
             Cómo llegar
           </button>
@@ -338,13 +338,9 @@
           </div>
           <div class="li-side"><span class="badge badge-ok"><span class="dot"></span>Activas</span></div>
         </div>
-        <div class="li">
-          <div class="li-icon"><svg class="ic ic-18"><use href="#ic-phone"/></svg></div>
-          <div class="li-body">
-            <div class="li-title">Contactar coordinador</div>
-            <div class="li-sub">Jaume Ferrer · +34 971 000 000</div>
-          </div>
-          <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
+        <div class="section-eyebrow"><span class="eyebrow">Contactar coordinador</span></div>
+        <div class="list" id="contactCoordList">
+          <div class="li"><div class="li-body"><div class="li-title text-muted">Cargando…</div></div></div>
         </div>
         <div class="li interactive" onclick="logout()">
           <div class="li-icon" style="background: var(--danger-bg); color: #B91C1C;">
