@@ -303,6 +303,39 @@
         <span class="eyebrow">Finiquito y baja</span>
       </div>
       <div id="docsBajaList"></div>
+
+      <!-- Subir mi documentación (DNI, contrato, nómina, títulos, etc.) -->
+      <div class="section-eyebrow" style="margin-top:24px;">
+        <span class="eyebrow">Mi documentación (subida por mí)</span>
+      </div>
+      <div class="card" style="padding:14px;">
+        <div class="small text-muted" style="margin-bottom:10px;">Adjunta cualquier documento que quieras compartir con la empresa: contrato firmado, DNI, títulos, certificados, nóminas, etc. Formatos: PDF, JPG, PNG. Máx 20 MB.</div>
+        <label for="misubidaFile" class="btn btn-primary btn-block" style="cursor:pointer;">
+          <svg class="ic ic-18"><use href="#ic-upload"/></svg>
+          Elegir archivo o hacer foto
+        </label>
+        <input type="file" id="misubidaFile" accept="image/*,application/pdf" capture="environment" style="display:none;" onchange="onMisubidaFile(event)" />
+        <div class="field mt-3">
+          <label>Tipo de documento</label>
+          <select id="misubidaTipo">
+            <option value="dni">DNI / NIE</option>
+            <option value="contrato">Contrato de trabajo</option>
+            <option value="nomina">Nómina</option>
+            <option value="titulacion">Título / certificado</option>
+            <option value="baja-medica">Baja médica</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Notas (opcional)</label>
+          <input type="text" id="misubidaNotas" placeholder="p.ej. nómina de junio 2026" />
+        </div>
+        <button class="btn btn-primary btn-block mt-3" id="misubidaBtn" onclick="subirMiDocumento()" disabled>
+          <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
+          Subir a mi ficha
+        </button>
+      </div>
+      <div id="misubidasList" style="margin-top:10px;"></div>
     </main>
 
     <!-- ============ VIEW: PERFIL ============ -->

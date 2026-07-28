@@ -586,6 +586,86 @@
   setTimeout(renderPendientesYCampana, 1200);
   setInterval(renderPendientesYCampana, 60_000);
 
+  /* ---------- Subir mi documentación (socorrista) ---------- */
+  let misubidaBlob = null, misubidaTipo = null;
+  window.onMisubidaFile = function (e) {
+    const f = e.target.files[0];
+    if (!f) return;
+    const MAX_MB = 20;
+    if (f.size > MAX_MB * 1024 * 1024) {
+      toast(`Archivo demasiado grande (${(f.size/1048576).toFixed(1)} MB, máx ${MAX_MB} MB)`);
+      e.target.value = ''; return;
+    }
+    misubidaBlob = f;
+    misubidaTipo = f.type;
+    const btn = document.getElementById('misubidaBtn');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg> Subir "${f.name}" (${(f.size/1048576).toFixed(1)} MB)`;
+    }
+  };
+
+  window.subirMiDocumento = async function () {
+    if (!misubidaBlob) { toast('Elige un archivo primero'); return; }
+    const empId = empleadoReal?.id;
+    if (!empId) { toast('Aún no tienes ficha creada — contacta con tu coordinador'); return; }
+    const tipo = document.getElementById('misubidaTipo').value;
+    const notas = document.getElementById('misubidaNotas').value.trim();
+    const btn = document.getElementById('misubidaBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-signal"/></svg> Subiendo…';
+    try {
+      const ext = (misubidaBlob.name.split('.').pop() || 'bin').toLowerCase();
+      const path = `docs-socorrista/${empId}/${Date.now()}-${tipo}.${ext}`;
+      const url = await window.PSStorage.subir(path, misubidaBlob, misubidaBlob.type);
+      const { error } = await window.sb.from('documentos_subidos').insert({
+        empleado_id: empId,
+        subido_por: (window.PS_SESSION||{}).userId || null,
+        tipo,
+        nombre_archivo: (notas || misubidaBlob.name).substring(0, 200),
+        url_storage: url
+      });
+      if (error) throw error;
+      toast('✓ Documento subido y visible para tu coordinador');
+      document.getElementById('misubidaFile').value = '';
+      document.getElementById('misubidaNotas').value = '';
+      misubidaBlob = null;
+      btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg> Subir a mi ficha';
+      renderMisSubidas();
+    } catch (err) {
+      toast('Error: ' + err.message);
+      btn.disabled = false;
+      btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg> Reintentar';
+    }
+  };
+
+  async function renderMisSubidas() {
+    const cont = document.getElementById('misubidasList');
+    if (!cont) return;
+    const empId = empleadoReal?.id;
+    if (!empId || !window.sb) { cont.innerHTML = ''; return; }
+    try {
+      const { data } = await window.sb.from('documentos_subidos')
+        .select('id, tipo, nombre_archivo, url_storage, subido_el')
+        .eq('empleado_id', empId).order('subido_el', { ascending: false });
+      const rows = data || [];
+      if (rows.length === 0) { cont.innerHTML = ''; return; }
+      cont.innerHTML = '<div class="section-eyebrow" style="margin-top:16px;"><span class="eyebrow">Ya subidos</span></div>' +
+        '<div class="list">' + rows.map(r => `
+          <a class="li interactive" href="${r.url_storage}" target="_blank" style="text-decoration:none;color:inherit;">
+            <div class="li-icon"><svg class="ic ic-18"><use href="#ic-file-text"/></svg></div>
+            <div class="li-body">
+              <div class="li-title">${r.nombre_archivo}</div>
+              <div class="li-sub">${r.tipo} · ${new Date(r.subido_el).toLocaleDateString('es-ES')}</div>
+            </div>
+            <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
+          </a>
+        `).join('') + '</div>';
+    } catch (_) { cont.innerHTML = ''; }
+  }
+  document.addEventListener('ps-session-updated', () => setTimeout(renderMisSubidas, 800));
+  setTimeout(renderMisSubidas, 1400);
+
   /* ---------- Botiquín / DESA / Oxigenoterapia ---------- */
   const inventarioList = document.getElementById('inventarioList');
   const alertasStockPanel = document.getElementById('alertasStockPanel');
@@ -847,19 +927,17 @@
   }
 
   function renderDocsHeader() {
-    const kitOk = PS.haFirmadoKitAlta(me.id);
-    const pend = kitOk ? 0 : 1;
-    const jornadaPend = PS.documentos.filter(d => d.grupo === 'mensual' && !d.yaFirmado && !misFirmas()[d.id]).length;
-    const total = pend + jornadaPend;
+    const firmas = misFirmas();
+    const kitOk = !!firmas['kit-alta'];
+    const jornadaPend = (PS.documentos || []).filter(d => d.grupo === 'mensual' && !firmas[d.id]).length;
+    const total = (kitOk ? 0 : 1) + jornadaPend;
     if (docsSummary) {
       docsSummary.textContent = total === 0
         ? `${me.nombre} · toda la documentación al día`
         : `${me.nombre} · ${total} documento${total>1?'s':''} pendiente${total>1?'s':''} de firmar`;
     }
     if (docsPendingDot) docsPendingDot.style.display = total > 0 ? 'inline-block' : 'none';
-    if (docAltaBadge) {
-      docAltaBadge.textContent = kitOk ? 'Firmado' : 'Pendiente';
-    }
+    if (docAltaBadge) docAltaBadge.textContent = kitOk ? 'Firmado' : 'Pendiente';
   }
 
   function docCard(opts) {
