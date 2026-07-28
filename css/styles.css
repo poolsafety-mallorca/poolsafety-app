@@ -3169,6 +3169,30 @@ img, svg { display: block; max-width: 100%; }
 }
 
 /* ==========================================================================
+   Wizard Kit Alta · texto completo del documento + tabla EPIs editable
+   ========================================================================== */
+.wizard-doc-full {
+  max-height: 260px; overflow-y: auto;
+  padding: 14px 16px; margin-top: 12px; margin-bottom: 8px;
+  background: #FAFBFC; border: 1px solid var(--ink-100, #E5E7EB); border-radius: 10px;
+  font-size: 13px; line-height: 1.55; color: var(--ink-700, #374151);
+}
+.wizard-doc-full .wizard-doc-h  { font-weight: 700; color: var(--ink-900, #111827); font-size: 12.5px; letter-spacing: .3px; text-transform: uppercase; margin: 14px 0 6px; }
+.wizard-doc-full .wizard-doc-h:first-child { margin-top: 0; }
+.wizard-doc-full .wizard-doc-p  { margin: 6px 0; }
+.wizard-doc-full .wizard-doc-blank { height: 6px; }
+.wizard-doc-full::-webkit-scrollbar { width: 8px; }
+.wizard-doc-full::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+.wizard-doc-full::-webkit-scrollbar-track { background: transparent; }
+
+.wizard-epi-table-wrap { overflow-x: auto; margin-top: 8px; margin-bottom: 8px; }
+.wizard-epi-table { width: 100%; border-collapse: collapse; font-size: 13px; background: #FAFBFC; border: 1px solid var(--ink-100, #E5E7EB); border-radius: 10px; overflow: hidden; }
+.wizard-epi-table thead th { text-align: left; padding: 8px 10px; font-weight: 600; font-size: 11.5px; color: var(--ink-500, #6B7280); text-transform: uppercase; letter-spacing: .3px; background: #F3F4F6; border-bottom: 1px solid var(--ink-100, #E5E7EB); }
+.wizard-epi-table tbody td { padding: 8px 10px; border-bottom: 1px solid #F3F4F6; vertical-align: middle; }
+.wizard-epi-table tbody tr:last-child td { border-bottom: 0; }
+.wiz-epi-input:focus { outline: 2px solid #B91C1C33; border-color: #B91C1C; }
+
+/* ==========================================================================
    Toggle Disponible / Libre para coordinadores
    ========================================================================== */
 .disp-panel {

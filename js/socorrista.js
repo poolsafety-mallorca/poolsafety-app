@@ -877,16 +877,32 @@
         contenido: `
           <div class="wizard-doc-summary">${sub.resumen}</div>
           ${sub.resaltado ? '<div class="wizard-highlight"><svg class="ic ic-14"><use href="#ic-alert"/></svg> Este documento habilita el registro digital de tu jornada con GPS. Puedes retirar el consentimiento en cualquier momento.</div>' : ''}
+          ${sub.textoCompleto ? `
+            <div class="wizard-doc-full">${sub.textoCompleto.split('\n').map(l => {
+              const t = l.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+              if (!t.trim()) return '<div class="wizard-doc-blank"></div>';
+              if (/^[A-ZÁÉÍÓÚÑ0-9· ,\.\(\)\/]+$/.test(t.trim()) && t.trim().length > 4 && t.trim().length < 90) return `<div class="wizard-doc-h">${t}</div>`;
+              return `<div class="wizard-doc-p">${t}</div>`;
+            }).join('')}</div>
+          ` : ''}
           ${sub.esListaEpis ? `
-            <ul class="wizard-epi-list">
-              <li>Sudadera roja Roly · 1 ud</li>
-              <li>Camiseta blanca Roly · 3 ud</li>
-              <li>Bañador rojo Roly · 2 ud</li>
-              <li>Pantalón largo negro Roly · 1 ud</li>
-              <li>Gafas de sol negras Roly · 1 ud</li>
-              <li>Gorra roja y blanca Roly · 1 ud</li>
-              <li>Crema solar · 1 ud</li>
-            </ul>` : ''}
+            <div class="wizard-doc-h" style="margin-top:14px;">EPIs entregados (ajusta las cantidades si te dieron distinto)</div>
+            <div class="wizard-epi-table-wrap">
+              <table class="wizard-epi-table">
+                <thead><tr><th>Equipo</th><th>Color</th><th>Modelo</th><th style="width:90px;">Unidades</th></tr></thead>
+                <tbody>
+                  ${(sub.epis || []).map(e => {
+                    const cantGuardada = (wizardData.campos.epis && wizardData.campos.epis[e.id] != null) ? wizardData.campos.epis[e.id] : e.unidades;
+                    return `<tr>
+                      <td><b>${e.nombre}</b></td>
+                      <td>${e.color}</td>
+                      <td>${e.modelo}</td>
+                      <td><input type="number" min="0" step="1" class="wiz-epi-input" data-epi="${e.id}" value="${cantGuardada}" style="width:70px;text-align:center;padding:4px 6px;border:1px solid var(--ink-300,#D1D5DB);border-radius:6px;" /></td>
+                    </tr>`;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>` : ''}
           ${sub.requiereCampos ? `
             <div class="field mt-3">
               <label>Correo electrónico personal</label>
@@ -904,7 +920,8 @@
           </label>
         `,
         obligatorio: sub.obligatorio,
-        requiereCampos: sub.requiereCampos
+        requiereCampos: sub.requiereCampos,
+        esListaEpis: sub.esListaEpis
       })),
       {
         titulo: 'Firma manuscrita',
@@ -1045,6 +1062,12 @@
         if (!email || !tel) { toast('Rellena email y teléfono para continuar'); return; }
         wizardData.campos.emailPersonal = email;
         wizardData.campos.telefonoPersonal = tel;
+      }
+      if (step.esListaEpis) {
+        wizardData.campos.epis = wizardData.campos.epis || {};
+        document.querySelectorAll('.wiz-epi-input').forEach(inp => {
+          wizardData.campos.epis[inp.dataset.epi] = parseInt(inp.value) || 0;
+        });
       }
     }
 
