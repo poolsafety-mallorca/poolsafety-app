@@ -435,66 +435,141 @@
     }
   });
 
-  /* ---------- Notas ---------- */
+  /* ---------- Notas (real desde BD para el empleado logueado) ---------- */
   const notasList = document.getElementById('notasList');
-  if (notasList) {
-    notasList.innerHTML = PS.notas.map(n => `
-      <div class="note">
-        <div class="note-head">
-          <div class="note-avatar">${n.autor.split(' ').slice(-1)[0][0]}</div>
-          <div class="note-author">${n.autor}</div>
-          <div class="note-time">${n.fecha}</div>
+  const notasCount = document.getElementById('notasCount');
+  async function cargarMisNotas() {
+    if (!notasList) return;
+    try {
+      const empId = empleadoReal?.id;
+      if (!empId || !window.sb) { notasList.innerHTML = ''; if (notasCount) notasCount.textContent = ''; return; }
+      const { data } = await window.sb.from('notas')
+        .select('id, mensaje, autor_nombre, created_at')
+        .eq('empleado_id', empId).order('created_at', { ascending: false }).limit(20);
+      const rows = data || [];
+      if (notasCount) notasCount.textContent = rows.length ? `${rows.length} nueva${rows.length === 1 ? '' : 's'}` : '';
+      if (rows.length === 0) { notasList.innerHTML = '<div class="text-muted small" style="padding:14px;text-align:center;">Sin notas del coordinador</div>'; return; }
+      notasList.innerHTML = rows.map(n => `
+        <div class="note">
+          <div class="note-head">
+            <div class="note-avatar">${(n.autor_nombre || '?').split(' ').slice(-1)[0][0]}</div>
+            <div class="note-author">${n.autor_nombre || 'Coordinador'}</div>
+            <div class="note-time">${new Date(n.created_at).toLocaleDateString('es-ES')}</div>
+          </div>
+          <div class="note-body">${n.mensaje}</div>
         </div>
-        <div class="note-body">${n.mensaje}</div>
-      </div>
-    `).join('');
+      `).join('');
+    } catch (_) { notasList.innerHTML = ''; }
   }
+  document.addEventListener('ps-session-updated', () => setTimeout(cargarMisNotas, 500));
+  setTimeout(cargarMisNotas, 1000);
 
-  /* ---------- Tareas ---------- */
+  /* ---------- Tareas (real desde BD) ---------- */
   const tareasList = document.getElementById('tareasList');
   const tareasProgress = document.getElementById('tareasProgress');
-  function renderTareas() {
+  async function renderTareas() {
     if (!tareasList) return;
-    tareasList.innerHTML = PS.tareas.map(t => {
-      const done = state.tareasHechas.includes(t.id);
-      const prBadge = t.prioridad === 'alta' ? 'badge-danger'
-                    : t.prioridad === 'media' ? 'badge-warn' : 'badge-info';
-      return `
-        <div class="li ${done ? 'done' : ''}" data-task="${t.id}">
-          <div class="check ${done ? 'done' : ''}">
-            ${done ? `<svg class="ic ic-14"><use href="#ic-check"/></svg>` : ''}
-          </div>
-          <div class="li-body">
-            <div class="li-title">${t.titulo}</div>
-            <div class="li-sub">${t.descripcion}</div>
-            <div class="row gap-1 mt-2">
-              <span class="badge ${prBadge}"><span class="dot"></span>${t.prioridad}</span>
-              <span class="badge badge-neutral">
-                <svg class="ic ic-14"><use href="#ic-calendar"/></svg>
-                ${t.fecha}
-              </span>
+    try {
+      const empId = empleadoReal?.id;
+      if (!empId || !window.sb) {
+        tareasList.innerHTML = '<div class="text-muted small" style="padding:14px;text-align:center;">Sin tareas pendientes</div>';
+        if (tareasProgress) tareasProgress.textContent = '';
+        return;
+      }
+      const { data } = await window.sb.from('tareas')
+        .select('id, titulo, descripcion, prioridad, fecha_limite, completada')
+        .eq('empleado_id', empId).order('fecha_limite', { ascending: true });
+      const rows = data || [];
+      if (rows.length === 0) {
+        tareasList.innerHTML = '<div class="text-muted small" style="padding:14px;text-align:center;">Sin tareas del coordinador</div>';
+        if (tareasProgress) tareasProgress.textContent = '';
+        return;
+      }
+      const doneCount = rows.filter(t => t.completada).length;
+      if (tareasProgress) tareasProgress.textContent = `${doneCount} de ${rows.length} completadas`;
+      tareasList.innerHTML = rows.map(t => {
+        const done = t.completada;
+        const prBadge = t.prioridad === 'alta' ? 'badge-danger'
+                      : t.prioridad === 'media' ? 'badge-warn' : 'badge-info';
+        return `
+          <div class="li ${done ? 'done' : ''}" data-task="${t.id}">
+            <div class="check ${done ? 'done' : ''}">${done ? `<svg class="ic ic-14"><use href="#ic-check"/></svg>` : ''}</div>
+            <div class="li-body">
+              <div class="li-title">${t.titulo}</div>
+              <div class="li-sub">${t.descripcion || ''}</div>
+              <div class="row gap-1 mt-2">
+                <span class="badge ${prBadge}"><span class="dot"></span>${t.prioridad || 'baja'}</span>
+                ${t.fecha_limite ? `<span class="badge badge-neutral"><svg class="ic ic-14"><use href="#ic-calendar"/></svg>${new Date(t.fecha_limite).toLocaleDateString('es-ES')}</span>` : ''}
+              </div>
             </div>
-          </div>
-        </div>
-      `;
-    }).join('');
+          </div>`;
+      }).join('');
     tareasList.querySelectorAll('.li').forEach(el => {
-      el.addEventListener('click', () => {
-        const id = el.dataset.task;
-        if (state.tareasHechas.includes(id)) {
-          state.tareasHechas = state.tareasHechas.filter(x => x !== id);
-        } else {
-          state.tareasHechas.push(id);
-          toast('Tarea marcada como hecha');
-        }
-        PS.setSocorristaState(state);
-        renderTareas();
+      tareasList.querySelectorAll('.li').forEach(el => {
+        el.addEventListener('click', async () => {
+          const id = el.dataset.task;
+          const t = rows.find(x => x.id === id);
+          if (!t) return;
+          try {
+            await window.sb.from('tareas').update({ completada: !t.completada, fecha_completada: t.completada ? null : new Date().toISOString() }).eq('id', id);
+            toast(t.completada ? 'Tarea reabierta' : 'Tarea marcada como hecha');
+            renderTareas();
+          } catch (err) { toast('Error: ' + err.message); }
+        });
       });
-    });
-    const done = PS.tareas.filter(t => state.tareasHechas.includes(t.id)).length;
-    if (tareasProgress) tareasProgress.textContent = `${done} de ${PS.tareas.length} completadas`;
+    } catch (err) {
+      tareasList.innerHTML = `<div class="text-muted small" style="padding:14px;text-align:center;color:var(--danger);">Error: ${err.message}</div>`;
+    }
   }
-  renderTareas();
+  document.addEventListener('ps-session-updated', () => setTimeout(renderTareas, 500));
+  setTimeout(renderTareas, 1000);
+
+  /* ---------- Pendientes Hoy + Campana notificaciones (real) ---------- */
+  async function renderPendientesYCampana() {
+    if (!window.sb) return;
+    const empId = empleadoReal?.id;
+    let tareasPend = 0, kitAltaPendiente = false;
+    if (empId) {
+      try {
+        const { count } = await window.sb.from('tareas')
+          .select('id', { count: 'exact', head: true })
+          .eq('empleado_id', empId).eq('completada', false);
+        tareasPend = count || 0;
+      } catch (_) {}
+      try {
+        const { data } = await window.sb.from('firmas_documentos')
+          .select('id').eq('empleado_id', empId).eq('documento_codigo', 'kit-alta').limit(1);
+        kitAltaPendiente = !data || data.length === 0;
+      } catch (_) {}
+    }
+
+    // Notice tareas
+    const noticeTareas = document.getElementById('noticeTareas');
+    if (noticeTareas) {
+      if (tareasPend > 0) {
+        noticeTareas.style.display = '';
+        document.getElementById('noticeTareasTitle').textContent =
+          `${tareasPend} tarea${tareasPend === 1 ? '' : 's'} del coordinador`;
+        document.getElementById('noticeTareasSub').textContent = `Pulsa para ver el detalle`;
+      } else {
+        noticeTareas.style.display = 'none';
+      }
+    }
+    // Notice Docs pendiente
+    const noticeDocs = document.getElementById('noticeDocs');
+    if (noticeDocs) noticeDocs.style.display = kitAltaPendiente ? '' : 'none';
+
+    // Punto rojo campana (tareas + kit alta pendiente)
+    const notifDot = document.getElementById('notifDot');
+    if (notifDot) notifDot.style.display = (tareasPend > 0 || kitAltaPendiente) ? '' : 'none';
+
+    // Badge Docs en tabbar (rojo si kit alta pendiente)
+    const dot = document.getElementById('docsPendingDot');
+    if (dot) dot.style.display = kitAltaPendiente ? '' : 'none';
+  }
+  document.addEventListener('ps-session-updated', () => setTimeout(renderPendientesYCampana, 700));
+  setTimeout(renderPendientesYCampana, 1200);
+  setInterval(renderPendientesYCampana, 60_000);
 
   /* ---------- Botiquín / DESA / Oxigenoterapia ---------- */
   const inventarioList = document.getElementById('inventarioList');
@@ -1167,65 +1242,66 @@
   async function openJornadaSign(d) {
     document.getElementById('docViewTitle').textContent = d.titulo;
     document.getElementById('docViewSub').textContent = 'Firma obligatoria antes del cierre del mes';
-    document.getElementById('docViewBody').innerHTML = '<div class="text-muted" style="padding:22px;text-align:center;">Cargando fichajes del mes…</div>';
-    document.getElementById('docViewActions').innerHTML = '';
     document.getElementById('docViewModal').classList.add('open');
 
     // Detectar mes de la jornada desde el id: 'jornada-YYYY-MM'
-    const m = d.id.match(/jornada-(\d{4})-(\d{2})/);
-    const anio = m ? parseInt(m[1]) : new Date().getFullYear();
-    const mes = m ? parseInt(m[2]) - 1 : new Date().getMonth();
+    const mm = d.id.match(/jornada-(\d{4})-(\d{2})/);
+    const anio = mm ? parseInt(mm[1]) : new Date().getFullYear();
+    const mes = mm ? parseInt(mm[2]) - 1 : new Date().getMonth();
     const desde = new Date(anio, mes, 1).toISOString();
     const hasta = new Date(anio, mes + 1, 1).toISOString();
 
-    // Cargar fichajes reales del mes
-    let fichajes = [];
+    // Cargar fichajes reales del mes (silencioso — si no hay, seguimos con objetivo)
+    let horasReales = 0, diasTrabajados = 0;
     try {
       const empId = empleadoReal?.id;
       if (empId && window.sb) {
         const { data } = await window.sb.from('fichajes')
-          .select('id, tipo, hora, gps_ok, fuera_de_zona')
+          .select('id, tipo, hora')
           .eq('empleado_id', empId)
           .gte('hora', desde).lt('hora', hasta)
           .order('hora', { ascending: true });
-        fichajes = data || [];
+        const fichajes = data || [];
+        let totalMins = 0, entrada = null;
+        fichajes.forEach(f => {
+          if (f.tipo === 'entrada') entrada = new Date(f.hora);
+          else if (f.tipo === 'salida' && entrada) {
+            totalMins += Math.max(0, (new Date(f.hora) - entrada) / 60000);
+            entrada = null;
+          }
+        });
+        horasReales = Math.round(totalMins / 60);
+        diasTrabajados = new Set(fichajes.filter(f => f.tipo === 'entrada').map(f => new Date(f.hora).toDateString())).size;
       }
     } catch (_) {}
 
-    if (fichajes.length === 0) {
-      document.getElementById('docViewBody').innerHTML = `
-        <div class="alert-strip warn" style="flex-direction:column;align-items:stretch;">
-          <div><b>Aún no tienes fichajes registrados este mes.</b></div>
-          <div class="small text-muted" style="margin-top:6px;">No puedes firmar el registro de jornada si no hay fichajes reales. Vuelve a intentarlo al final del mes cuando hayas fichado tus turnos.</div>
-        </div>`;
-      document.getElementById('docViewActions').innerHTML = `<button class="btn btn-outline" onclick="closeDocView()">Entendido</button>`;
-      return;
+    // Regla del cliente: siempre 40h/sem · 160h/mes; solo mostrar menos si trabajó menos.
+    // Si trabajó más de 40h/sem, las extras solo las ve admin — el socorrista firma 160h.
+    const OBJ_MES = 160;
+    let horasMostradas;
+    let mensajeExtra = '';
+    if (horasReales <= 0) {
+      // Sin fichajes o mes futuro: se firma la jornada estándar
+      horasMostradas = OBJ_MES;
+    } else if (horasReales < OBJ_MES) {
+      horasMostradas = horasReales;
+      mensajeExtra = `Trabajaste menos de las 40h/semana (${horasReales}h reales). Firmas por las horas realmente trabajadas.`;
+    } else {
+      horasMostradas = OBJ_MES;
+      mensajeExtra = 'Tú firmas por las 40h/semana ordinarias. Las horas complementarias, si las hay, las ve tu coordinador.';
     }
-
-    // Calcular horas totales del mes desde fichajes reales (par entrada+salida)
-    let totalMins = 0;
-    let entrada = null;
-    fichajes.forEach(f => {
-      if (f.tipo === 'entrada') entrada = new Date(f.hora);
-      else if (f.tipo === 'salida' && entrada) {
-        totalMins += Math.max(0, (new Date(f.hora) - entrada) / 60000);
-        entrada = null;
-      }
-    });
-    const horasReales = Math.round(totalMins / 60);
-    const diasTrabajados = new Set(fichajes.filter(f => f.tipo === 'entrada').map(f => new Date(f.hora).toDateString())).size;
 
     document.getElementById('docViewBody').innerHTML = `
       <div class="jornada-summary">
         <div class="jornada-row">
-          <span>Días trabajados este mes</span>
-          <b>${diasTrabajados}</b>
+          <span>Horas ordinarias (40h/sem · 160h/mes)</span>
+          <b>${horasMostradas}h</b>
         </div>
-        <div class="jornada-row">
-          <span>Horas trabajadas (calculadas desde fichajes reales)</span>
-          <b>${horasReales}h</b>
+        ${mensajeExtra ? `<div class="jornada-note small">${mensajeExtra}</div>` : ''}
+        <div class="jornada-row total">
+          <span>Total del mes</span>
+          <b>${horasMostradas}h</b>
         </div>
-        <div class="jornada-note small">Detalle diario disponible para tu coordinador en su panel.</div>
       </div>
       <div class="field mt-3">
         <label>Firma (nombre completo)</label>
@@ -1248,7 +1324,7 @@
     `;
     document.getElementById('docViewActions').innerHTML = `
       <button class="btn btn-outline" onclick="closeDocView()">Cancelar</button>
-      <button class="btn btn-primary" onclick="submitJornada('${d.id}', ${horasReales}, ${diasTrabajados})">
+      <button class="btn btn-primary" onclick="submitJornada('${d.id}', ${horasMostradas}, ${horasReales}, ${diasTrabajados})">
         <svg class="ic ic-16"><use href="#ic-pen"/></svg>
         Firmar jornada
       </button>
@@ -1256,7 +1332,7 @@
     setTimeout(initFirmaCanvas, 50);
   }
 
-  window.submitJornada = async function (docId, horasReales, diasTrabajados) {
+  window.submitJornada = async function (docId, horasFirmadas, horasReales, diasTrabajados) {
     const firma = document.getElementById('jornada-firma')?.value.trim();
     const accept = document.getElementById('jornada-accept')?.checked;
     if (!firma || !accept) { toast('Firma, marca la casilla y dibuja tu firma'); return; }
@@ -1275,7 +1351,11 @@
           firma_imagen: firmaImagen,
           ubicacion_lat: ultimaPosicion?.lat || null,
           ubicacion_lng: ultimaPosicion?.lng || null,
-          campos_json: { horas_reales: horasReales || 0, dias_trabajados: diasTrabajados || 0 }
+          campos_json: {
+            horas_firmadas: horasFirmadas || 0,   // lo que ve el trabajador y firma (40h/sem cap)
+            horas_reales: horasReales || 0,       // lo real (solo admin)
+            dias_trabajados: diasTrabajados || 0
+          }
         });
         if (error) throw error;
       }

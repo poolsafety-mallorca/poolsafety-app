@@ -32,8 +32,9 @@
           <svg class="ic ic-16"><use href="#ic-search"/></svg>
           <input type="text" id="postSearch" placeholder="Buscar puesto o socorrista…" />
         </label>
-        <button class="btn-icon" title="Notificaciones">
+        <button class="btn-icon" title="Alertas de botiquín" id="notifBtnCoord" onclick="document.querySelector('[data-section=&quot;botiquin&quot;]')?.click()" style="position:relative;">
           <svg class="ic ic-18"><use href="#ic-bell"/></svg>
+          <span id="notifCoordBadge" style="display:none;position:absolute;top:2px;right:2px;background:#B91C1C;color:#fff;font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:8px;padding:0 4px;line-height:16px;text-align:center;"></span>
         </button>
         <button class="user-chip" title="Perfil">
           <span class="user-chip-avatar" id="userAvatar">JF</span>

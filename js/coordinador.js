@@ -426,6 +426,20 @@
   setInterval(renderAlertas, 60_000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderAlertas(); });
 
+  // Badge campana admin/coord = nº de alertas abiertas
+  async function refrescarCampana() {
+    const badge = document.getElementById('notifCoordBadge');
+    if (!badge || !window.sb) return;
+    try {
+      const { count } = await window.sb.from('alertas')
+        .select('id', { count: 'exact', head: true }).eq('resuelto', false);
+      if (count && count > 0) { badge.textContent = count > 99 ? '99+' : String(count); badge.style.display = 'inline-block'; }
+      else { badge.style.display = 'none'; }
+    } catch (_) { badge.style.display = 'none'; }
+  }
+  refrescarCampana();
+  setInterval(refrescarCampana, 45_000);
+
   /* ---------- Gestión de botiquines (selector de puesto + inventario) ---------- */
   const botiquinPuestoSelect = document.getElementById('botiquinPuestoSelect');
   const botiquinAdminList = document.getElementById('botiquinAdminList');
@@ -1541,7 +1555,11 @@
             ${!kitFirma ? `<button class="btn btn-primary btn-sm" onclick="firmarKitEnTablet('${e.id}')">Firmar en tablet</button>` : ''}
           </div>
           ${kitFirma ? `
-            <div class="row gap-2 mt-3" style="justify-content:flex-end;">
+            <div class="row gap-2 mt-3" style="justify-content:flex-end;flex-wrap:wrap;">
+              <button class="btn btn-outline btn-sm" onclick="reenviarKitAlta('${kitFirma.id}','${(e.nombre||'').replace(/'/g,'\\\'')}')" style="color:#B45309;border-color:#F59E0B;">
+                <svg class="ic ic-16"><use href="#ic-refresh"/></svg>
+                Reenviar para firmar de nuevo
+              </button>
               <button class="btn btn-primary btn-sm" onclick="descargarPdfFirma('${kitFirma.id}','kit-alta')">
                 <svg class="ic ic-16"><use href="#ic-download"/></svg>
                 Descargar PDF
@@ -1549,24 +1567,35 @@
               ${kitFirma.archivo_pdf_url ? `<a class="btn btn-outline btn-sm" href="${kitFirma.archivo_pdf_url}" target="_blank">📎 Ver PDF guardado</a>` : ''}
             </div>` : ''}
         </div>
-        ${jornadas.map(j => `
+        ${jornadas.map(j => {
+          const c = j.campos_json || {};
+          return `
           <div class="ficha-action-row ok" style="flex-direction:column;align-items:stretch;">
             <div style="display:flex;gap:10px;align-items:flex-start;">
               <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
               <div class="ficha-action-body">
                 <div class="ficha-action-title">${j.documento_codigo}</div>
                 <div class="ficha-action-sub">Firmado el ${new Date(j.fecha_firma).toLocaleString('es-ES')}</div>
+                <div class="small text-muted mt-1">
+                  Firmadas <b>${c.horas_firmadas || '—'}h</b>
+                  ${c.horas_reales && c.horas_reales > (c.horas_firmadas || 0) ? ` · Reales ${c.horas_reales}h (${c.horas_reales - (c.horas_firmadas || 0)}h extra)` : ''}
+                  ${c.dias_trabajados ? ' · ' + c.dias_trabajados + ' días' : ''}
+                </div>
                 ${j.firma_imagen ? `<img src="${j.firma_imagen}" class="firma-imagen" style="max-width:180px;margin-top:8px;" alt="Firma"/>` : ''}
               </div>
             </div>
-            <div class="row gap-2 mt-3" style="justify-content:flex-end;">
+            <div class="row gap-2 mt-3" style="justify-content:flex-end;flex-wrap:wrap;">
               <button class="btn btn-primary btn-sm" onclick="descargarPdfFirma('${j.id}','jornada')">
                 <svg class="ic ic-16"><use href="#ic-download"/></svg>
-                Descargar PDF
+                Descargar resumen
+              </button>
+              <button class="btn btn-outline btn-sm" onclick="descargarJornadaOficial('${j.id}')">
+                <svg class="ic ic-16"><use href="#ic-file-text"/></svg>
+                Descargar hoja mensual oficial (inspección)
               </button>
             </div>
-          </div>
-        `).join('')}
+          </div>`;
+        }).join('')}
         ${jornadas.length === 0 ? `
           <div class="ficha-action-row warn">
             <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
@@ -2711,14 +2740,63 @@
         .from('firmas_documentos').select('*').eq('id', firmaId).single();
       if (error) throw error;
       const empData = empleadoData(fichaActualId) || { nombre: '—' };
+      // Enriquecer con el nombre del puesto para el PDF oficial
+      if (empData.puestoId && !empData.puesto_nombre) {
+        try {
+          const { data: p } = await window.sb.from('puestos').select('nombre').eq('id', empData.puestoId).single();
+          if (p) empData.puesto_nombre = p.nombre;
+        } catch (_) {}
+      }
       const subdocs = (window.PS && PS.kitAltaSubdocs) || [];
       const nombreArchivo = `PoolSafety-${firma.documento_codigo}-${(empData.nombre||'empleado').replace(/\s+/g,'_')}.pdf`;
       await window.PSPdf.descargar(empData, firma, subdocs, nombreArchivo);
       toast('✓ PDF descargado');
-      // Opcional: subir a Storage para tener copia permanente
-      try {
-        await window.PSPdf.generarYSubir(empData, firma, subdocs);
-      } catch(e) { /* ignore */ }
+      try { await window.PSPdf.generarYSubir(empData, firma, subdocs); } catch(e) { /* ignore */ }
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  window.reenviarKitAlta = async function (firmaId, nombre) {
+    if (!confirm(`¿Reenviar Kit Alta para que ${nombre || 'el trabajador'} lo firme de nuevo?\n\nLa firma anterior queda archivada y al abrir la app le saldrá el wizard obligatorio.`)) return;
+    try {
+      // Marca la firma anterior con fecha de archivado en dispositivo (sin borrar)
+      await window.sb.from('firmas_documentos').update({
+        dispositivo: '[REEMPLAZADA · ' + new Date().toLocaleDateString('es-ES') + ']'
+      }).eq('id', firmaId);
+      // Borramos la fila principal con documento_codigo='kit-alta' para que el socorrista vea 'pendiente'
+      // Estrategia sin data-loss: cambiamos el documento_codigo a 'kit-alta-archivada-<timestamp>'
+      const codigo = 'kit-alta-archivada-' + Date.now();
+      await window.sb.from('firmas_documentos').update({ documento_codigo: codigo }).eq('id', firmaId);
+      toast(`✓ ${nombre} tendrá que volver a firmar la próxima vez que entre`);
+      renderFicha();
+      if (window.renderEstadoEquipo) window.renderEstadoEquipo();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  window.descargarJornadaOficial = async function (firmaId) {
+    try {
+      toast('Generando hoja mensual…');
+      const { data: firma, error } = await window.sb
+        .from('firmas_documentos').select('*').eq('id', firmaId).single();
+      if (error) throw error;
+      const empData = empleadoData(fichaActualId) || { nombre: '—' };
+      if (empData.puestoId && !empData.puesto_nombre) {
+        try {
+          const { data: p } = await window.sb.from('puestos').select('nombre').eq('id', empData.puestoId).single();
+          if (p) empData.puesto_nombre = p.nombre;
+        } catch (_) {}
+      }
+      // Detectar mes/año desde documento_codigo 'jornada-YYYY-MM'
+      const m = firma.documento_codigo.match(/jornada-(\d{4})-(\d{2})/);
+      const anio = m ? parseInt(m[1]) : new Date().getFullYear();
+      const mes = m ? parseInt(m[2]) - 1 : new Date().getMonth();
+      const desde = new Date(anio, mes, 1).toISOString();
+      const hasta = new Date(anio, mes + 1, 1).toISOString();
+      const { data: fichs } = await window.sb.from('fichajes')
+        .select('id, tipo, hora').eq('empleado_id', fichaActualId)
+        .gte('hora', desde).lt('hora', hasta).order('hora');
+      const nombreMes = new Date(anio, mes, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+      await window.PSPdf.descargarJornadaOficial(empData, firma, fichs || [], nombreMes);
+      toast('✓ Hoja mensual descargada');
     } catch (err) { toast('Error: ' + err.message); }
   };
 

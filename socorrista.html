@@ -30,9 +30,9 @@
         </div>
       </div>
       <div class="mob-topbar-right">
-        <button class="icon-btn-dark" title="Notificaciones">
+        <button class="icon-btn-dark" title="Notificaciones" id="notifBtn" onclick="showView('tareas')">
           <svg class="ic ic-18"><use href="#ic-bell"/></svg>
-          <span class="notif-dot"></span>
+          <span class="notif-dot" id="notifDot" style="display:none;"></span>
         </button>
         <button class="icon-btn-dark" id="logoutBtn" title="Salir">
           <svg class="ic ic-18"><use href="#ic-logout"/></svg>
@@ -175,14 +175,14 @@
 
       <!-- Avisos rápidos -->
       <div class="section-eyebrow"><span class="eyebrow">Pendiente para hoy</span></div>
-      <div class="col gap-2">
-        <div class="notice interactive" onclick="showView('tareas')">
+      <div class="col gap-2" id="pendientesHoy">
+        <div class="notice interactive" onclick="showView('tareas')" id="noticeTareas" style="display:none;">
           <div class="notice-icon amber">
             <svg class="ic ic-22"><use href="#ic-clipboard"/></svg>
           </div>
           <div class="notice-body">
-            <div class="notice-title">3 tareas del coordinador</div>
-            <div class="notice-sub">2 sin hacer · 1 completada</div>
+            <div class="notice-title" id="noticeTareasTitle">Tareas del coordinador</div>
+            <div class="notice-sub" id="noticeTareasSub">—</div>
           </div>
           <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
         </div>
@@ -192,7 +192,17 @@
           </div>
           <div class="notice-body">
             <div class="notice-title">Revisar botiquín</div>
-            <div class="notice-sub">Última revisión hace 3 días</div>
+            <div class="notice-sub">Verifica al empezar tu turno</div>
+          </div>
+          <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
+        </div>
+        <div class="notice interactive" onclick="showView('docs')" id="noticeDocs" style="display:none;">
+          <div class="notice-icon" style="background:#FEE2E2;color:#B91C1C;">
+            <svg class="ic ic-22"><use href="#ic-file-text"/></svg>
+          </div>
+          <div class="notice-body">
+            <div class="notice-title">Documentación pendiente de firmar</div>
+            <div class="notice-sub">Firma el Kit Alta para acceder a todas las funciones</div>
           </div>
           <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
         </div>
