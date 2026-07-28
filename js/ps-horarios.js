@@ -348,21 +348,21 @@
           ${isPuestoView ? `
             <div class="hor-field">
               <label>Socorrista</label>
-              <select id="hor-emp" ${row ? 'disabled' : ''}>
-                ${row ? `<option>${row.empleados?.nombre || ''}</option>` : ''}
-                ${!row ? `<option value="">— Seleccionar —</option>` : ''}
+              <select id="hor-emp">
+                <option value="">— Seleccionar —</option>
                 ${ctx.empleados.map(e => `<option value="${e.id}" ${row && row.empleado_id === e.id ? 'selected':''}>${e.nombre}</option>`).join('')}
               </select>
+              ${row ? '<div class="small text-muted mt-1">Puedes cambiar el socorrista asignado a este servicio. Se reflejará en la ficha del nuevo socorrista.</div>' : ''}
             </div>
           ` : ''}
           ${isEmpleadoView ? `
             <div class="hor-field">
               <label>Puesto</label>
-              <select id="hor-pue" ${row ? 'disabled' : ''}>
-                ${row ? `<option>${row.puestos?.nombre || ''}</option>` : ''}
-                ${!row ? `<option value="">— Seleccionar —</option>` : ''}
+              <select id="hor-pue">
+                <option value="">— Seleccionar —</option>
                 ${ctx.puestos.map(p => `<option value="${p.id}" ${row && row.puesto_id === p.id ? 'selected':''}>${p.nombre}${p.zona ? ' · ' + p.zona : ''}</option>`).join('')}
               </select>
+              ${row ? '<div class="small text-muted mt-1">Puedes cambiar el puesto. Se reflejará en la ficha del hotel destino.</div>' : ''}
             </div>
           ` : ''}
           <div class="hor-field">
@@ -405,18 +405,14 @@
       if (isPuestoView) {
         payload.puesto_id = ctx.puesto_id;
         const empSel = slotEl.querySelector('#hor-emp');
-        if (!row) {
-          if (!empSel.value) { alert('Selecciona un socorrista.'); return; }
-          payload.empleado_id = empSel.value;
-        }
+        if (!empSel.value) { alert('Selecciona un socorrista.'); return; }
+        payload.empleado_id = empSel.value;
       }
       if (isEmpleadoView) {
         payload.empleado_id = ctx.empleado_id;
         const pueSel = slotEl.querySelector('#hor-pue');
-        if (!row) {
-          if (!pueSel.value) { alert('Selecciona un puesto.'); return; }
-          payload.puesto_id = pueSel.value;
-        }
+        if (!pueSel.value) { alert('Selecciona un puesto.'); return; }
+        payload.puesto_id = pueSel.value;
       }
       await onSubmit(payload);
     });
