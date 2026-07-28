@@ -2021,7 +2021,7 @@
       const hIni = (h.hora_inicio_default || '10:00:00').slice(0,5);
       const hFin = (h.hora_fin_default || '18:00:00').slice(0,5);
       body.innerHTML = `
-        <div class="ficha-body-title">Horario de apertura</div>
+        <div class="ficha-body-title">Horario de apertura del hotel</div>
         <div class="ficha-data-row">
           <div class="ficha-data-label">Hora apertura</div>
           <div class="ficha-data-value"><input type="time" id="hh-ini" value="${hIni}" /></div>
@@ -2036,7 +2036,14 @@
             <svg class="ic ic-16"><use href="#ic-check"/></svg>
             Guardar horario
           </button>
-        </div>`;
+        </div>
+
+        <div class="ficha-body-title" style="margin-top:22px;">Horarios por servicio (socorrista)</div>
+        <div class="small text-muted" style="margin:-6px 0 8px;">Cada servicio del hotel puede tener su propio horario de entrada, salida y días. Sirve para turnos mañana/tarde con socorristas distintos.</div>
+        <div id="hotelHorariosBlockH"></div>`;
+      if (window.PSHor) {
+        window.PSHor.renderPuestoBlock(document.getElementById('hotelHorariosBlockH'), hotelActualId);
+      }
     }
     else if (hotelTabActual === 'servicios') {
       body.innerHTML = `

@@ -3233,6 +3233,7 @@ img, svg { display: block; max-width: 100%; }
 .hor-table tbody td { padding: 10px 6px; border-bottom: 1px solid #F3F4F6; vertical-align: middle; }
 .hor-table tbody tr:last-child td { border-bottom: 0; }
 .hor-td-sub { font-size: 11px; color: var(--ink-500, #6B7280); margin-top: 1px; }
+.hor-badge { display: inline-block; background: #FEE2E2; color: #B91C1C; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: .2px; white-space: nowrap; }
 .hor-actions { text-align: right; white-space: nowrap; }
 .icon-btn-mini { background: transparent; border: 1px solid var(--ink-100, #E5E7EB); border-radius: 8px; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-500, #6B7280); margin-left: 4px; }
 .icon-btn-mini:hover { background: #F3F4F6; color: var(--ink-900, #111827); }

@@ -189,21 +189,22 @@
     container.innerHTML = `
       <div class="hor-block">
         <div class="hor-block-head">
-          <div class="hor-block-title">Socorristas asignados</div>
+          <div class="hor-block-title">Servicios del puesto <span class="text-muted" style="font-weight:400;font-size:12px;">· ${rows.length} activo${rows.length === 1 ? '' : 's'}</span></div>
           <button class="btn btn-primary btn-sm" data-add>
             <svg class="ic ic-14"><use href="#ic-plus"/></svg>
-            Añadir
+            Añadir servicio
           </button>
         </div>
         ${rows.length ? `
         <div class="hor-table-wrap">
           <table class="hor-table">
             <thead>
-              <tr><th>Socorrista</th><th>Entrada</th><th>Salida</th><th>Días</th><th></th></tr>
+              <tr><th>Servicio</th><th>Socorrista</th><th>Entrada</th><th>Salida</th><th>Días</th><th></th></tr>
             </thead>
             <tbody>
-              ${rows.map(r => `
+              ${rows.map((r, i) => `
                 <tr data-id="${r.id}">
+                  <td><span class="hor-badge">Servicio ${i + 1}</span></td>
                   <td>${(r.empleados && r.empleados.nombre) || '—'}</td>
                   <td>${toHHMM(r.hora_inicio)}</td>
                   <td>${horaFin(r.hora_inicio, r.duracion)}</td>
@@ -217,7 +218,7 @@
             </tbody>
           </table>
         </div>
-        ` : `<div class="hor-empty">Aún no hay socorristas asignados a este puesto.</div>`}
+        ` : `<div class="hor-empty">Aún no hay servicios configurados en este puesto. Añade uno para asignar socorrista + horario.</div>`}
         <div class="hor-form-slot"></div>
       </div>
     `;
@@ -337,9 +338,12 @@
     const hf = row ? horaFin(row.hora_inicio, row.duracion) : '18:00';
     const diasSel = row ? parseDias(row.dias) : ['L','M','X','J','V'];
 
+    const formTitle = isPuestoView
+      ? (row ? 'Editar servicio' : 'Nuevo servicio')
+      : (row ? 'Editar horario' : 'Nuevo horario');
     slotEl.innerHTML = `
       <div class="hor-form">
-        <div class="hor-form-title">${row ? 'Editar horario' : 'Nuevo horario'}</div>
+        <div class="hor-form-title">${formTitle}</div>
         <div class="hor-form-grid">
           ${isPuestoView ? `
             <div class="hor-field">
