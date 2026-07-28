@@ -243,63 +243,90 @@
   };
   window.closePostModal = () => document.getElementById('postModal').classList.remove('open');
 
-  /* ---------- Alertas botiquín (manuales + automáticas por stock bajo) ---------- */
+  /* ---------- Alertas botiquín (REAL desde BD) ---------- */
   const alertsList = document.getElementById('alertsList');
 
-  function renderAlertas() {
-    // Alertas automáticas: cualquier item por debajo del mínimo, agrupado por puesto
-    const auto = PS.inventario
-      .filter(it => it.stock < it.minimo)
-      .map(it => ({
-        id: 'auto-' + it.id,
-        puestoId: it.puestoId,
-        puestoNombre: PS.puestoById(it.puestoId)?.nombre || '—',
-        item: it.nombre,
-        reportado: it.stock === 0 ? 'sin stock' : `${it.stock}/${it.minimo}`,
-        criticidad: it.stock === 0 ? 'alta' : it.obligatorio ? 'media' : 'baja',
-        automatica: true,
-        seccion: it.seccion
-      }));
+  async function renderAlertas() {
+    if (!alertsList) return;
+    if (!window.sb) { setTimeout(renderAlertas, 400); return; }
+    alertsList.innerHTML = '<div class="text-muted small" style="padding:16px;">Cargando alertas…</div>';
+    try {
+      const { data, error } = await window.sb
+        .from('alertas')
+        .select('id, tipo, origen, criticidad, mensaje, cantidad_pedida, fecha_creacion, puesto_id, item_id, puestos(nombre), inventario_items(nombre, seccion)')
+        .eq('resuelto', false)
+        .order('fecha_creacion', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      const alertas = data || [];
+      const countEl = document.getElementById('alertsCount');
+      if (countEl) countEl.innerHTML = `<span class="dot"></span>${alertas.length} abiertas`;
 
-    const todas = [...auto, ...PS.alertas];
-    document.getElementById('alertsCount').innerHTML = `<span class="dot"></span>${todas.length} abiertas`;
+      if (alertas.length === 0) {
+        alertsList.innerHTML = '<div class="text-muted small" style="padding:22px;text-align:center;">Sin alertas abiertas. Todo el material está OK.</div>';
+        return;
+      }
 
-    alertsList.innerHTML = todas.map(a => {
-      const cls = a.criticidad === 'alta' ? 'high' : a.criticidad === 'media' ? 'med' : 'low';
-      const critBadge = a.criticidad === 'alta' ? 'badge-danger'
-                      : a.criticidad === 'media' ? 'badge-warn' : 'badge-info';
-      const origen = a.automatica
-        ? `<span class="badge badge-info small"><svg class="ic ic-14"><use href="#ic-signal"/></svg>Auto</span>`
-        : `<span class="badge badge-neutral small"><svg class="ic ic-14"><use href="#ic-user"/></svg>Socorrista</span>`;
-      const secTag = a.seccion === 'desa' ? ' · DESA' : a.seccion === 'oxigeno' ? ' · Oxígeno' : '';
-      return `
-        <div class="alert ${cls}">
-          <div class="alert-icon">
-            <svg class="ic ic-18"><use href="#ic-alert"/></svg>
-          </div>
-          <div class="alert-body">
-            <div class="alert-title-row">
-              <span class="alert-title">${a.item}${secTag}</span>
-              <span class="badge ${critBadge}"><span class="dot"></span>${a.criticidad}</span>
+      alertsList.innerHTML = alertas.map(a => {
+        const cls = a.criticidad === 'alta' ? 'high' : a.criticidad === 'media' ? 'med' : 'low';
+        const critBadge = a.criticidad === 'alta' ? 'badge-danger'
+                        : a.criticidad === 'media' ? 'badge-warn' : 'badge-info';
+        const origen = a.origen === 'auto'
+          ? `<span class="badge badge-info small"><svg class="ic ic-14"><use href="#ic-signal"/></svg>Auto</span>`
+          : `<span class="badge badge-neutral small"><svg class="ic ic-14"><use href="#ic-user"/></svg>Socorrista</span>`;
+        const itemNombre = (a.inventario_items && a.inventario_items.nombre) || a.mensaje || 'Material';
+        const seccion = a.inventario_items && a.inventario_items.seccion;
+        const secTag = seccion === 'desa' ? ' · DESA' : seccion === 'oxigeno' ? ' · Oxígeno' : '';
+        const puestoNombre = (a.puestos && a.puestos.nombre) || '—';
+        const sub = a.cantidad_pedida ? `${puestoNombre} · faltan ${a.cantidad_pedida}` : puestoNombre;
+        return `
+          <div class="alert ${cls}">
+            <div class="alert-icon">
+              <svg class="ic ic-18"><use href="#ic-alert"/></svg>
             </div>
-            <div class="alert-sub">
-              <svg class="ic ic-14"><use href="#ic-pin"/></svg>
-              ${a.puestoNombre} · ${a.reportado}
+            <div class="alert-body">
+              <div class="alert-title-row">
+                <span class="alert-title">${itemNombre}${secTag}</span>
+                <span class="badge ${critBadge}"><span class="dot"></span>${a.criticidad}</span>
+              </div>
+              <div class="alert-sub">
+                <svg class="ic ic-14"><use href="#ic-pin"/></svg>
+                ${sub}
+              </div>
+              <div class="row gap-1 mt-1">${origen}</div>
             </div>
-            <div class="row gap-1 mt-1">${origen}</div>
+            <button class="alert-action" onclick="resolveAlert('${a.id}', this)">Reponer</button>
           </div>
-          <button class="alert-action" onclick="resolveAlert(this)">Reponer</button>
-        </div>
-      `;
-    }).join('');
+        `;
+      }).join('');
+    } catch (err) {
+      console.warn('[Alertas]', err);
+      alertsList.innerHTML = `<div class="text-muted small" style="padding:16px;color:var(--danger);">Error: ${err.message}</div>`;
+    }
   }
 
-  window.resolveAlert = function (btn) {
-    btn.innerHTML = '<svg class="ic ic-14" style="vertical-align:-3px;"><use href="#ic-check"/></svg> Repuesto';
-    btn.classList.add('done');
-    toast('Alerta resuelta y stock actualizado');
+  window.resolveAlert = async function (id, btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="ic ic-14" style="vertical-align:-3px;"><use href="#ic-signal"/></svg> …';
+    try {
+      const { error } = await window.sb.from('alertas')
+        .update({ resuelto: true, fecha_resolucion: new Date().toISOString(), resuelto_por: (window.PS_SESSION||{}).userId || null })
+        .eq('id', id);
+      if (error) throw error;
+      btn.innerHTML = '<svg class="ic ic-14" style="vertical-align:-3px;"><use href="#ic-check"/></svg> Resuelta';
+      btn.classList.add('done');
+      toast('Alerta resuelta');
+      setTimeout(renderAlertas, 800);
+    } catch (err) {
+      btn.disabled = false;
+      btn.innerHTML = 'Reponer';
+      toast('Error: ' + err.message);
+    }
   };
   renderAlertas();
+  // Refrescar cada 60 seg y al volver a foco
+  setInterval(renderAlertas, 60_000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderAlertas(); });
 
   /* ---------- Gestión de botiquines (selector de puesto + inventario) ---------- */
   const botiquinPuestoSelect = document.getElementById('botiquinPuestoSelect');
