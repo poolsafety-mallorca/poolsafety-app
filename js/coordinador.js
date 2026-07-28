@@ -1318,6 +1318,13 @@
 
         <div class="ficha-body-title">Datos laborales</div>
         <div class="ficha-data-row">
+          <div class="ficha-data-label">Puesto asignado</div>
+          <div class="ficha-data-value">
+            <select id="ed-puesto"><option value="">Cargando hoteles…</option></select>
+            <div class="small text-muted mt-1">Puesto principal del socorrista. Para múltiples horarios/hoteles usa la pestaña <b>Horario</b>.</div>
+          </div>
+        </div>
+        <div class="ficha-data-row">
           <div class="ficha-data-label">Fecha de alta</div>
           <div class="ficha-data-value"><input type="date" id="ed-fecha" value="${e.fechaAlta}" /></div>
         </div>
@@ -1337,6 +1344,17 @@
             Guardar cambios
           </button>
         </div>`;
+      // Cargar lista de hoteles reales y prellenar el select con el puesto actual
+      (async () => {
+        const sel = document.getElementById('ed-puesto');
+        if (!sel) return;
+        try {
+          const { data } = await window.sb.from('puestos').select('id, nombre, zona').eq('activo', true).order('nombre');
+          const opts = ['<option value="">— Sin asignar —</option>']
+            .concat((data || []).map(p => `<option value="${p.id}" ${p.id === e.puestoId ? 'selected' : ''}>${p.nombre}${p.zona ? ' — ' + p.zona : ''}</option>`));
+          sel.innerHTML = opts.join('');
+        } catch (err) { sel.innerHTML = '<option value="">Error cargando hoteles</option>'; }
+      })();
     }
     else if (fichaTabActual === 'horario') {
       body.innerHTML = `
@@ -1542,6 +1560,7 @@
   };
 
   window.guardarFichaDatos = async function () {
+    const puestoSel = document.getElementById('ed-puesto');
     const patch = {
       nombre: document.getElementById('ed-nombre').value.trim(),
       dni: document.getElementById('ed-dni').value.trim(),
@@ -1550,7 +1569,8 @@
       direccion: document.getElementById('ed-dir').value.trim(),
       ss: document.getElementById('ed-ss').value.trim(),
       fechaAlta: document.getElementById('ed-fecha').value,
-      contrato: document.getElementById('ed-contrato').value
+      contrato: document.getElementById('ed-contrato').value,
+      puestoId: puestoSel ? (puestoSel.value || null) : undefined
     };
     try {
       await actualizarEmpleado(fichaActualId, patch);
