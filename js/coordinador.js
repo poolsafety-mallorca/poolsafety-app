@@ -51,21 +51,93 @@
     return estado === 'ok' ? 'sky' : estado === 'tarde' ? 'amber' : '';
   }
 
-  function renderPosts() {
+  // Cache local para la vista Puestos en vivo (BD real)
+  let postsCache = []; // [{ puesto, fichaje, socorrista, estado }]
+
+  async function renderPosts() {
     const grid = document.getElementById('postsGrid');
-    const items = PS.fichajes.filter(f => {
-      const p = PS.puestoById(f.puestoId);
-      const soc = f.socorristaId ? PS.socorristas.find(s => s.id === f.socorristaId) : null;
-      const matchesFilter = currentFilter === 'todos' || currentFilter === f.estado;
-      const q = currentSearch.toLowerCase();
+    if (!grid) return;
+    if (!window.sb) { setTimeout(renderPosts, 400); return; }
+
+    if (!postsCache.length) grid.innerHTML = '<div style="grid-column:1/-1; padding: 30px; text-align:center; color:var(--ink-500);">Cargando puestos…</div>';
+
+    try {
+      // 1. Todos los puestos activos
+      const { data: puestos, error: e1 } = await window.sb
+        .from('puestos').select('id, nombre, zona, hora_inicio_default').eq('activo', true).order('nombre');
+      if (e1) throw e1;
+
+      // 2. Fichajes de hoy
+      const hoy = new Date();
+      const desde = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString();
+      const { data: fichajes } = await window.sb
+        .from('fichajes')
+        .select('id, empleado_id, puesto_id, tipo, hora, gps_ok, fuera_de_zona, empleados(id, nombre)')
+        .gte('hora', desde)
+        .order('hora', { ascending: false });
+
+      // Último fichaje por puesto
+      const ultPorPuesto = {};
+      (fichajes || []).forEach(f => {
+        if (!ultPorPuesto[f.puesto_id]) ultPorPuesto[f.puesto_id] = f;
+      });
+
+      // 3. Construir cache con estado por puesto
+      postsCache = (puestos || []).map(p => {
+        const f = ultPorPuesto[p.id];
+        let estado = 'vacante';
+        if (f) {
+          if (f.tipo === 'entrada') estado = f.fuera_de_zona ? 'fuera' : 'ok';
+          else if (f.tipo === 'salida') estado = 'terminado';
+        }
+        return { puesto: p, fichaje: f || null, estado };
+      });
+
+      renderPostsFromCache();
+    } catch (err) {
+      console.warn('[renderPosts]', err);
+      grid.innerHTML = `<div style="grid-column:1/-1; padding: 30px; text-align:center; color:var(--danger);">Error: ${err.message}</div>`;
+    }
+  }
+
+  function renderPostsFromCache() {
+    const grid = document.getElementById('postsGrid');
+    if (!grid) return;
+    const q = currentSearch.toLowerCase();
+    const filtered = postsCache.filter(r => {
+      const p = r.puesto;
+      const soc = r.fichaje && r.fichaje.empleados;
+      const matchesFilter = currentFilter === 'todos'
+        || (currentFilter === 'ok' && r.estado === 'ok')
+        || (currentFilter === 'fuera' && r.estado === 'fuera')
+        || (currentFilter === 'pendiente' && (r.estado === 'vacante' || r.estado === 'terminado'))
+        || (currentFilter === 'vacante' && r.estado === 'vacante');
       const matchesSearch = !q
-        || p.nombre.toLowerCase().includes(q)
-        || p.zona.toLowerCase().includes(q)
-        || (soc && soc.nombre.toLowerCase().includes(q));
+        || (p.nombre || '').toLowerCase().includes(q)
+        || (p.zona || '').toLowerCase().includes(q)
+        || (soc && (soc.nombre || '').toLowerCase().includes(q));
       return matchesFilter && matchesSearch;
     });
 
-    if (items.length === 0) {
+    // Actualiza contadores en chips
+    const c = { todos: postsCache.length, ok: 0, fuera: 0, vacante: 0, terminado: 0 };
+    postsCache.forEach(r => { c[r.estado] = (c[r.estado] || 0) + 1; });
+    const chips = document.querySelectorAll('#filterChips .chip .count');
+    if (chips[0]) chips[0].textContent = c.todos;
+    if (chips[1]) chips[1].textContent = c.ok;
+    if (chips[2]) chips[2].textContent = 0; // Tarde — no tenemos lógica todavía
+    if (chips[3]) chips[3].textContent = c.fuera;
+    if (chips[4]) chips[4].textContent = c.vacante + c.terminado;
+    if (chips[5]) chips[5].textContent = c.vacante;
+
+    // Actualiza los KPIs de arriba con datos reales
+    const kpiOk = document.getElementById('kpiOk');
+    if (kpiOk) kpiOk.innerHTML = `${c.ok}<span class="of">/ ${c.todos}</span>`;
+    const kpiTarde = document.getElementById('kpiTarde'); if (kpiTarde) kpiTarde.textContent = 0;
+    const kpiFuera = document.getElementById('kpiFuera'); if (kpiFuera) kpiFuera.textContent = c.fuera;
+    const kpiPend = document.getElementById('kpiPend');   if (kpiPend)  kpiPend.textContent  = c.vacante;
+
+    if (filtered.length === 0) {
       grid.innerHTML = `
         <div style="grid-column:1/-1; padding: 40px 20px; text-align:center; color:var(--ink-500);">
           <svg class="ic ic-24" style="opacity:.5; margin: 0 auto 8px;"><use href="#ic-search"/></svg>
@@ -74,18 +146,24 @@
       return;
     }
 
-    grid.innerHTML = items.map(f => {
-      const p = PS.puestoById(f.puestoId);
-      const soc = f.socorristaId ? PS.socorristas.find(s => s.id === f.socorristaId) : null;
-      const info = estadoInfo(f.estado);
+    grid.innerHTML = filtered.map(r => {
+      const p = r.puesto;
+      const soc = r.fichaje && r.fichaje.empleados;
+      const info = r.estado === 'ok' ? { cls: 'ok', badge: 'badge-ok', icon: 'ic-check-circle', label: 'Fichado' }
+                 : r.estado === 'fuera' ? { cls: 'danger', badge: 'badge-danger', icon: 'ic-signal', label: 'Fuera de zona' }
+                 : r.estado === 'terminado' ? { cls: '', badge: 'badge-neutral', icon: 'ic-check', label: 'Turno terminado' }
+                 : { cls: '', badge: 'badge-neutral', icon: 'ic-clock', label: 'Vacante' };
+      const iniciales = soc ? soc.nombre.split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase() : '';
+      const horaTxt = r.fichaje ? new Date(r.fichaje.hora).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '';
+      const hIni = (p.hora_inicio_default || '10:00:00').slice(0,5);
       return `
-        <div class="post ${info.cls}" data-post="${f.puestoId}">
+        <div class="post ${info.cls}" data-post="${p.id}">
           <div class="post-top">
             <div style="min-width:0;">
               <p class="post-name">${p.nombre}</p>
               <p class="post-loc">
                 <svg class="ic ic-14"><use href="#ic-pin"/></svg>
-                ${p.zona} · turno ${p.hora}
+                ${p.zona || '—'} · turno ${hIni}
               </p>
             </div>
             <span class="badge ${info.badge}">
@@ -95,12 +173,12 @@
           </div>
           ${soc ? `
             <div class="post-worker">
-              <div class="mini-av ${avatarClassFor(f.estado)}">${soc.iniciales}</div>
+              <div class="mini-av ${avatarClassFor(r.estado === 'ok' ? 'ok' : '')}">${iniciales}</div>
               <div style="min-width:0; flex:1;">
                 <div class="post-worker-name">${soc.nombre}</div>
-                <div class="post-time ${f.gpsOk === false ? 'danger' : ''}">
+                <div class="post-time ${r.fichaje.fuera_de_zona ? 'danger' : ''}">
                   <svg class="ic ic-14"><use href="#ic-clock"/></svg>
-                  ${f.horaFichaje ? `Fichó a las ${f.horaFichaje}${f.gpsOk === false ? ' · GPS fuera' : ''}` : 'Sin fichaje'}
+                  ${r.fichaje.tipo === 'entrada' ? 'Fichó entrada' : 'Salió'} a las ${horaTxt}${r.fichaje.fuera_de_zona ? ' · GPS fuera' : ''}
                 </div>
               </div>
             </div>
@@ -110,18 +188,14 @@
                 <svg class="ic ic-14"><use href="#ic-user"/></svg>
               </div>
               <div>
-                <div class="post-worker-name" style="color: var(--ink-500);">Sin socorrista asignado</div>
-                <div class="post-time">Pendiente de asignar</div>
+                <div class="post-worker-name" style="color: var(--ink-500);">Sin fichaje hoy</div>
+                <div class="post-time">Puesto vacante</div>
               </div>
             </div>
           `}
         </div>
       `;
     }).join('');
-
-    grid.querySelectorAll('.post').forEach(el => {
-      el.addEventListener('click', () => openPostModal(el.dataset.post));
-    });
   }
 
   document.querySelectorAll('#filterChips .chip').forEach(ch => {
@@ -129,21 +203,39 @@
       document.querySelectorAll('#filterChips .chip').forEach(c => c.classList.remove('active'));
       ch.classList.add('active');
       currentFilter = ch.dataset.filter;
-      renderPosts();
+      renderPostsFromCache();
     });
   });
-  document.getElementById('postSearch').addEventListener('input', e => {
+  document.getElementById('postSearch')?.addEventListener('input', e => {
     currentSearch = e.target.value;
-    renderPosts();
+    renderPostsFromCache();
   });
   renderPosts();
+  // Refrescar cada 60s y al recuperar foco
+  setInterval(renderPosts, 60_000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderPosts(); });
 
   /* ---------- Modal detalle puesto ---------- */
   window.openPostModal = function (puestoId) {
-    const p = PS.puestoById(puestoId);
-    const f = PS.fichajes.find(x => x.puestoId === puestoId);
-    const soc = f.socorristaId ? PS.socorristas.find(s => s.id === f.socorristaId) : null;
-    const info = estadoInfo(f.estado);
+    const row = postsCache.find(r => r.puesto.id === puestoId);
+    if (!row) { toast('Puesto no encontrado'); return; }
+    const p = { nombre: row.puesto.nombre, zona: row.puesto.zona || '—', hora: (row.puesto.hora_inicio_default || '10:00:00').slice(0,5), duracion: 8 };
+    const soc = row.fichaje && row.fichaje.empleados ? {
+      id: row.fichaje.empleados.id,
+      nombre: row.fichaje.empleados.nombre,
+      iniciales: (row.fichaje.empleados.nombre||'').split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase(),
+      telefono: '—',
+      horasNormales: 0, horasExtra: 0
+    } : null;
+    const f = row.fichaje ? {
+      horaFichaje: new Date(row.fichaje.hora).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+      gpsOk: !row.fichaje.fuera_de_zona,
+      estado: row.estado
+    } : { horaFichaje: null, gpsOk: null, estado: row.estado };
+    const info = row.estado === 'ok' ? { cls:'ok', badge:'badge-ok', icon:'ic-check-circle', label:'Fichado' }
+               : row.estado === 'fuera' ? { cls:'danger', badge:'badge-danger', icon:'ic-signal', label:'Fuera de zona' }
+               : row.estado === 'terminado' ? { cls:'', badge:'badge-neutral', icon:'ic-check', label:'Turno terminado' }
+               : { cls:'', badge:'badge-neutral', icon:'ic-clock', label:'Vacante' };
     const body = document.getElementById('postModalBody');
 
     body.innerHTML = `
