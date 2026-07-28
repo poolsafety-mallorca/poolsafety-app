@@ -1668,51 +1668,67 @@
         </button>`;
     }
     else if (fichaTabActual === 'acciones') {
+      const psSes = window.PS_SESSION || {};
+      const esAdmin = psSes.rol === 'dueno';
       body.innerHTML = `
-        ${e.estado === 'activo' ? `
-          <div class="ficha-action-row warn">
-            <div class="icon"><svg class="ic ic-18"><use href="#ic-alert"/></svg></div>
-            <div class="ficha-action-body">
-              <div class="ficha-action-title">Dar de baja</div>
-              <div class="ficha-action-sub">El empleado verá el finiquito para firmar. No podrá seguir fichando.</div>
-            </div>
-            <button class="btn btn-outline btn-sm" onclick="darDeBaja()">Dar de baja</button>
-          </div>` : `
-          <div class="ficha-action-row ok">
-            <div class="icon"><svg class="ic ic-18"><use href="#ic-check-circle"/></svg></div>
-            <div class="ficha-action-body">
-              <div class="ficha-action-title">Reactivar empleado</div>
-              <div class="ficha-action-sub">Volver a poner en activo y permitir fichaje.</div>
-            </div>
-            <button class="btn btn-primary btn-sm" onclick="darDeAlta()">Reactivar</button>
-          </div>`}
-
+        <!-- Reset password: coord + admin -->
         <div class="ficha-action-row">
           <div class="icon" style="background: var(--info-bg); color: var(--sky-700);"><svg class="ic ic-18"><use href="#ic-shield"/></svg></div>
           <div class="ficha-action-body">
-            <div class="ficha-action-title">Enviar email de recuperación de contraseña</div>
-            <div class="ficha-action-sub">${e.email ? 'Se enviará un enlace a <b>' + e.email + '</b> para que ponga una contraseña nueva.' : 'Este empleado no tiene email en la ficha.'}</div>
+            <div class="ficha-action-title">Enviar email de acceso</div>
+            <div class="ficha-action-sub">${e.email ? 'Se enviará a <b>' + e.email + '</b> para que ponga contraseña y entre.' : 'Este empleado no tiene email.'}</div>
           </div>
           <button class="btn btn-primary btn-sm" onclick="enviarResetPassword()" ${!e.email ? 'disabled' : ''}>Enviar</button>
         </div>
 
-        <div class="ficha-action-row warn">
-          <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
-          <div class="ficha-action-body">
-            <div class="ficha-action-title">Cancelar el próximo turno</div>
-            <div class="ficha-action-sub">Se le notifica al momento y queda registrado como cancelado por coordinador.</div>
+        ${!esAdmin ? `
+          <div class="ficha-action-row" style="opacity:.7;">
+            <div class="icon" style="background:var(--ink-100,#E5E7EB);color:var(--ink-500,#6B7280);"><svg class="ic ic-18"><use href="#ic-alert"/></svg></div>
+            <div class="ficha-action-body">
+              <div class="ficha-action-title">Baja, finiquito y eliminación · reservado a administración</div>
+              <div class="ficha-action-sub">Solo Adam (rol Administrador) puede dar de baja, iniciar finiquito o eliminar una ficha. Contacta con él si necesitas cualquiera de estas acciones.</div>
+            </div>
           </div>
-          <button class="btn btn-outline btn-sm" onclick="cancelarProximoTurno()">Cancelar turno</button>
-        </div>
+        ` : `
+          <!-- BAJA · cortar acceso app -->
+          ${e.estado === 'baja' ? `
+            <div class="ficha-action-row ok">
+              <div class="icon"><svg class="ic ic-18"><use href="#ic-check-circle"/></svg></div>
+              <div class="ficha-action-body">
+                <div class="ficha-action-title">Reactivar empleado</div>
+                <div class="ficha-action-sub">Vuelve a estado activo con acceso a la app.</div>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="darDeAlta()">Reactivar</button>
+            </div>` : `
+            <div class="ficha-action-row warn">
+              <div class="icon"><svg class="ic ic-18"><use href="#ic-alert"/></svg></div>
+              <div class="ficha-action-body">
+                <div class="ficha-action-title">Cortar acceso · dar de baja</div>
+                <div class="ficha-action-sub">Bloquea el acceso a la app y a los documentos. Sus datos se conservan. No genera finiquito.</div>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="darDeBaja()" style="color:#B45309;border-color:#F59E0B;">Cortar acceso</button>
+            </div>`}
 
-        <div class="ficha-action-row danger">
-          <div class="icon"><svg class="ic ic-18"><use href="#ic-x"/></svg></div>
-          <div class="ficha-action-body">
-            <div class="ficha-action-title">Eliminar ficha por completo</div>
-            <div class="ficha-action-sub">Borra todos los datos del empleado del sistema. Acción irreversible.</div>
+          <!-- FINIQUITO -->
+          <div class="ficha-action-row warn" style="border-color:#FCA5A5;background:#FEF2F2;">
+            <div class="icon" style="background:#FEE2E2;color:#B91C1C;"><svg class="ic ic-18"><use href="#ic-file-text"/></svg></div>
+            <div class="ficha-action-body">
+              <div class="ficha-action-title">Iniciar finiquito</div>
+              <div class="ficha-action-sub">Crea el documento de finiquito. La app solo mostrará al empleado ese documento para firmar. Cuando firme, su cuenta se paraliza pero se conservan todos los datos.</div>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="iniciarFiniquito()" style="color:#B91C1C;border-color:#B91C1C;">Iniciar finiquito</button>
           </div>
-          <button class="btn btn-outline btn-sm" onclick="eliminarEmpleado()" style="color: var(--danger); border-color: var(--danger);">Eliminar</button>
-        </div>`;
+
+          <!-- ELIMINACIÓN TOTAL -->
+          <div class="ficha-action-row danger">
+            <div class="icon"><svg class="ic ic-18"><use href="#ic-x"/></svg></div>
+            <div class="ficha-action-body">
+              <div class="ficha-action-title">Eliminar perfil y cuenta permanentemente</div>
+              <div class="ficha-action-sub"><b>Irreversible.</b> Borra ficha, firmas, fichajes, tareas, notas, documentos subidos, horarios, titulaciones y la cuenta de acceso. Solo usar si nunca debería existir.</div>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="eliminarEmpleado()" style="color: var(--danger); border-color: var(--danger);">Eliminar todo</button>
+          </div>
+        `}`;
     }
   }
 
@@ -1770,29 +1786,71 @@
     document.getElementById('ft-desc').value = '';
   };
 
+  function requiereAdmin() {
+    const psSes = window.PS_SESSION || {};
+    if (psSes.rol !== 'dueno') {
+      alert('Solo el administrador puede realizar esta acción. Contacta con Adam.');
+      return false;
+    }
+    return true;
+  }
+
+  // 1) BAJA · corta acceso app, sin finiquito
   window.darDeBaja = async function () {
+    if (!requiereAdmin()) return;
     const e = empleadoData(fichaActualId);
-    if (!confirm(`¿Dar de baja a ${e.nombre}?\n\nLe aparecerá el finiquito para firmar.`)) return;
+    if (!confirm(`¿Cortar acceso a ${e.nombre}?\n\n- No podrá entrar a la app.\n- No podrá fichar ni ver documentos.\n- Sus datos se conservan.\n- Puedes reactivarlo cuando quieras.`)) return;
     try {
       await actualizarEmpleado(fichaActualId, { estado: 'baja' });
-      // También seteamos la fecha de baja
       await window.sb.from('empleados').update({ fecha_baja: new Date().toISOString().slice(0,10) }).eq('id', fichaActualId);
+      // También desactivar usuarios.activo para cortar login
+      if (e.usuarioId) await window.sb.from('usuarios').update({ activo: false }).eq('id', e.usuarioId);
       await cargarEmpleadosDB();
       renderFicha();
-      toast(`${e.nombre} dado de baja`);
-    } catch (err) { /* toast ya mostrado */ }
+      toast(`${e.nombre} · acceso cortado`);
+    } catch (err) { toast('Error: ' + err.message); }
   };
 
   window.darDeAlta = async function () {
+    if (!requiereAdmin()) return;
     const e = empleadoData(fichaActualId);
-    if (!confirm(`¿Reactivar a ${e.nombre}?`)) return;
+    if (!confirm(`¿Reactivar a ${e.nombre}?\n\nVuelve a tener acceso completo a la app.`)) return;
     try {
       await actualizarEmpleado(fichaActualId, { estado: 'activo' });
       await window.sb.from('empleados').update({ fecha_baja: null }).eq('id', fichaActualId);
+      if (e.usuarioId) await window.sb.from('usuarios').update({ activo: true }).eq('id', e.usuarioId);
       await cargarEmpleadosDB();
       renderFicha();
-      toast(`${e.nombre} reactivado`);
-    } catch (err) { /* toast ya mostrado */ }
+      toast(`${e.nombre} · reactivado`);
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  // 2) FINIQUITO · crea documento pendiente, la app le bloquea todo hasta que firme
+  window.iniciarFiniquito = async function () {
+    if (!requiereAdmin()) return;
+    const e = empleadoData(fichaActualId);
+    const msg = `INICIAR FINIQUITO para ${e.nombre}\n\nSe generará el documento oficial de finiquito. Cuando entre en la app SOLO verá ese documento para firmar (nada más). Al firmarlo, su cuenta se paraliza permanentemente pero los datos se conservan.\n\n¿Continuar?`;
+    if (!confirm(msg)) return;
+    const nombre2 = prompt('Escribe el nombre completo del empleado para confirmar:');
+    if ((nombre2 || '').trim().toLowerCase() !== e.nombre.trim().toLowerCase()) {
+      toast('Nombre no coincide. Cancelado.'); return;
+    }
+    try {
+      const docCodigo = 'finiquito-' + new Date().toISOString().slice(0,10);
+      // Marcar empleado como finiquito-pendiente + insertar documento pendiente de firma
+      await actualizarEmpleado(fichaActualId, { estado: 'finiquito-pendiente' });
+      await window.sb.from('documentos_subidos').insert({
+        empleado_id: fichaActualId,
+        subido_por: (window.PS_SESSION||{}).userId || null,
+        tipo: 'finiquito',
+        nombre_archivo: docCodigo,
+        url_storage: '',
+        pendiente_firma: true
+      });
+      toast(`✓ Finiquito iniciado. ${e.nombre} lo verá al entrar y solo podrá firmar eso.`);
+      await cargarEmpleadosDB();
+      renderFicha();
+    } catch (err) { toast('Error: ' + err.message); }
   };
 
   window.cancelarProximoTurno = function () {
@@ -1800,18 +1858,34 @@
     toast(`Próximo turno de ${e.nombre} cancelado. Notificado.`);
   };
 
+  // 3) ELIMINAR · borra TODO permanentemente. Doble confirmación + tecleo del nombre.
   window.eliminarEmpleado = async function () {
+    if (!requiereAdmin()) return;
     const e = empleadoData(fichaActualId);
-    if (!confirm(`⚠️ ELIMINAR FICHA de ${e.nombre}\n\nEsto borrará su ficha del sistema (la cuenta de acceso hay que borrarla desde Supabase Auth). Acción irreversible.\n\n¿Continuar?`)) return;
-    const nombre2 = prompt('Escribe el nombre completo para confirmar:');
-    if (nombre2 !== e.nombre) { toast('Nombre no coincide. Cancelado.'); return; }
+    if (!confirm(`⚠️ ELIMINAR PERMANENTEMENTE a ${e.nombre}\n\nSe borrarán TODOS sus datos:\n· Ficha empleado\n· Firmas de documentos\n· Fichajes\n· Tareas y notas\n· Documentos subidos\n· Horarios y titulaciones\n· Cuenta de acceso a la app\n\nEsto NO SE PUEDE DESHACER. ¿Continuar?`)) return;
+    const nombre2 = prompt('Para confirmar, escribe el nombre completo del empleado:');
+    if ((nombre2 || '').trim().toLowerCase() !== e.nombre.trim().toLowerCase()) {
+      toast('Nombre no coincide. Eliminación cancelada.'); return;
+    }
+    const confirm2 = prompt('Última confirmación. Escribe la palabra ELIMINAR en mayúsculas:');
+    if (confirm2 !== 'ELIMINAR') { toast('No coincide. Cancelado.'); return; }
     try {
-      // Soft delete: marca como eliminado, no borra la fila (para conservar histórico)
-      await actualizarEmpleado(fichaActualId, { estado: 'eliminado' });
+      const empId = fichaActualId;
+      const usuId = e.usuarioId;
+      // Borrado en cascada del histórico (ON DELETE CASCADE se encarga del resto)
+      // Pero para asegurar, borramos manualmente lo importante:
+      const tablas = ['firmas_documentos','tareas','notas','alertas','fichajes','documentos_subidos','registro_jornada','horarios','titulaciones_empleado','visitas_hoteles'];
+      for (const t of tablas) {
+        try { await window.sb.from(t).delete().eq('empleado_id', empId); } catch (_) {}
+      }
+      await window.sb.from('empleados').delete().eq('id', empId);
+      if (usuId) await window.sb.from('usuarios').delete().eq('id', usuId);
+      // La cuenta auth.users sigue existiendo — solo un admin de Supabase puede borrarla.
       closeEmpleadoModal();
       await cargarEmpleadosDB();
-      toast(`Ficha de ${e.nombre} eliminada`);
-    } catch (err) { /* toast ya mostrado */ }
+      if (window.renderEstadoEquipo) window.renderEstadoEquipo();
+      toast(`✓ ${e.nombre} eliminado. Recuerda borrar también la cuenta auth desde Supabase Dashboard → Auth → Users.`);
+    } catch (err) { toast('Error: ' + err.message); }
   };
 
   /* ---------- Nuevo usuario (empleado / coordinador / admin) — REAL en Supabase ---------- */

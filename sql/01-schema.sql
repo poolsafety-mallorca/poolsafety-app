@@ -85,7 +85,7 @@ create table if not exists empleados (
   fecha_alta date default current_date,
   fecha_baja date,
   tipo_contrato text default 'Indefinido' check (tipo_contrato in ('Indefinido','Fijo discontinuo','Temporal 6 meses','Prácticas')),
-  estado text default 'alta-pendiente' check (estado in ('activo','baja','alta-pendiente','eliminado')),
+  estado text default 'alta-pendiente' check (estado in ('activo','baja','alta-pendiente','finiquito-pendiente','finiquitado','eliminado')),
   foto_url text,
   puesto_id uuid references puestos(id) on delete set null,
   es_correturnos boolean default false,

@@ -432,11 +432,44 @@
       const un = document.getElementById('userName');
       if (un) un.textContent = empleadoReal.nombre;
     }
+    // Si el empleado está en 'finiquito-pendiente', bloquea todo excepto firmar finiquito
+    if (empleadoReal && empleadoReal.estado === 'finiquito-pendiente') {
+      mostrarPantallaFiniquito(empleadoReal);
+      return; // no seguimos con GPS, fichaje, etc.
+    }
     aplicarPuestoEnUI();
     await cargarFichajesHoyDeBd();
-    // Comprobar GPS pasivamente
     checkGpsPasivo();
   })();
+
+  function mostrarPantallaFiniquito(emp) {
+    // Reemplaza todo el body con pantalla exclusiva de finiquito
+    document.body.innerHTML = `
+      <div style="min-height:100vh;background:linear-gradient(135deg,#B91C1C,#7F1D1D);display:flex;align-items:center;justify-content:center;padding:24px;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+        <div style="background:#fff;color:#111827;border-radius:16px;max-width:520px;width:100%;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+          <div style="text-align:center;margin-bottom:20px;">
+            <div style="width:64px;height:64px;background:#FEE2E2;border-radius:16px;display:inline-flex;align-items:center;justify-content:center;color:#B91C1C;font-size:32px;">📄</div>
+          </div>
+          <h1 style="margin:0 0 8px;font-size:22px;color:#111827;text-align:center;">Firma de finiquito pendiente</h1>
+          <p style="margin:0 0 20px;color:#6B7280;font-size:14px;line-height:1.5;text-align:center;">
+            Hola ${emp.nombre},<br>La empresa ha iniciado tu finiquito. Antes de que puedas seguir usando la app, debes leer y firmar este documento.
+          </p>
+          <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:16px;margin-bottom:20px;font-size:13px;color:#374151;">
+            <b>¿Qué firmas?</b><br>
+            El documento de finiquito laboral que confirma la extinción de tu contrato con Pool Safety Des Llevant, S.L. Al firmar reconoces haber recibido las cantidades que te corresponden por ley.
+          </div>
+          <button onclick="alert('Función de firma de finiquito en preparación. Contacta con administración: info@poolsafety.es')" style="width:100%;background:#B91C1C;color:#fff;border:0;padding:14px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">
+            Ver y firmar finiquito
+          </button>
+          <button onclick="if(window.sb) window.sb.auth.signOut().finally(() => { localStorage.clear(); location.replace('index.html'); }); else { localStorage.clear(); location.replace('index.html'); }" style="width:100%;background:transparent;color:#6B7280;border:0;padding:12px;font-size:13px;cursor:pointer;margin-top:8px;">
+            Cerrar sesión
+          </button>
+          <div style="margin-top:20px;text-align:center;font-size:11px;color:#9CA3AF;">
+            Pool Safety Des Llevant, S.L. · info@poolsafety.es
+          </div>
+        </div>
+      </div>`;
+  }
 
   // Re-comprobar GPS cada 60 seg (info al usuario)
   setInterval(checkGpsPasivo, 60000);
