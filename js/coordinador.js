@@ -1575,10 +1575,23 @@
   };
 
   /* ---------- Nuevo usuario (empleado / coordinador / admin) — REAL en Supabase ---------- */
-  const nePuestoSel = document.getElementById('nePuesto');
-  if (nePuestoSel) {
-    nePuestoSel.innerHTML = '<option value="">Sin asignar de momento</option>' +
-      PS.puestos.map(p => `<option value="${p.id}">${p.nombre}${p.zona ? ' — ' + p.zona : ''}</option>`).join('');
+  async function recargarSelectPuestos() {
+    const nePuestoSel = document.getElementById('nePuesto');
+    if (!nePuestoSel) return;
+    nePuestoSel.innerHTML = '<option value="">Cargando hoteles…</option>';
+    try {
+      const { data, error } = await window.sb
+        .from('puestos')
+        .select('id, nombre, zona')
+        .eq('activo', true)
+        .order('nombre', { ascending: true });
+      if (error) throw error;
+      nePuestoSel.innerHTML = '<option value="">Sin asignar de momento</option>' +
+        (data || []).map(p => `<option value="${p.id}">${p.nombre}${p.zona ? ' — ' + p.zona : ''}</option>`).join('');
+    } catch (err) {
+      console.warn('recargarSelectPuestos:', err.message);
+      nePuestoSel.innerHTML = '<option value="">Sin asignar de momento</option>';
+    }
   }
 
   window.openNuevoEmpleadoModal = function () {
@@ -1597,6 +1610,7 @@
     document.getElementById('neResultado').innerHTML = '';
     document.getElementById('neSubmitBtn').disabled = false;
 
+    recargarSelectPuestos(); // hoteles reales de BD, refrescados cada vez
     ajustarCamposSegunRol();
     document.getElementById('nuevoEmpleadoModal').classList.add('open');
   };
