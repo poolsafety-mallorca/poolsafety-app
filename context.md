@@ -5,7 +5,7 @@
 > nuevo dato del cliente, credencial, cambio de dependencia), **ACTUALÍZALO en el mismo commit**.
 > Es lo primero que hay que leer al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-07-27
+Última actualización: 2026-07-28
 
 ---
 
@@ -44,7 +44,7 @@ gestión de horarios y titulaciones (SVB, DEA, socorrismo, PRL, DNI).
 | **Código** | github.com/poolsafety-mallorca/poolsafety-app | Org del cliente. Repo público (RGPD OK — sin secrets) |
 | **Hosting** | poolsafety-app.netlify.app | Netlify Free. Deploy automático al push main |
 | **BD + Auth** | msdjsbegqpjpshnxoilh.supabase.co | Supabase Free. Región EU-West-1 (Ireland) |
-| **Emails** | Resend | Sender temporal: `onboarding@resend.dev`. Pendiente DNS verificar poolsafety.es en IONOS |
+| **Emails** | Resend | DNS de `poolsafety.es` propagados en IONOS (MX + SPF + DKIM ✅). Pendiente: verificar dominio en Resend, crear API key y configurar SMTP en Supabase con sender `no-reply@poolsafety.es` |
 | **PWA** | manifest.webmanifest + sw.js | Instalable Android + iOS + Desktop |
 | **Vercel** | Cuenta creada, sin usar | Abandonada por Netlify |
 
@@ -184,7 +184,7 @@ Todos con GPS real, horario, servicios necesarios y flags de equipamiento (DESA/
 
 - ✅ Login real Supabase Auth con roles y `nombre` custom
 - ✅ Auth-guard con redirección por rol + protección de páginas
-- ✅ Recuperación contraseña (email + página reset.html) — pendiente Resend DNS para email pro
+- ✅ Recuperación contraseña (email + página reset.html) — DNS Resend ya OK, pendiente solo conectar SMTP en Supabase
 - ✅ Crear usuarios (admin: cualquiera / coord: solo socorristas) desde la app
 - ✅ Empleados grid conectado a BD real
 - ✅ Ficha empleado con 6 pestañas (Datos, Horario, Firmas, Titulaciones, Tareas, Acciones)
@@ -208,7 +208,11 @@ Todos con GPS real, horario, servicios necesarios y flags de equipamiento (DESA/
 ## 10. Pendientes / próximos pasos
 
 ### Bloqueantes inmediatos
-- ⏳ **Resend DNS**: cliente pidió a informático de IONOS que meta 3 registros DNS (MX + 2 TXT). Cuando validado → cambiar sender en Supabase Auth de `onboarding@resend.dev` a `info@poolsafety.es`.
+- ⏳ **Resend → Supabase SMTP** (DNS de `poolsafety.es` ya OK en IONOS: MX `send` → `feedback-smtp.eu-west-1.amazonses.com`, SPF `send` → `v=spf1 include:amazonses.com ~all`, DKIM `resend._domainkey` publicado). Faltan tres pasos manuales:
+  1. Resend Dashboard → Domains → `poolsafety.es` → **Verify DNS Records**.
+  2. Resend → API Keys → crear key `supabase-auth` (Sending access, dominio `poolsafety.es`).
+  3. Supabase → Auth → Emails → SMTP Settings: enable Custom SMTP, sender `no-reply@poolsafety.es`, host `smtp.resend.com`, port `465`, user `resend`, password = API key.
+  4. Probar con reset password desde la app y confirmar que el email llega desde `no-reply@poolsafety.es` en vez de `onboarding@resend.dev`.
 
 ### Después del piloto (iteración)
 - Feedback real de Adam/Alex/Óscar/Carlos durante 1-2 semanas

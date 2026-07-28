@@ -1,5 +1,5 @@
 /* PoolSafety · Service Worker (PWA offline básico) */
-const CACHE = 'poolsafety-v7';
+const CACHE = 'poolsafety-v8';
 // Añadir titulaciones.js al cache
 const CORE = [
   '/',

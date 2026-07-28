@@ -1051,6 +1051,14 @@
     document.getElementById('kitAltaModal').classList.add('open');
   }
 
+  window.wizardLogout = function () {
+    const ok = confirm('¿Salir sin firmar? Podrás firmar el Kit Alta más adelante al volver a entrar.');
+    if (!ok) return;
+    document.getElementById('kitAltaModal').classList.remove('open');
+    if (typeof window.logout === 'function') window.logout();
+    else window.location.href = 'index.html';
+  };
+
   function openKitAltaView() {
     const f = misFirmas()['kit-alta'];
     if (!f) return;

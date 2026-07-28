@@ -1222,6 +1222,24 @@ img, svg { display: block; max-width: 100%; }
 .wizard-empresa-name { font-weight: 700; font-size: 14.5px; }
 .wizard-empresa-sub { font-size: 11.5px; opacity: .85; margin-top: 1px; }
 
+.wizard-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,.12);
+  border: 1px solid rgba(255,255,255,.25);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s ease;
+  white-space: nowrap;
+}
+.wizard-logout:hover { background: rgba(255,255,255,.22); }
+.wizard-logout:active { background: rgba(255,255,255,.30); }
+
 .wizard-progress {
   height: 4px;
   background: rgba(255,255,255,.18);
