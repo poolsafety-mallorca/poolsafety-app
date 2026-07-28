@@ -2924,6 +2924,118 @@
   document.addEventListener('ps-session-updated', () => setTimeout(renderDisponibleBlock, 400));
 
   /* ==========================================================================
+     ESTADO DEL EQUIPO (admin) — quién ha entrado, quién ha firmado Kit Alta,
+     cuántos fichajes lleva este mes. Detecta socorristas rezagados.
+     ========================================================================== */
+  async function renderEstadoEquipo() {
+    const cont = document.getElementById('estadoEquipoBlock');
+    if (!cont || !window.sb) return;
+    const psSes = window.PS_SESSION || {};
+    if (!['dueno','coordinador'].includes(psSes.rol)) { cont.innerHTML = ''; return; }
+    cont.innerHTML = '<div class="text-muted small" style="padding:12px;">Cargando estado del equipo…</div>';
+    try {
+      const { data: emps, error } = await window.sb.from('empleados')
+        .select('id, nombre, email, usuario_id, estado')
+        .neq('estado', 'eliminado').is('fecha_baja', null)
+        .order('nombre');
+      if (error) throw error;
+      if (!emps || emps.length === 0) { cont.innerHTML = ''; return; }
+      const ids = emps.map(e => e.id).filter(Boolean);
+      const usuarioIds = emps.map(e => e.usuario_id).filter(Boolean);
+
+      // Firmas Kit Alta
+      const { data: firmas } = await window.sb.from('firmas_documentos')
+        .select('empleado_id, documento_codigo, fecha_firma')
+        .eq('documento_codigo', 'kit-alta').in('empleado_id', ids);
+      const firmadoPorId = new Map();
+      (firmas || []).forEach(f => { if (!firmadoPorId.has(f.empleado_id)) firmadoPorId.set(f.empleado_id, f.fecha_firma); });
+
+      // Último login (columna nueva en usuarios)
+      const { data: usrs } = await window.sb.from('usuarios')
+        .select('id, ultimo_login').in('id', usuarioIds);
+      const loginPorUsuario = new Map();
+      (usrs || []).forEach(u => loginPorUsuario.set(u.id, u.ultimo_login));
+
+      // Fichajes del mes por empleado
+      const hoy = new Date();
+      const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
+      const { data: fich } = await window.sb.from('fichajes')
+        .select('empleado_id').in('empleado_id', ids).gte('hora', desde);
+      const fichajesPorId = new Map();
+      (fich || []).forEach(f => fichajesPorId.set(f.empleado_id, (fichajesPorId.get(f.empleado_id) || 0) + 1));
+
+      // Contadores globales
+      const total = emps.length;
+      const noEntrado = emps.filter(e => !loginPorUsuario.get(e.usuario_id)).length;
+      const noFirmado = emps.filter(e => !firmadoPorId.has(e.id)).length;
+
+      const fmtFecha = (iso) => {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        const dias = Math.floor((Date.now() - d.getTime()) / 86400000);
+        if (dias === 0) return 'Hoy · ' + d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+        if (dias === 1) return 'Ayer';
+        if (dias < 7) return `Hace ${dias} días`;
+        return d.toLocaleDateString('es-ES');
+      };
+
+      cont.innerHTML = `
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title-wrap">
+              <div class="kpi-icon" style="width:30px;height:30px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;">
+                <svg class="ic ic-16"><use href="#ic-alert"/></svg>
+              </div>
+              <h3 class="panel-title">Estado del equipo</h3>
+              <span class="panel-count">${total} socorristas · <b style="color:${noEntrado?'#B91C1C':'#059669'};">${noEntrado} sin entrar</b> · <b style="color:${noFirmado?'#B91C1C':'#059669'};">${noFirmado} sin firmar Kit Alta</b></span>
+            </div>
+            <button class="btn btn-outline btn-icon" onclick="renderEstadoEquipo()" title="Refrescar">
+              <svg class="ic ic-16"><use href="#ic-refresh"/></svg>
+            </button>
+          </div>
+          <div class="hor-table-wrap" style="padding:0 12px 12px;">
+            <table class="hor-table">
+              <thead>
+                <tr>
+                  <th>Socorrista</th>
+                  <th>App</th>
+                  <th>Kit Alta</th>
+                  <th>Fichajes ${hoy.toLocaleDateString('es-ES',{month:'long'})}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${emps.map(e => {
+                  const login = loginPorUsuario.get(e.usuario_id);
+                  const firma = firmadoPorId.get(e.id);
+                  const nf = fichajesPorId.get(e.id) || 0;
+                  return `
+                    <tr>
+                      <td><b>${e.nombre}</b><div class="hor-td-sub">${e.email || '—'}</div></td>
+                      <td>${login ? `<span class="badge badge-ok"><span class="dot"></span>Ha entrado</span><div class="hor-td-sub">${fmtFecha(login)}</div>` : `<span class="badge" style="background:#FEE2E2;color:#B91C1C;"><span class="dot" style="background:#DC2626;"></span>Sin entrar</span>`}</td>
+                      <td>${firma ? `<span class="badge badge-ok"><span class="dot"></span>Firmado</span><div class="hor-td-sub">${fmtFecha(firma)}</div>` : `<span class="badge" style="background:#FEF3C7;color:#92400E;"><span class="dot" style="background:#F59E0B;"></span>Pendiente</span>`}</td>
+                      <td>${nf > 0 ? `<b>${nf}</b>` : `<span class="text-muted">0</span>`}</td>
+                      <td class="hor-actions">
+                        ${e.email ? `<button class="icon-btn-mini" title="Reenviar acceso por email" onclick="enviarAccesoDesdeEquipo('${e.email}')"><svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg></button>` : ''}
+                      </td>
+                    </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    } catch (err) {
+      cont.innerHTML = `<div class="text-muted small" style="padding:12px;color:var(--danger);">Error: ${err.message}</div>`;
+    }
+  }
+  window.renderEstadoEquipo = renderEstadoEquipo;
+  document.querySelectorAll('[data-section="empleados"]').forEach(el => {
+    el.addEventListener('click', () => setTimeout(renderEstadoEquipo, 200));
+  });
+  setTimeout(renderEstadoEquipo, 1800);
+  document.addEventListener('ps-session-updated', () => setTimeout(renderEstadoEquipo, 500));
+
+  /* ==========================================================================
      CREACIÓN MASIVA DE CUENTAS
      ========================================================================== */
   window.openMasivaModal = function () {

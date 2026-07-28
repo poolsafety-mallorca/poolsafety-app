@@ -1164,26 +1164,68 @@
     document.getElementById('docViewModal').classList.add('open');
   }
 
-  function openJornadaSign(d) {
-    const hr = horasMesRegla();
+  async function openJornadaSign(d) {
     document.getElementById('docViewTitle').textContent = d.titulo;
     document.getElementById('docViewSub').textContent = 'Firma obligatoria antes del cierre del mes';
+    document.getElementById('docViewBody').innerHTML = '<div class="text-muted" style="padding:22px;text-align:center;">Cargando fichajes del mes…</div>';
+    document.getElementById('docViewActions').innerHTML = '';
+    document.getElementById('docViewModal').classList.add('open');
+
+    // Detectar mes de la jornada desde el id: 'jornada-YYYY-MM'
+    const m = d.id.match(/jornada-(\d{4})-(\d{2})/);
+    const anio = m ? parseInt(m[1]) : new Date().getFullYear();
+    const mes = m ? parseInt(m[2]) - 1 : new Date().getMonth();
+    const desde = new Date(anio, mes, 1).toISOString();
+    const hasta = new Date(anio, mes + 1, 1).toISOString();
+
+    // Cargar fichajes reales del mes
+    let fichajes = [];
+    try {
+      const empId = empleadoReal?.id;
+      if (empId && window.sb) {
+        const { data } = await window.sb.from('fichajes')
+          .select('id, tipo, hora, gps_ok, fuera_de_zona')
+          .eq('empleado_id', empId)
+          .gte('hora', desde).lt('hora', hasta)
+          .order('hora', { ascending: true });
+        fichajes = data || [];
+      }
+    } catch (_) {}
+
+    if (fichajes.length === 0) {
+      document.getElementById('docViewBody').innerHTML = `
+        <div class="alert-strip warn" style="flex-direction:column;align-items:stretch;">
+          <div><b>Aún no tienes fichajes registrados este mes.</b></div>
+          <div class="small text-muted" style="margin-top:6px;">No puedes firmar el registro de jornada si no hay fichajes reales. Vuelve a intentarlo al final del mes cuando hayas fichado tus turnos.</div>
+        </div>`;
+      document.getElementById('docViewActions').innerHTML = `<button class="btn btn-outline" onclick="closeDocView()">Entendido</button>`;
+      return;
+    }
+
+    // Calcular horas totales del mes desde fichajes reales (par entrada+salida)
+    let totalMins = 0;
+    let entrada = null;
+    fichajes.forEach(f => {
+      if (f.tipo === 'entrada') entrada = new Date(f.hora);
+      else if (f.tipo === 'salida' && entrada) {
+        totalMins += Math.max(0, (new Date(f.hora) - entrada) / 60000);
+        entrada = null;
+      }
+    });
+    const horasReales = Math.round(totalMins / 60);
+    const diasTrabajados = new Set(fichajes.filter(f => f.tipo === 'entrada').map(f => new Date(f.hora).toDateString())).size;
+
     document.getElementById('docViewBody').innerHTML = `
       <div class="jornada-summary">
         <div class="jornada-row">
-          <span>Horas ordinarias (40h/sem · ${hr.objMes}h/mes)</span>
-          <b>${hr.ordinarias}h</b>
+          <span>Días trabajados este mes</span>
+          <b>${diasTrabajados}</b>
         </div>
-        ${hr.mostrarExtras ? `
-          <div class="jornada-row">
-            <span>Horas complementarias voluntarias</span>
-            <b>${hr.extras}h</b>
-          </div>` : `
-          <div class="jornada-note">No se registran horas extra porque has completado tus 40h/semana. Solo aparecerán si tu jornada semanal ha sido menor de 40 horas.</div>`}
-        <div class="jornada-row total">
-          <span>Total del mes</span>
-          <b>${hr.ordinarias + hr.extras}h</b>
+        <div class="jornada-row">
+          <span>Horas trabajadas (calculadas desde fichajes reales)</span>
+          <b>${horasReales}h</b>
         </div>
+        <div class="jornada-note small">Detalle diario disponible para tu coordinador en su panel.</div>
       </div>
       <div class="field mt-3">
         <label>Firma (nombre completo)</label>
@@ -1206,16 +1248,15 @@
     `;
     document.getElementById('docViewActions').innerHTML = `
       <button class="btn btn-outline" onclick="closeDocView()">Cancelar</button>
-      <button class="btn btn-primary" onclick="submitJornada('${d.id}')">
+      <button class="btn btn-primary" onclick="submitJornada('${d.id}', ${horasReales}, ${diasTrabajados})">
         <svg class="ic ic-16"><use href="#ic-pen"/></svg>
         Firmar jornada
       </button>
     `;
-    document.getElementById('docViewModal').classList.add('open');
     setTimeout(initFirmaCanvas, 50);
   }
 
-  window.submitJornada = async function (docId) {
+  window.submitJornada = async function (docId, horasReales, diasTrabajados) {
     const firma = document.getElementById('jornada-firma')?.value.trim();
     const accept = document.getElementById('jornada-accept')?.checked;
     if (!firma || !accept) { toast('Firma, marca la casilla y dibuja tu firma'); return; }
@@ -1233,11 +1274,13 @@
           dispositivo: 'móvil empleado',
           firma_imagen: firmaImagen,
           ubicacion_lat: ultimaPosicion?.lat || null,
-          ubicacion_lng: ultimaPosicion?.lng || null
+          ubicacion_lng: ultimaPosicion?.lng || null,
+          campos_json: { horas_reales: horasReales || 0, dias_trabajados: diasTrabajados || 0 }
         });
         if (error) throw error;
       }
       PS.firmarDocumento(me.id, docId, { firma, dispositivo: 'móvil empleado', firmaImagen });
+      await cargarFirmasBD();
       closeDocView();
       toast('✓ Jornada mensual firmada y guardada');
       renderDocsHeader();

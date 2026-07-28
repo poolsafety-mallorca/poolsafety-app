@@ -100,6 +100,10 @@
       };
       localStorage.setItem('ps-session', JSON.stringify(window.PS_SESSION));
 
+      // Marca el último login (fire-and-forget). Sirve al admin para saber quién ha entrado alguna vez.
+      window.sb.from('usuarios').update({ ultimo_login: new Date().toISOString() })
+        .eq('id', session.user.id).then(() => {}, () => {});
+
       // Notifica a los scripts de página para que refresquen cabecera con nombre real
       document.dispatchEvent(new CustomEvent('ps-session-updated', { detail: window.PS_SESSION }));
 
