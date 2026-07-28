@@ -197,7 +197,11 @@ Todos con GPS real, horario, servicios necesarios y flags de equipamiento (DESA/
 - ✅ **PDF descargable de firmas** (jsPDF, guardado en Storage)
 - ✅ **Foto perfil en Storage** (visible en todos los dispositivos)
 - ✅ **Excel horarios parse real** (SheetJS, guarda en tabla horarios)
-- ✅ **Horarios editables por hotel y por socorrista** (PSHor): tabla en ficha hotel muestra socorristas asignados con entrada/salida/días (chips L M X J V S D + atajos Lun-Vie / Sáb-Dom / Todos); tabla en ficha empleado muestra puestos asignados con lo mismo. CRUD real contra tabla `horarios`.
+- ✅ **Horarios editables por hotel y por socorrista** (PSHor): tabla en ficha hotel muestra socorristas asignados con entrada/salida/días (chips L M X J V S D + atajos Lun-Vie / Sáb-Dom / Todos); tabla en ficha empleado muestra puestos asignados con lo mismo. CRUD real contra tabla `horarios`. Numeración "Servicio 1, 2, 3" en la ficha hotel. Al editar un servicio se puede reasignar socorrista/puesto (bidireccional).
+- ✅ **Rol Correturnos**: nueva columna `es_correturnos` en `empleados`. Checkbox en modal Nuevo Usuario + ficha Datos. Badge amarillo en grid de empleados, en el select del formulario de servicio, y en la tabla de servicios del hotel.
+- ✅ **Miembros del equipo** (admin only): sección en Coordinación que lista todos los usuarios `dueno`/`coordinador` con acciones "Enviar acceso por email" y "Desactivar".
+- ✅ **Enviar email de invitación al crear cuenta**: checkbox en modal Nuevo Usuario (ON por defecto para dueno/coordinador, OFF para socorrista). Usa `sb.auth.resetPasswordForEmail(email, {redirectTo: reset.html})`.
+- ✅ **Creación masiva de cuentas**: modal con textarea `rol,nombre,email` una por línea. Parser + creación secuencial + resumen credenciales.
 - ✅ Titulaciones + PRL + DNI con caducidades y alertas
 - ✅ Módulo Empleados / Hoteles / Coordinación / Horarios / Botiquín / Docs / Empleados / Horas
 - ✅ PWA instalable (Android + iOS con instrucciones + Desktop)

@@ -336,6 +336,21 @@
     <!-- ============ PANEL: COORDINACIÓN ============ -->
     <div class="tab-panel hidden" data-panel="coordinacion">
 
+      <!-- Miembros del equipo (solo admin) -->
+      <div id="coordEquipoBlock" style="display:none;"></div>
+
+      <!-- Acciones rápidas (solo admin) -->
+      <div class="row gap-2" style="margin-bottom:12px;flex-wrap:wrap;">
+        <button class="btn btn-outline btn-sm" onclick="openNuevoEmpleadoModal()">
+          <svg class="ic ic-14"><use href="#ic-plus"/></svg>
+          Nueva cuenta
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="openMasivaModal()">
+          <svg class="ic ic-14"><use href="#ic-users"/></svg>
+          Crear varias cuentas
+        </button>
+      </div>
+
       <!-- ADMIN VIEW (Adam) -->
       <section class="panel" id="coordAdminPanel" style="margin-bottom: 20px; display:none;">
         <div class="panel-head">
@@ -860,6 +875,15 @@
         <label>Puesto asignado</label>
         <select id="nePuesto"></select>
       </div>
+      <div class="field">
+        <label style="display:flex; gap:8px; align-items:flex-start; cursor:pointer;">
+          <input type="checkbox" id="neCorreturnos" style="margin-top:3px;" />
+          <span>
+            <b>Correturnos</b>
+            <div class="small text-muted">Marca esta casilla si el socorrista va a cubrir suplencias cambiando de hotel cada día (no tiene puesto fijo). Se le mostrará con un badge amarillo.</div>
+          </span>
+        </label>
+      </div>
       <div class="row gap-2">
         <div class="field" style="flex:1;">
           <label>Fecha de alta</label>
@@ -877,6 +901,16 @@
       </div>
     </div>
 
+    <div class="field" id="neEnviarEmailWrap" style="margin-top:8px;">
+      <label style="display:flex; gap:8px; align-items:flex-start; cursor:pointer;">
+        <input type="checkbox" id="neEnviarEmail" style="margin-top:3px;" />
+        <span>
+          <b>Enviar email de invitación</b>
+          <div class="small text-muted">El usuario recibirá un email para poner su propia contraseña y acceder. Requiere SMTP de Resend configurado. Recomendado para coordinadores y administradores.</div>
+        </span>
+      </label>
+    </div>
+
     <div id="neResultado" style="display:none;"></div>
 
     <div class="modal-actions">
@@ -884,6 +918,40 @@
       <button class="btn btn-primary" onclick="crearNuevoEmpleado()" id="neSubmitBtn">
         <svg class="ic ic-16"><use href="#ic-plus"/></svg>
         Crear cuenta
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL CREACIÓN MASIVA ============ -->
+<div class="modal-backdrop" id="masivaModal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <div>
+        <h3>Crear varias cuentas de golpe</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;">Pega o escribe una línea por usuario, con el formato: <code>rol,nombre,email</code></p>
+      </div>
+      <button class="modal-close" onclick="closeMasivaModal()"><svg class="ic ic-16"><use href="#ic-x"/></svg></button>
+    </div>
+    <div class="field">
+      <label>Usuarios (uno por línea)</label>
+      <textarea id="masivaInput" rows="8" style="font-family:monospace;font-size:13px;" placeholder="socorrista,Juan Pérez,juanp@ejemplo.com
+coordinador,María Ruiz,maria@poolsafety.es
+socorrista,Ana López,ana@ejemplo.com"></textarea>
+      <div class="small text-muted mt-1">Roles válidos: <b>socorrista</b>, <b>coordinador</b>, <b>dueno</b>. Se genera contraseña temporal automáticamente.</div>
+    </div>
+    <div class="field">
+      <label style="display:flex; gap:8px; align-items:center; cursor:pointer;">
+        <input type="checkbox" id="masivaEnviarEmail" checked />
+        <span>Enviar email de invitación a cada uno tras crearlo</span>
+      </label>
+    </div>
+    <div id="masivaResultado" style="display:none; max-height:200px; overflow-y:auto; margin-top:10px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeMasivaModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="ejecutarMasiva()" id="masivaBtn">
+        <svg class="ic ic-16"><use href="#ic-plus"/></svg>
+        Crear todas las cuentas
       </button>
     </div>
   </div>

@@ -66,7 +66,7 @@
   async function listByPuesto(puestoId) {
     const { data, error } = await sb()
       .from('horarios')
-      .select('id, empleado_id, puesto_id, hora_inicio, duracion, dias, activo, empleados(id, nombre)')
+      .select('id, empleado_id, puesto_id, hora_inicio, duracion, dias, activo, empleados(id, nombre, es_correturnos)')
       .eq('puesto_id', puestoId)
       .eq('activo', true)
       .order('hora_inicio', { ascending: true });
@@ -88,7 +88,7 @@
   async function listEmpleadosActivos() {
     const { data, error } = await sb()
       .from('empleados')
-      .select('id, nombre')
+      .select('id, nombre, es_correturnos')
       .is('fecha_baja', null)
       .order('nombre', { ascending: true });
     if (error) { console.warn('PSHor listEmpleados:', error.message); return []; }
@@ -205,7 +205,7 @@
               ${rows.map((r, i) => `
                 <tr data-id="${r.id}">
                   <td><span class="hor-badge">Servicio ${i + 1}</span></td>
-                  <td>${(r.empleados && r.empleados.nombre) || '—'}</td>
+                  <td>${(r.empleados && r.empleados.nombre) || '—'}${r.empleados && r.empleados.es_correturnos ? ' <span class="hor-badge" style="background:#FEF3C7;color:#92400E;">Correturnos</span>' : ''}</td>
                   <td>${toHHMM(r.hora_inicio)}</td>
                   <td>${horaFin(r.hora_inicio, r.duracion)}</td>
                   <td>${diasCortos(parseDias(r.dias))}</td>
@@ -350,7 +350,7 @@
               <label>Socorrista</label>
               <select id="hor-emp">
                 <option value="">— Seleccionar —</option>
-                ${ctx.empleados.map(e => `<option value="${e.id}" ${row && row.empleado_id === e.id ? 'selected':''}>${e.nombre}</option>`).join('')}
+                ${ctx.empleados.map(e => `<option value="${e.id}" ${row && row.empleado_id === e.id ? 'selected':''}>${e.nombre}${e.es_correturnos ? ' · Correturnos' : ''}</option>`).join('')}
               </select>
               ${row ? '<div class="small text-muted mt-1">Puedes cambiar el socorrista asignado a este servicio. Se reflejará en la ficha del nuevo socorrista.</div>' : ''}
             </div>

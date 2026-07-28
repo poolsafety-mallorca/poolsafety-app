@@ -1080,6 +1080,7 @@
       estado: r.estado || 'activo',
       fotoUrl: r.foto_url || null,
       puestoId: r.puesto_id,
+      esCorreturnos: r.es_correturnos === true,
       horasNormales: 0, horasExtra: 0, diasTrabajados: 0
     };
   }
@@ -1120,6 +1121,7 @@
     if ('estado' in patch) dbPatch.estado = patch.estado;
     if ('fotoUrl' in patch) dbPatch.foto_url = patch.fotoUrl;
     if ('puestoId' in patch) dbPatch.puesto_id = patch.puestoId;
+    if ('esCorreturnos' in patch) dbPatch.es_correturnos = !!patch.esCorreturnos;
 
     try {
       const { error } = await window.sb.from('empleados').update(dbPatch).eq('id', id);
@@ -1183,12 +1185,13 @@
       if (e.estado === 'baja') badges.push(`<span class="badge badge-neutral small"><span class="dot"></span>Baja</span>`);
       else if (e.estado === 'alta-pendiente') badges.push(`<span class="badge badge-warn small"><span class="dot"></span>Alta pendiente</span>`);
       else badges.push(`<span class="badge badge-ok small"><span class="dot"></span>Activo</span>`);
+      if (e.esCorreturnos) badges.push(`<span class="badge small" style="background:#FEF3C7;color:#92400E;"><span class="dot" style="background:#F59E0B;"></span>Correturnos</span>`);
       return `
         <div class="emp-card ${e.estado === 'baja' ? 'baja' : ''}" data-emp="${e.id}">
           <span class="emp-card-status ${e.estado}"></span>
           <div class="emp-card-photo ${photoClass}" ${photoStyle}>${photoContent}</div>
-          <div class="emp-card-name">${e.nombre}</div>
-          <div class="emp-card-role">${puesto}</div>
+          <div class="emp-card-name">${e.nombre}${e.esCorreturnos ? ' <span style="color:#F59E0B;font-size:11px;" title="Correturnos">●</span>' : ''}</div>
+          <div class="emp-card-role">${e.esCorreturnos ? 'Correturnos · sin puesto fijo' : puesto}</div>
           <div class="emp-card-badges">${badges.join('')}</div>
         </div>`;
     }).join('');
@@ -1322,6 +1325,15 @@
           <div class="ficha-data-value">
             <select id="ed-puesto"><option value="">Cargando hoteles…</option></select>
             <div class="small text-muted mt-1">Puesto principal del socorrista. Para múltiples horarios/hoteles usa la pestaña <b>Horario</b>.</div>
+          </div>
+        </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Correturnos</div>
+          <div class="ficha-data-value">
+            <label style="display:flex; gap:8px; align-items:center; cursor:pointer;">
+              <input type="checkbox" id="ed-correturnos" ${e.esCorreturnos ? 'checked' : ''} />
+              <span>Este socorrista cubre suplencias en distintos hoteles cada día</span>
+            </label>
           </div>
         </div>
         <div class="ficha-data-row">
@@ -1544,23 +1556,31 @@
     }
   }
 
-  window.enviarResetPassword = async function () {
-    const e = empleadoData(fichaActualId);
-    if (!e || !e.email) { toast('Este empleado no tiene email'); return; }
-    if (!confirm(`Enviar email de recuperación de contraseña a ${e.nombre} (${e.email})?`)) return;
+  // Versión raw reutilizable (sin confirm/toast) para crearNuevoEmpleado y creación masiva
+  window.enviarAccesoEmailRaw = async function (email) {
     try {
-      const { error } = await window.sb.auth.resetPasswordForEmail(e.email, {
+      const { error } = await window.sb.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + '/reset.html'
       });
       if (error) throw error;
-      toast(`✓ Enlace enviado a ${e.email}. El empleado tiene 1 hora para usarlo.`);
+      return { ok: true };
     } catch (err) {
-      toast('Error: ' + err.message);
+      return { ok: false, err: err.message };
     }
+  };
+
+  window.enviarResetPassword = async function () {
+    const e = empleadoData(fichaActualId);
+    if (!e || !e.email) { toast('Este empleado no tiene email'); return; }
+    if (!confirm(`Enviar email de acceso a ${e.nombre} (${e.email})?\n\nSe enviará un enlace para poner contraseña y entrar en la app.`)) return;
+    const r = await window.enviarAccesoEmailRaw(e.email);
+    if (r.ok) toast(`✓ Enlace enviado a ${e.email}. Tiene 1 hora para usarlo.`);
+    else toast('Error: ' + r.err);
   };
 
   window.guardarFichaDatos = async function () {
     const puestoSel = document.getElementById('ed-puesto');
+    const corrChk = document.getElementById('ed-correturnos');
     const patch = {
       nombre: document.getElementById('ed-nombre').value.trim(),
       dni: document.getElementById('ed-dni').value.trim(),
@@ -1570,7 +1590,8 @@
       ss: document.getElementById('ed-ss').value.trim(),
       fechaAlta: document.getElementById('ed-fecha').value,
       contrato: document.getElementById('ed-contrato').value,
-      puestoId: puestoSel ? (puestoSel.value || null) : undefined
+      puestoId: puestoSel ? (puestoSel.value || null) : undefined,
+      esCorreturnos: corrChk ? corrChk.checked : undefined
     };
     try {
       await actualizarEmpleado(fichaActualId, patch);
@@ -1670,6 +1691,7 @@
     document.getElementById('neSubmitBtn').disabled = false;
 
     recargarSelectPuestos(); // hoteles reales de BD, refrescados cada vez
+    const corrChk = document.getElementById('neCorreturnos'); if (corrChk) corrChk.checked = false;
     ajustarCamposSegunRol();
     document.getElementById('nuevoEmpleadoModal').classList.add('open');
   };
@@ -1680,6 +1702,9 @@
     const rol = document.getElementById('neRol').value;
     const camposSoc = document.getElementById('neCamposSocorrista');
     if (camposSoc) camposSoc.style.display = rol === 'socorrista' ? 'block' : 'none';
+    // Por defecto: enviar email de invitación a coordinador/admin, NO a socorrista
+    const chk = document.getElementById('neEnviarEmail');
+    if (chk) chk.checked = (rol === 'coordinador' || rol === 'dueno');
   }
 
   window.closeNuevoEmpleadoModal = () => document.getElementById('nuevoEmpleadoModal').classList.remove('open');
@@ -1746,6 +1771,7 @@
         const puestoId = document.getElementById('nePuesto').value || null;
         const fechaAlta = document.getElementById('neFechaAlta').value || new Date().toISOString().slice(0,10);
         const contrato = document.getElementById('neContrato').value;
+        const esCorr = !!document.getElementById('neCorreturnos')?.checked;
         const { error: empErr } = await window.sb.from('empleados').insert({
           usuario_id: nuevoId,
           empresa_id: psSes.empresa_id,
@@ -1753,18 +1779,30 @@
           puesto_id: puestoId,
           fecha_alta: fechaAlta,
           tipo_contrato: contrato,
+          es_correturnos: esCorr,
           estado: 'alta-pendiente'
         });
         if (empErr) console.warn('No se pudo crear ficha empleado:', empErr.message);
       }
 
-      // 4. Mostrar resultado con las credenciales
+      // 4. Enviar email de invitación si está marcado el checkbox
+      const enviarEmail = document.getElementById('neEnviarEmail')?.checked;
+      let emailStatus = '';
+      if (enviarEmail) {
+        const r = await window.enviarAccesoEmailRaw(email);
+        emailStatus = r.ok
+          ? '<div class="small ok-strip" style="margin-top:8px;color:#059669;">✓ Email de invitación enviado a ' + email + '</div>'
+          : '<div class="small" style="margin-top:8px;color:#B91C1C;">⚠ No se pudo enviar email (' + r.err + '). Dicta las credenciales manualmente.</div>';
+      }
+
+      // 5. Mostrar resultado con las credenciales
       const rolLabel = rol === 'dueno' ? 'Administrador' : (rol === 'coordinador' ? 'Coordinador' : 'Socorrista');
       const resultado = document.getElementById('neResultado');
       resultado.innerHTML = `
         <div class="alert-strip ok" style="flex-direction:column; align-items:flex-start;">
           <div style="display:flex;gap:8px;align-items:center;"><svg class="ic ic-16"><use href="#ic-check-circle"/></svg><b>${nombre} creado como ${rolLabel}</b></div>
-          <div class="small" style="margin-top:8px;">Dictale estas credenciales para que entre en <b>${window.location.origin}</b>:</div>
+          ${emailStatus}
+          <div class="small" style="margin-top:8px;">${enviarEmail ? 'Como respaldo, estas son las credenciales generadas:' : 'Dictale estas credenciales para que entre en <b>' + window.location.origin + '</b>:'}</div>
           <div style="margin-top:8px;padding:10px 12px;background:#fff;border:1px dashed var(--ink-300);border-radius:8px;font-family:monospace;font-size:13px;width:100%;box-sizing:border-box;">
             <div><b>Email:</b> ${email}</div>
             <div style="margin-top:4px;"><b>Contraseña:</b> ${password}</div>
@@ -1780,6 +1818,7 @@
 
       // Refrescar la lista desde BD
       if (rol === 'socorrista') await cargarEmpleadosDB();
+      if (window.renderEquipoBlock) window.renderEquipoBlock();
 
       toast(`✓ Cuenta creada: ${email}`);
     } catch (err) {
@@ -2577,5 +2616,186 @@
     if (window.logoutReal) return window.logoutReal();
     PS.clearSession();
     window.location.href = 'index.html';
+  };
+
+  /* ==========================================================================
+     MIEMBROS DEL EQUIPO (admin only) — lista dueno + coordinadores
+     ========================================================================== */
+  async function renderEquipoBlock() {
+    const cont = document.getElementById('coordEquipoBlock');
+    if (!cont) return;
+    const psSes = window.PS_SESSION || {};
+    if (psSes.rol !== 'dueno') { cont.style.display = 'none'; return; }
+    cont.style.display = 'block';
+    cont.innerHTML = '<div class="text-muted small" style="padding:12px;">Cargando equipo…</div>';
+    try {
+      const { data, error } = await window.sb.from('usuarios')
+        .select('id, nombre, email, rol, activo, created_at')
+        .in('rol', ['dueno','coordinador'])
+        .order('rol', { ascending: true })
+        .order('nombre', { ascending: true });
+      if (error) throw error;
+      const rows = data || [];
+      cont.innerHTML = `
+        <div class="panel" style="margin-top:16px;">
+          <div class="panel-head">
+            <div class="panel-title-wrap">
+              <h3 class="panel-title">Miembros del equipo</h3>
+              <span class="panel-count">${rows.length} activos</span>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="openNuevoEmpleadoModal()">
+              <svg class="ic ic-14"><use href="#ic-plus"/></svg>
+              Añadir miembro
+            </button>
+          </div>
+          <div class="hor-table-wrap" style="padding:0 12px 12px;">
+            <table class="hor-table">
+              <thead><tr><th>Nombre</th><th>Rol</th><th>Email</th><th>Estado</th><th></th></tr></thead>
+              <tbody>
+                ${rows.map(u => `
+                  <tr>
+                    <td><b>${u.nombre || u.email.split('@')[0]}</b></td>
+                    <td>${u.rol === 'dueno' ? '<span class="hor-badge" style="background:#DBEAFE;color:#1D4ED8;">Administrador</span>' : '<span class="hor-badge" style="background:#DCFCE7;color:#166534;">Coordinador</span>'}</td>
+                    <td class="small">${u.email}</td>
+                    <td>${u.activo !== false ? '<span class="badge badge-ok"><span class="dot"></span>Activo</span>' : '<span class="badge badge-neutral"><span class="dot"></span>Inactivo</span>'}</td>
+                    <td class="hor-actions">
+                      <button class="icon-btn-mini" title="Enviar acceso por email" onclick="enviarAccesoDesdeEquipo('${u.email}')"><svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg></button>
+                      ${u.id !== psSes.userId ? `<button class="icon-btn-mini danger" title="Desactivar" onclick="desactivarMiembroEquipo('${u.id}','${(u.nombre||u.email).replace(/'/g,"&#39;")}')"><svg class="ic ic-14"><use href="#ic-x"/></svg></button>` : ''}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    } catch (err) {
+      cont.innerHTML = `<div class="text-muted small" style="padding:12px;color:var(--danger);">Error: ${err.message}</div>`;
+    }
+  }
+  window.renderEquipoBlock = renderEquipoBlock;
+
+  window.enviarAccesoDesdeEquipo = async function (email) {
+    if (!confirm(`Enviar email de acceso a ${email}?`)) return;
+    const r = await window.enviarAccesoEmailRaw(email);
+    if (r.ok) toast(`✓ Enlace enviado a ${email}`);
+    else toast('Error: ' + r.err);
+  };
+  window.desactivarMiembroEquipo = async function (id, nombre) {
+    if (!confirm(`¿Desactivar a ${nombre}? Podrás reactivarlo desde Supabase Auth si te arrepientes.`)) return;
+    try {
+      const { error } = await window.sb.from('usuarios').update({ activo: false }).eq('id', id);
+      if (error) throw error;
+      toast(`${nombre} desactivado`);
+      renderEquipoBlock();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  // Renderizar cuando se entre a la sección Coordinación
+  document.querySelectorAll('[data-section="coordinacion"]').forEach(el => {
+    el.addEventListener('click', () => setTimeout(renderEquipoBlock, 200));
+  });
+  // Y al arrancar
+  setTimeout(renderEquipoBlock, 1500);
+
+  /* ==========================================================================
+     CREACIÓN MASIVA DE CUENTAS
+     ========================================================================== */
+  window.openMasivaModal = function () {
+    document.getElementById('masivaResultado').style.display = 'none';
+    document.getElementById('masivaResultado').innerHTML = '';
+    document.getElementById('masivaInput').value = '';
+    document.getElementById('masivaBtn').disabled = false;
+    document.getElementById('masivaModal').classList.add('open');
+  };
+  window.closeMasivaModal = () => document.getElementById('masivaModal').classList.remove('open');
+
+  window.ejecutarMasiva = async function () {
+    const raw = document.getElementById('masivaInput').value.trim();
+    if (!raw) { toast('Pega al menos una línea'); return; }
+    const enviarEmail = document.getElementById('masivaEnviarEmail').checked;
+    const psSes = window.PS_SESSION || {};
+    const btn = document.getElementById('masivaBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-signal"/></svg> Creando…';
+
+    const lineas = raw.split(/\n+/).map(l => l.trim()).filter(Boolean);
+    const rows = [];
+    for (const linea of lineas) {
+      const partes = linea.split(',').map(p => p.trim());
+      if (partes.length < 3) { rows.push({ linea, ok: false, err: 'Formato inválido (esperado: rol,nombre,email)' }); continue; }
+      const [rol, nombre, email] = partes;
+      if (!['socorrista','coordinador','dueno'].includes(rol)) { rows.push({ linea, ok: false, err: `Rol '${rol}' no válido` }); continue; }
+      if (!/\S+@\S+\.\S+/.test(email)) { rows.push({ linea, ok: false, err: 'Email inválido' }); continue; }
+      rows.push({ rol, nombre, email });
+    }
+
+    const tmpClient = window.supabase.createClient(
+      'https://msdjsbegqpjpshnxoilh.supabase.co',
+      window.PS_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1zZGpzYmVncXBqcHNobnhvaWxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjQ5NDgsImV4cCI6MjEwMDc0MDk0OH0.Ws2Fq3chqf7jgJUFQcXlAKEr63z1HkJgs08e4GrxqdI',
+      { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
+    );
+
+    const genPass = () => {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+      let p = 'Ps';
+      for (let i = 0; i < 10; i++) p += chars.charAt(Math.floor(Math.random() * chars.length));
+      return p + '2!';
+    };
+
+    const resultados = [];
+    for (const r of rows) {
+      if (r.ok === false) { resultados.push(r); continue; }
+      const password = genPass();
+      try {
+        const { data: signUpData, error: signUpErr } = await tmpClient.auth.signUp({
+          email: r.email, password,
+          options: { data: { rol: r.rol, nombre: r.nombre } }
+        });
+        if (signUpErr) throw signUpErr;
+        const nuevoId = signUpData.user.id;
+
+        await window.sb.from('usuarios').insert({
+          id: nuevoId, empresa_id: psSes.empresa_id, rol: r.rol,
+          email: r.email, nombre: r.nombre, activo: true
+        });
+
+        if (r.rol === 'socorrista') {
+          await window.sb.from('empleados').insert({
+            usuario_id: nuevoId, empresa_id: psSes.empresa_id,
+            nombre: r.nombre, email: r.email, estado: 'alta-pendiente'
+          });
+        }
+
+        let emailStatus = '';
+        if (enviarEmail) {
+          const em = await window.enviarAccesoEmailRaw(r.email);
+          emailStatus = em.ok ? ' · email enviado' : ' · email FALLÓ: ' + em.err;
+        }
+        resultados.push({ ...r, ok: true, password, emailStatus });
+      } catch (err) {
+        let msg = err.message || 'error';
+        if (msg.includes('already registered')) msg = 'email ya registrado';
+        resultados.push({ ...r, ok: false, err: msg });
+      }
+    }
+
+    const div = document.getElementById('masivaResultado');
+    const okCount = resultados.filter(x => x.ok).length;
+    div.style.display = 'block';
+    div.innerHTML = `
+      <div class="alert-strip ${okCount === resultados.length ? 'ok' : 'warn'}" style="flex-direction:column;align-items:stretch;">
+        <div><b>${okCount} de ${resultados.length} cuentas creadas</b></div>
+        <div style="margin-top:8px;max-height:200px;overflow-y:auto;font-family:monospace;font-size:12px;background:#fff;padding:8px;border-radius:6px;">
+          ${resultados.map(r => r.ok
+            ? `✓ ${r.email} (${r.rol}) · pass: ${r.password}${r.emailStatus||''}`
+            : `✗ ${r.email || r.linea || '?'} · ${r.err}`
+          ).join('<br>')}
+        </div>
+        <button class="btn btn-outline btn-sm" style="margin-top:8px;align-self:flex-start;" onclick="navigator.clipboard.writeText(document.querySelector('#masivaResultado div').innerText); toast('Copiado')">Copiar credenciales</button>
+      </div>`;
+    btn.disabled = false;
+    btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-plus"/></svg> Crear todas las cuentas';
+    if (window.cargarEmpleadosDB) cargarEmpleadosDB();
+    if (window.renderEquipoBlock) renderEquipoBlock();
   };
 })();
