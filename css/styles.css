@@ -3167,3 +3167,51 @@ img, svg { display: block; max-width: 100%; }
   .tabbar { padding-bottom: max(6px, env(safe-area-inset-bottom)); }
   .dash-nav { padding-top: max(14px, env(safe-area-inset-top)); }
 }
+
+/* ==========================================================================
+   PSHor · bloque compartido de horarios (ficha hotel + ficha socorrista)
+   ========================================================================== */
+.hor-block { border: 1px solid var(--ink-100, #E5E7EB); border-radius: 12px; padding: 12px; background: #fff; margin-top: 12px; }
+.hor-block-head { display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px; }
+.hor-block-title { font-weight: 700; font-size: 14px; color: var(--ink-900, #111827); }
+.hor-empty { padding: 22px 12px; text-align: center; color: var(--ink-500, #6B7280); font-size: 13px; background: #F9FAFB; border-radius: 8px; }
+.hor-table-wrap { overflow-x: auto; }
+.hor-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.hor-table thead th { text-align: left; padding: 8px 6px; color: var(--ink-500, #6B7280); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .3px; border-bottom: 1px solid var(--ink-100, #E5E7EB); }
+.hor-table tbody td { padding: 10px 6px; border-bottom: 1px solid #F3F4F6; vertical-align: middle; }
+.hor-table tbody tr:last-child td { border-bottom: 0; }
+.hor-td-sub { font-size: 11px; color: var(--ink-500, #6B7280); margin-top: 1px; }
+.hor-actions { text-align: right; white-space: nowrap; }
+.icon-btn-mini { background: transparent; border: 1px solid var(--ink-100, #E5E7EB); border-radius: 8px; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-500, #6B7280); margin-left: 4px; }
+.icon-btn-mini:hover { background: #F3F4F6; color: var(--ink-900, #111827); }
+.icon-btn-mini.danger:hover { background: #FEF2F2; color: #B91C1C; border-color: #FECACA; }
+
+.hor-form { margin-top: 12px; padding: 14px; background: #F9FAFB; border-radius: 10px; border: 1px dashed #D1D5DB; }
+.hor-form-title { font-weight: 700; font-size: 13.5px; color: var(--ink-900, #111827); margin-bottom: 10px; }
+.hor-form-grid { display: grid; grid-template-columns: 1fr 100px 100px; gap: 10px; margin-bottom: 10px; }
+.hor-field label { display: block; font-size: 11px; color: var(--ink-500, #6B7280); font-weight: 600; text-transform: uppercase; letter-spacing: .3px; margin-bottom: 4px; }
+.hor-field input, .hor-field select { width: 100%; padding: 8px 10px; border: 1px solid var(--ink-100, #E5E7EB); border-radius: 8px; font-size: 13px; background: #fff; }
+.hor-field input:focus, .hor-field select:focus { outline: 2px solid #B91C1C33; border-color: #B91C1C; }
+.hor-form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+
+.hor-dias-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.hor-dia-chip { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid var(--ink-100, #E5E7EB); border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; background: #fff; color: var(--ink-500, #6B7280); transition: all .15s ease; }
+.hor-dia-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.hor-dia-chip.on { background: #B91C1C; color: #fff; border-color: #B91C1C; }
+.hor-dia-chip:hover:not(.on) { background: #F3F4F6; }
+.hor-dias-shortcuts { display: flex; gap: 6px; }
+.btn-mini { background: transparent; border: 1px solid var(--ink-100, #E5E7EB); border-radius: 6px; padding: 3px 8px; font-size: 11px; cursor: pointer; color: var(--ink-500, #6B7280); }
+.btn-mini:hover { background: #F3F4F6; color: var(--ink-900, #111827); }
+
+@media (max-width: 520px) {
+  .hor-form-grid { grid-template-columns: 1fr; }
+  .hor-table thead { display: none; }
+  .hor-table, .hor-table tbody, .hor-table tr, .hor-table td { display: block; width: 100%; }
+  .hor-table tr { border: 1px solid var(--ink-100, #E5E7EB); border-radius: 10px; padding: 8px; margin-bottom: 8px; }
+  .hor-table tbody td { border: 0; padding: 4px 6px; }
+  .hor-table tbody td:first-child { font-weight: 700; font-size: 14px; }
+  .hor-table tbody td::before { content: attr(data-label); display: inline-block; font-size: 11px; color: var(--ink-500, #6B7280); margin-right: 6px; text-transform: uppercase; letter-spacing: .3px; }
+  .hor-table tbody td:first-child::before { display: none; }
+  .hor-actions { text-align: left; }
+}
+

@@ -1300,31 +1300,16 @@
         </div>`;
     }
     else if (fichaTabActual === 'horario') {
-      const h = getHorarios()[e.id];
-      const efectivo = h || (e.puestoId ? { puestoId: e.puestoId, hora: PS.puestoById(e.puestoId).hora, duracion: PS.puestoById(e.puestoId).duracion, dias: 'Lun-Vie' } : null);
-      if (!efectivo) {
-        body.innerHTML = `<div class="text-muted" style="padding: 30px; text-align:center;">Sin horario asignado. Ve a la pestaña <b>Horarios</b> para asignarle uno.</div>`;
-      } else {
-        const p = PS.puestoById(efectivo.puestoId);
-        const fin = `${(parseInt(efectivo.hora) + efectivo.duracion).toString().padStart(2,'0')}:00`;
-        body.innerHTML = `
-          <div class="ficha-body-title">Turno actual</div>
-          <div class="ficha-data-row">
-            <div class="ficha-data-label">Puesto / hotel</div>
-            <div class="ficha-data-value">${p.nombre} — ${p.zona}</div>
-          </div>
-          <div class="ficha-data-row">
-            <div class="ficha-data-label">Horario</div>
-            <div class="ficha-data-value">${efectivo.hora} – ${fin} (${efectivo.duracion}h)</div>
-          </div>
-          <div class="ficha-data-row">
-            <div class="ficha-data-label">Días</div>
-            <div class="ficha-data-value">${efectivo.dias}</div>
-          </div>
-          <div class="ficha-data-row">
-            <div class="ficha-data-label">Horas del mes</div>
-            <div class="ficha-data-value">${e.horasNormales}h ordinarias · ${e.diasTrabajados} días</div>
-          </div>`;
+      body.innerHTML = `
+        <div class="ficha-body-title">Resumen del mes</div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Horas del mes</div>
+          <div class="ficha-data-value">${e.horasNormales}h ordinarias · ${e.diasTrabajados} días</div>
+        </div>
+        <div id="empleadoHorariosBlock"></div>`;
+      if (window.PSHor) {
+        // fichaActualId es el empleado_id real de BD
+        window.PSHor.renderEmpleadoBlock(document.getElementById('empleadoHorariosBlock'), fichaActualId);
       }
     }
     else if (fichaTabActual === 'docs') {
@@ -1997,7 +1982,11 @@
             <svg class="ic ic-16"><use href="#ic-check"/></svg>
             Guardar
           </button>
-        </div>`;
+        </div>
+        <div id="hotelHorariosBlock"></div>`;
+      if (window.PSHor) {
+        window.PSHor.renderPuestoBlock(document.getElementById('hotelHorariosBlock'), hotelActualId);
+      }
     }
     else if (hotelTabActual === 'equipamiento') {
       body.innerHTML = `

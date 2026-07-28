@@ -97,6 +97,7 @@ app poolsafety/
 │   ├── titulaciones.js            # Módulo compartido PSTit (renderizado + BD)
 │   ├── ps-storage.js              # Wrapper Supabase Storage (bucket empleados-media)
 │   ├── ps-pdf.js                  # Genera PDFs firmados (Kit Alta, Jornada) con jsPDF
+│   ├── ps-horarios.js             # Módulo compartido PSHor (CRUD tabla horarios · usado en ficha hotel + ficha empleado)
 │   ├── socorrista.js              # Lógica vista socorrista
 │   └── coordinador.js             # Lógica dashboard coordinador/admin
 ├── sql/
@@ -196,6 +197,7 @@ Todos con GPS real, horario, servicios necesarios y flags de equipamiento (DESA/
 - ✅ **PDF descargable de firmas** (jsPDF, guardado en Storage)
 - ✅ **Foto perfil en Storage** (visible en todos los dispositivos)
 - ✅ **Excel horarios parse real** (SheetJS, guarda en tabla horarios)
+- ✅ **Horarios editables por hotel y por socorrista** (PSHor): tabla en ficha hotel muestra socorristas asignados con entrada/salida/días (chips L M X J V S D + atajos Lun-Vie / Sáb-Dom / Todos); tabla en ficha empleado muestra puestos asignados con lo mismo. CRUD real contra tabla `horarios`.
 - ✅ Titulaciones + PRL + DNI con caducidades y alertas
 - ✅ Módulo Empleados / Hoteles / Coordinación / Horarios / Botiquín / Docs / Empleados / Horas
 - ✅ PWA instalable (Android + iOS con instrucciones + Desktop)
