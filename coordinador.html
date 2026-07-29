@@ -36,7 +36,7 @@
           <svg class="ic ic-18"><use href="#ic-bell"/></svg>
           <span id="notifCoordBadge" style="display:none;position:absolute;top:2px;right:2px;background:#B91C1C;color:#fff;font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:8px;padding:0 4px;line-height:16px;text-align:center;"></span>
         </button>
-        <button class="user-chip" title="Perfil">
+        <button class="user-chip" title="Mi perfil" onclick="openMiPerfilModal()">
           <span class="user-chip-avatar" id="userAvatar">JF</span>
           <span class="col">
             <span class="user-chip-name" id="userName">Jaume Ferrer</span>
@@ -58,7 +58,7 @@
         <span id="dateText">viernes, 4 de julio</span>
       </div>
       <h1 class="dash-title">Panel operativo · Mallorca</h1>
-      <p class="dash-sub">80 puestos activos hoy · 150 socorristas · 2 coordinadores</p>
+      <p class="dash-sub" id="dashSubStats">Cargando…</p>
     </div>
   </section>
 
@@ -665,6 +665,71 @@
 <!-- ============ MODAL DETALLE PUESTO ============ -->
 <div class="modal-backdrop" id="postModal">
   <div class="modal" id="postModalBody"></div>
+</div>
+
+<!-- ============ MODAL MI PERFIL (admin + coord) ============ -->
+<div class="modal-backdrop" id="miPerfilModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div>
+        <h3>Mi perfil</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;" id="miPerfilRol">—</p>
+      </div>
+      <button class="modal-close" onclick="closeMiPerfilModal()"><svg class="ic ic-16"><use href="#ic-x"/></svg></button>
+    </div>
+    <div class="field">
+      <label>Nombre completo</label>
+      <input type="text" id="mp-nombre" />
+    </div>
+    <div class="field">
+      <label>Email (solo lectura — usa Supabase Auth para cambiarlo)</label>
+      <input type="email" id="mp-email" disabled style="opacity:.7;" />
+    </div>
+    <div class="field">
+      <label>Teléfono</label>
+      <input type="tel" id="mp-tel" placeholder="+34 6XX XXX XXX" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeMiPerfilModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarMiPerfil()">
+        <svg class="ic ic-16"><use href="#ic-check"/></svg>
+        Guardar cambios
+      </button>
+    </div>
+
+    <div class="section-eyebrow" style="margin-top:20px;"><span class="eyebrow">Mi documentación</span></div>
+    <div class="small text-muted" style="margin-bottom:8px;">Adjunta cualquier documento personal (DNI, título, contrato, etc.). Formatos: PDF, JPG, PNG. Máx 20 MB.</div>
+    <label for="mp-file" class="btn btn-outline btn-block" style="cursor:pointer;">
+      <svg class="ic ic-16"><use href="#ic-upload"/></svg>
+      Elegir archivo o hacer foto
+    </label>
+    <input type="file" id="mp-file" accept="image/*,application/pdf" capture="environment" style="display:none;" onchange="onMiPerfilFile(event)" />
+    <div class="field" style="margin-top:10px;">
+      <label>Tipo</label>
+      <select id="mp-tipo">
+        <option value="dni">DNI / NIE</option>
+        <option value="titulo">Título / certificado</option>
+        <option value="contrato">Contrato</option>
+        <option value="otro">Otro</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Nombre / notas</label>
+      <input type="text" id="mp-notas" placeholder="p.ej. DNI cara y cruz" />
+    </div>
+    <button class="btn btn-primary btn-block" id="mp-subir-btn" onclick="subirMiPerfilDoc()" disabled style="margin-top:8px;">
+      <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
+      Subir archivo
+    </button>
+    <div id="mp-docs-list" style="margin-top:10px;"></div>
+
+    <div class="row gap-2" style="margin-top:16px;">
+      <button class="btn btn-outline btn-block" onclick="closeMiPerfilModal(); logout()">
+        <svg class="ic ic-16"><use href="#ic-logout"/></svg>
+        Cerrar sesión
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- ============ MODAL FIRMAR KIT ALTA EN TABLET (admin + coord) ============ -->

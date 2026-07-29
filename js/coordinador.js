@@ -1883,8 +1883,8 @@
                 <button class="btn btn-primary btn-sm" onclick="firmarKitEnTablet('${e.id}', '${(e.nombre||'').replace(/'/g,'\\\'')}')">
                   <svg class="ic ic-14"><use href="#ic-pen"/></svg> Firmar en tablet
                 </button>
-                <button class="btn btn-outline btn-sm" onclick="enviarKitAltaParaFirmar('${e.id}','${(e.nombre||'').replace(/'/g,'\\\'')}')" ${!e.email ? 'disabled title="El empleado no tiene email en su ficha"' : ''}>
-                  <svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg> Enviar para firmar (por email)
+                <button class="btn btn-outline btn-sm" onclick="enviarKitAltaParaFirmar('${e.id}','${(e.nombre||'').replace(/'/g,'\\\'')}')">
+                  <svg class="ic ic-14"><use href="#ic-bell"/></svg> Solicitar firma en su app
                 </button>
               </div>` : ''}
           </div>
@@ -3208,26 +3208,31 @@
     } catch (err) { toast('Error: ' + err.message); }
   };
 
-  // Envía email al empleado recordándole que firme el Kit Alta en la app.
-  // El email lleva un link → al pulsarlo entra a la app → detecta que no hay firma
-  // en BD → le abre wizard obligatorio (con texto completo de los documentos) →
-  // firma → puede descargar el PDF firmado.
+  // Solicitar firma Kit Alta en la app (sin email — solo notificación dentro de la app).
+  // Como el wizard bloqueante YA salta si no hay firma en BD, esta función simplemente:
+  //  - Si ya está firmado: archiva la firma anterior → volverá a saltarle el wizard.
+  //  - Si NO está firmado: no hace nada especial, ya le salta al entrar.
   window.enviarKitAltaParaFirmar = async function (empId, nombre) {
     try {
-      const { data: e, error } = await window.sb.from('empleados')
-        .select('email').eq('id', empId).single();
-      if (error) throw error;
-      if (!e.email) { toast('Este empleado no tiene email en su ficha. Añádelo primero en pestaña Datos.'); return; }
-      const msg = `Enviar email a ${nombre} (${e.email})?\n\n` +
-        `• Le llega un enlace desde info@poolsafety.es.\n` +
-        `• Al pulsarlo entra directo a la app.\n` +
-        `• La app detecta que no ha firmado el Kit Alta y le abre el wizard obligatorio con TODO el texto para leer.\n` +
-        `• Firma → puede descargar el PDF firmado.\n\n` +
-        `Útil si no le salió al entrar por primera vez o no llegó a firmarlo.`;
+      // ¿Ya está firmado?
+      const { data: firmas } = await window.sb.from('firmas_documentos')
+        .select('id').eq('empleado_id', empId).eq('documento_codigo', 'kit-alta').limit(1);
+      const yaFirmado = firmas && firmas.length > 0;
+      const msg = yaFirmado
+        ? `${nombre} ya tiene Kit Alta firmado. ¿Solicitar que lo firme de nuevo?\n\nLa firma actual se archiva y al entrar en la app le saldrá el wizard obligatorio (con todo el texto legal para leer).`
+        : `Solicitar a ${nombre} que firme el Kit Alta en su app?\n\nLa próxima vez que abra la app (con su usuario y contraseña) le saldrá el wizard bloqueante obligatorio hasta que firme. Puedes avisarle tú por WhatsApp de que entre.`;
       if (!confirm(msg)) return;
-      const r = await window.enviarAccesoEmailRaw(e.email);
-      if (r.ok) toast(`✓ Enlace enviado a ${e.email} · el empleado firmará en su móvil`);
-      else toast('Error: ' + r.err);
+      if (yaFirmado) {
+        // Archivar la firma actual → el wizard vuelve a salirle al entrar
+        await window.sb.from('firmas_documentos')
+          .update({ documento_codigo: 'kit-alta-archivada-' + Date.now() })
+          .eq('id', firmas[0].id);
+        toast(`✓ ${nombre} firmará de nuevo la próxima vez que entre en la app`);
+      } else {
+        toast(`✓ ${nombre} verá el wizard obligatorio al abrir la app`);
+      }
+      if (window.renderFicha && fichaActualId === empId) renderFicha();
+      if (window.renderEstadoEquipo) window.renderEstadoEquipo();
     } catch (err) { toast('Error: ' + err.message); }
   };
 
@@ -3346,6 +3351,137 @@
   };
 
   /* ==========================================================================
+     Cabecera Panel Operativo · números REALES (puestos, socorristas, coord)
+     ========================================================================== */
+  async function refrescarDashSubStats() {
+    const el = document.getElementById('dashSubStats');
+    if (!el || !window.sb) return;
+    try {
+      const [puestos, socorristas, coords] = await Promise.all([
+        window.sb.from('puestos').select('id', { count: 'exact', head: true }).eq('activo', true),
+        window.sb.from('empleados').select('id', { count: 'exact', head: true }).eq('estado', 'activo').is('fecha_baja', null),
+        window.sb.from('usuarios').select('id', { count: 'exact', head: true }).eq('rol', 'coordinador').eq('activo', true)
+      ]);
+      const p = puestos.count || 0;
+      const s = socorristas.count || 0;
+      const c = coords.count || 0;
+      el.textContent = `${p} puesto${p===1?'':'s'} activo${p===1?'':'s'} · ${s} socorrista${s===1?'':'s'} · ${c} coordinador${c===1?'':'es'}`;
+    } catch (_) { el.textContent = ''; }
+  }
+  setTimeout(refrescarDashSubStats, 1600);
+  document.addEventListener('ps-session-updated', () => setTimeout(refrescarDashSubStats, 400));
+  setInterval(refrescarDashSubStats, 120_000);
+
+  /* ==========================================================================
+     MI PERFIL (admin + coord) — editar nombre, teléfono, subir docs propios
+     ========================================================================== */
+  let miPerfilFileBlob = null;
+  window.openMiPerfilModal = async function () {
+    const psSes = window.PS_SESSION || {};
+    if (!psSes.userId) return;
+    document.getElementById('miPerfilRol').textContent = psSes.rol === 'dueno' ? 'Administrador' : 'Coordinador';
+    try {
+      const { data } = await window.sb.from('usuarios')
+        .select('nombre, email, telefono').eq('id', psSes.userId).single();
+      document.getElementById('mp-nombre').value = data?.nombre || '';
+      document.getElementById('mp-email').value = data?.email || psSes.email || '';
+      document.getElementById('mp-tel').value = data?.telefono || '';
+    } catch (_) {}
+    document.getElementById('mp-notas').value = '';
+    document.getElementById('mp-file').value = '';
+    miPerfilFileBlob = null;
+    const btn = document.getElementById('mp-subir-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg> Subir archivo'; }
+    document.getElementById('miPerfilModal').classList.add('open');
+    renderMisDocsPerfil();
+  };
+  window.closeMiPerfilModal = () => document.getElementById('miPerfilModal').classList.remove('open');
+
+  window.guardarMiPerfil = async function () {
+    const psSes = window.PS_SESSION || {};
+    if (!psSes.userId) return;
+    const nombre = document.getElementById('mp-nombre').value.trim();
+    const tel = document.getElementById('mp-tel').value.trim();
+    if (!nombre) { toast('Escribe tu nombre'); return; }
+    try {
+      const { error } = await window.sb.from('usuarios')
+        .update({ nombre, telefono: tel || null }).eq('id', psSes.userId);
+      if (error) throw error;
+      // Actualiza cabecera al momento
+      psSes.nombre = nombre;
+      localStorage.setItem('ps-session', JSON.stringify(psSes));
+      const un = document.getElementById('userName');
+      if (un) un.textContent = nombre;
+      const av = document.getElementById('userAvatar');
+      if (av) av.textContent = nombre.split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase();
+      toast('✓ Perfil actualizado');
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  window.onMiPerfilFile = function (e) {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (f.size > 20 * 1024 * 1024) { toast(`Archivo demasiado grande (${(f.size/1048576).toFixed(1)} MB, máx 20 MB)`); e.target.value=''; return; }
+    miPerfilFileBlob = f;
+    const btn = document.getElementById('mp-subir-btn');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg> Subir "${f.name}" (${(f.size/1048576).toFixed(1)} MB)`;
+    }
+  };
+
+  window.subirMiPerfilDoc = async function () {
+    if (!miPerfilFileBlob) { toast('Elige un archivo'); return; }
+    const psSes = window.PS_SESSION || {};
+    if (!psSes.userId) return;
+    const tipo = document.getElementById('mp-tipo').value;
+    const notas = document.getElementById('mp-notas').value.trim() || miPerfilFileBlob.name;
+    const btn = document.getElementById('mp-subir-btn');
+    btn.disabled = true; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-signal"/></svg> Subiendo…';
+    try {
+      const ext = (miPerfilFileBlob.name.split('.').pop() || 'bin').toLowerCase();
+      const path = `docs-coordinador/${psSes.userId}/${Date.now()}-${tipo}.${ext}`;
+      const url = await window.PSStorage.subir(path, miPerfilFileBlob, miPerfilFileBlob.type);
+      // Guardamos en documentos_subidos con empleado_id NULL (es doc del coordinador/admin, no de un empleado)
+      // Como la tabla exige empleado_id NOT NULL, guardamos usuario_id en subido_por y usamos un empleado_id placeholder si aplica
+      // MEJOR: creamos un registro en localStorage/tabla propia. Pero para el MVP, usamos documentos_subidos con un empleado_id ficticio.
+      // Solución: si tienes tabla docs_usuarios; si no, guardamos en storage y listamos por path.
+      // Aquí simplemente listamos por Storage directamente.
+      toast(`✓ Documento subido: ${notas}`);
+      miPerfilFileBlob = null;
+      document.getElementById('mp-file').value = '';
+      document.getElementById('mp-notas').value = '';
+      btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg> Subir archivo';
+      renderMisDocsPerfil();
+    } catch (err) {
+      toast('Error: ' + err.message);
+      btn.disabled = false;
+      btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg> Reintentar';
+    }
+  };
+
+  async function renderMisDocsPerfil() {
+    const cont = document.getElementById('mp-docs-list');
+    if (!cont) return;
+    const psSes = window.PS_SESSION || {};
+    if (!psSes.userId || !window.PSStorage || !window.PSStorage.listar) { cont.innerHTML = ''; return; }
+    try {
+      const prefix = `docs-coordinador/${psSes.userId}`;
+      const items = await window.PSStorage.listar(prefix);
+      if (!items || items.length === 0) { cont.innerHTML = ''; return; }
+      cont.innerHTML = '<div class="section-eyebrow" style="margin-top:12px;"><span class="eyebrow">Ya subidos</span></div>' +
+        items.map(it => `
+          <a class="li interactive" href="${it.url}" target="_blank" style="text-decoration:none;color:inherit;">
+            <div class="li-icon"><svg class="ic ic-18"><use href="#ic-file-text"/></svg></div>
+            <div class="li-body">
+              <div class="li-title">${it.name.split('/').pop()}</div>
+              <div class="li-sub">${(it.size/1024).toFixed(0)} KB</div>
+            </div>
+          </a>`).join('');
+    } catch (_) { cont.innerHTML = ''; }
+  }
+
+  /* ==========================================================================
      TOGGLE DISPONIBLE / LIBRE (dueno + coordinador)
      ========================================================================== */
   async function renderDisponibleBlock() {
@@ -3439,7 +3575,10 @@
                     <td>${u.disponible !== false ? '<span class="badge badge-ok"><span class="dot"></span>Disponible</span>' : '<span class="badge" style="background:#FEF3C7;color:#92400E;"><span class="dot" style="background:#F59E0B;"></span>Libre</span>'}</td>
                     <td class="hor-actions">
                       <button class="icon-btn-mini" title="Enviar acceso por email" onclick="enviarAccesoDesdeEquipo('${u.email}')"><svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg></button>
-                      ${u.id !== psSes.userId ? `<button class="icon-btn-mini danger" title="Desactivar" onclick="desactivarMiembroEquipo('${u.id}','${(u.nombre||u.email).replace(/'/g,"&#39;")}')"><svg class="ic ic-14"><use href="#ic-x"/></svg></button>` : ''}
+                      ${u.id !== psSes.userId ? `
+                        <button class="icon-btn-mini" title="Desactivar (bloquea login, se puede reactivar)" onclick="desactivarMiembroEquipo('${u.id}','${(u.nombre||u.email).replace(/'/g,"&#39;")}')" style="color:#B45309;"><svg class="ic ic-14"><use href="#ic-alert"/></svg></button>
+                        <button class="icon-btn-mini danger" title="Eliminar permanentemente" onclick="eliminarMiembroEquipo('${u.id}','${(u.nombre||u.email).replace(/'/g,"&#39;")}','${u.rol}')"><svg class="ic ic-14"><use href="#ic-x"/></svg></button>
+                      ` : ''}
                     </td>
                   </tr>
                 `).join('')}
@@ -3459,6 +3598,24 @@
     if (r.ok) toast(`✓ Enlace enviado a ${email}`);
     else toast('Error: ' + r.err);
   };
+  window.eliminarMiembroEquipo = async function (id, nombre, rol) {
+    const psSes = window.PS_SESSION || {};
+    if (psSes.rol !== 'dueno') { alert('Solo el administrador puede eliminar miembros.'); return; }
+    if (!confirm(`⚠️ ELIMINAR PERMANENTEMENTE a ${nombre} (${rol})?\n\nSe borrará su fila de usuarios. La cuenta de autenticación (auth.users) quedará en Supabase — bórrala manualmente desde Dashboard → Authentication → Users.\n\nSi es coordinador NO afecta a empleados ni a horarios ni a firmas.\n\n¿Continuar?`)) return;
+    const conf = prompt(`Escribe el nombre para confirmar: ${nombre}`);
+    if ((conf || '').trim().toLowerCase() !== nombre.trim().toLowerCase()) { toast('Cancelado.'); return; }
+    try {
+      // Si el usuario ELIMINADO es un socorrista con ficha empleado (extremo), avisamos
+      if (rol === 'socorrista') {
+        const { data: emp } = await window.sb.from('empleados').select('id').eq('usuario_id', id).maybeSingle();
+        if (emp) { alert('Este usuario tiene ficha de empleado. Ve a Empleados → su ficha → Acciones → Eliminar permanente. Ahí se hace la limpieza en cascada correcta.'); return; }
+      }
+      await window.sb.from('usuarios').delete().eq('id', id);
+      toast(`✓ ${nombre} eliminado. Recuerda borrar también la cuenta auth desde Supabase Dashboard → Auth → Users.`);
+      renderEquipoBlock();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
   window.desactivarMiembroEquipo = async function (id, nombre) {
     if (!confirm(`¿Desactivar a ${nombre}? Podrás reactivarlo desde Supabase Auth si te arrepientes.`)) return;
     try {
