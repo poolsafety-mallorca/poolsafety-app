@@ -2064,9 +2064,25 @@
             <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
             <div class="ficha-action-body">
               <div class="ficha-action-title">Registro mensual de jornada</div>
-              <div class="ficha-action-sub">Sin firmas mensuales aún. Se firma el último día trabajado del mes.</div>
+              <div class="ficha-action-sub">Sin firmas mensuales aún. Se firma el último día trabajado del mes o cuando le solicites la firma.</div>
             </div>
           </div>` : ''}
+
+        <div class="ficha-action-row" style="flex-direction:column;align-items:stretch;background:#f0f9ff;border:1px dashed #7dd3fc;">
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div class="icon"><svg class="ic ic-18"><use href="#ic-bell"/></svg></div>
+            <div class="ficha-action-body">
+              <div class="ficha-action-title">Solicitar firma de registro mensual</div>
+              <div class="ficha-action-sub">Genera una solicitud para que ${(e.nombre||'el trabajador').replace(/'/g,'\\\'')} firme las horas trabajadas hasta hoy. Le aparece EN EL ACTO en su app (Realtime).</div>
+            </div>
+          </div>
+          <div class="row gap-2 mt-3" style="justify-content:flex-end;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="solicitarRegistroMensual('${e.id}','${(e.nombre||'').replace(/'/g,'\\\'')}')">
+              <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
+              Mandar horas para firmar ahora
+            </button>
+          </div>
+        </div>
         `;
       })();
     }
@@ -3371,6 +3387,51 @@
       toast(`✓ ${nombre}: se le abrirá el wizard automáticamente (Realtime en piloto real)`);
       if (window.renderFicha && fichaActualId === empId) renderFicha();
       if (window.renderEstadoEquipo) window.renderEstadoEquipo();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  // Solicitar firma de registro mensual: calcula horas hasta HOY y crea tarea
+  // "Firmar registro mensual pendiente" en tabla tareas. El socorrista lo verá
+  // en la sección Docs y podrá firmarlo con las horas reales trabajadas hasta la fecha.
+  window.solicitarRegistroMensual = async function (empId, nombre) {
+    try {
+      // Calcular horas hasta HOY del mes actual
+      const hoy = new Date();
+      const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
+      const hasta = hoy.toISOString();
+      const { data: fichs } = await window.sb.from('fichajes')
+        .select('id, tipo, hora').eq('empleado_id', empId)
+        .gte('hora', desde).lt('hora', hasta).order('hora', { ascending: true });
+      let totalMins = 0, entrada = null;
+      (fichs || []).forEach(f => {
+        if (f.tipo === 'entrada') entrada = new Date(f.hora);
+        else if (f.tipo === 'salida' && entrada) {
+          totalMins += Math.max(0, (new Date(f.hora) - entrada) / 60000);
+          entrada = null;
+        }
+      });
+      const horas = Math.round(totalMins / 60);
+      const dias = new Set((fichs || []).filter(f => f.tipo === 'entrada').map(f => new Date(f.hora).toDateString())).size;
+      const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+
+      const msg = `Solicitar a ${nombre} que firme el registro mensual de ${nombreMes}?\n\n` +
+        `• Horas hasta hoy: ${horas}h\n• Días trabajados: ${dias}\n\n` +
+        `Le saltará el aviso EN EL ACTO en su app (Realtime).`;
+      if (!confirm(msg)) return;
+
+      // Borrar solicitud previa idéntica para no duplicar
+      await window.sb.from('tareas').delete()
+        .eq('empleado_id', empId).eq('titulo', 'Firmar registro mensual pendiente').eq('hecha', false);
+      const { error: errT } = await window.sb.from('tareas').insert({
+        empleado_id: empId,
+        titulo: 'Firmar registro mensual pendiente',
+        descripcion: `Firma tu registro de jornada de ${nombreMes} con las horas trabajadas hasta hoy (${horas}h en ${dias} días).`,
+        prioridad: 'alta',
+        hecha: false
+      });
+      if (errT) throw errT;
+      toast(`✓ ${nombre}: le llega la solicitud de firma de ${horas}h`);
+      if (window.renderFicha && fichaActualId === empId) renderFicha();
     } catch (err) { toast('Error: ' + err.message); }
   };
 

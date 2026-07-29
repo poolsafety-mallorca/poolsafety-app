@@ -1452,34 +1452,217 @@
     });
     docsAltaList.appendChild(kitCard);
 
-    // 2) Jornadas mensuales
-    PS.documentos.filter(d => d.grupo === 'mensual').forEach(d => {
-      const firmado = d.yaFirmado || firmas[d.id];
-      const esActual = d.mes === 'julio'; // simplificación demo
-      const puedeFirmar = esActual; // en real: solo último día trabajado del mes
-      const hr = horasMesRegla();
-      const hrLabel = hr.mostrarExtras
-        ? `${hr.ordinarias}h ordinarias + ${hr.extras}h complementarias`
-        : `${hr.ordinarias}h de ${hr.objMes}h pactadas (40h/sem)`;
-      const card = docCard({
-        titulo: d.titulo,
-        subtitulo: firmado ? d.subtitulo : `Total del mes: ${hrLabel}`,
-        estado: firmado ? 'ok' : (puedeFirmar ? 'warn' : 'neutral'),
-        badge: firmado
-          ? `<span class="badge badge-ok"><span class="dot"></span>Firmado</span>`
-          : puedeFirmar
-          ? `<span class="badge badge-warn"><span class="dot"></span>Pendiente</span>`
-          : `<span class="badge badge-neutral"><span class="dot"></span>Aún no</span>`,
-        cta: firmado ? 'Ver' : (puedeFirmar ? 'Firmar' : 'Bloqueado'),
-        disabled: !firmado && !puedeFirmar,
-        onClick: () => firmado ? openDocView('jornada-view', d) : openJornadaSign(d)
-      });
-      docsJornadaList.appendChild(card);
-    });
+    // 2) Jornadas mensuales — solo REALES de BD.
+    // Se muestran: (a) firmadas del historial, (b) solicitud pendiente si admin/coord
+    // le pidió firmar (tarea "Firmar registro mensual pendiente"), (c) último día del mes
+    // si trabajó al menos un día. NUNCA se inventan meses.
+    renderJornadasReales();
 
     // 3) Baja / finiquito (oculto salvo estado baja)
     if (docsBajaSection) docsBajaSection.style.display = 'none';
   }
+
+  async function renderJornadasReales() {
+    if (!docsJornadaList) return;
+    docsJornadaList.innerHTML = '<div class="text-muted small" style="padding:10px;">Cargando…</div>';
+    const empId = empleadoReal?.id;
+    if (!empId || !window.sb) {
+      docsJornadaList.innerHTML = '<div class="text-muted small" style="padding:10px;">Sin firmas mensuales aún. Se firma el último día trabajado del mes o cuando tu coordinador te lo solicite.</div>';
+      return;
+    }
+    try {
+      // (a) Jornadas ya firmadas
+      const { data: firmadas } = await window.sb.from('firmas_documentos')
+        .select('id, documento_codigo, fecha_firma, campos_json')
+        .eq('empleado_id', empId)
+        .like('documento_codigo', 'jornada-%')
+        .order('fecha_firma', { ascending: false });
+      // (b) Solicitud pendiente del coordinador/admin
+      const { data: solic } = await window.sb.from('tareas')
+        .select('id, titulo, descripcion, fecha')
+        .eq('empleado_id', empId)
+        .eq('titulo', 'Firmar registro mensual pendiente')
+        .eq('hecha', false)
+        .order('fecha', { ascending: false }).limit(1);
+      // (c) ¿Hoy es último día del mes? + ¿trabajó algún día este mes?
+      const hoy = new Date();
+      const ultimoDiaMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+      const esUltimoDia = hoy.getDate() === ultimoDiaMes;
+      let trabajadoEsteMes = false;
+      let codigoMesActual = `jornada-${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+      const yaFirmoEsteMes = (firmadas || []).some(f => f.documento_codigo === codigoMesActual);
+      if (esUltimoDia && !yaFirmoEsteMes) {
+        const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
+        const hasta = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1).toISOString();
+        const { data: f } = await window.sb.from('fichajes')
+          .select('id').eq('empleado_id', empId).gte('hora', desde).lt('hora', hasta).limit(1);
+        trabajadoEsteMes = (f || []).length > 0;
+      }
+
+      docsJornadaList.innerHTML = '';
+
+      // Solicitud pendiente (prioridad máxima)
+      const tieneSolicitud = solic && solic.length > 0;
+      if (tieneSolicitud) {
+        const card = docCard({
+          titulo: 'Registro mensual solicitado',
+          subtitulo: (solic[0].descripcion || 'Tu coordinador ha solicitado que firmes tu jornada con las horas trabajadas hasta la fecha.'),
+          estado: 'warn',
+          badge: `<span class="badge badge-warn"><span class="dot"></span>Solicitado</span>`,
+          cta: 'Firmar ahora',
+          onClick: () => openJornadaSignReal({ codigo: codigoMesActual, motivo: 'solicitud', tareaId: solic[0].id })
+        });
+        docsJornadaList.appendChild(card);
+      }
+
+      // Último día del mes con fichajes → aparece card
+      if (esUltimoDia && trabajadoEsteMes && !tieneSolicitud) {
+        const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+        const card = docCard({
+          titulo: `Registro jornada · ${nombreMes}`,
+          subtitulo: 'Es el último día del mes y has trabajado. Firma tu registro mensual antes del cierre.',
+          estado: 'warn',
+          badge: `<span class="badge badge-warn"><span class="dot"></span>Firma hoy</span>`,
+          cta: 'Firmar',
+          onClick: () => openJornadaSignReal({ codigo: codigoMesActual, motivo: 'cierre-mes' })
+        });
+        docsJornadaList.appendChild(card);
+      }
+
+      // Historial de firmadas
+      (firmadas || []).forEach(f => {
+        const m = f.documento_codigo.match(/jornada-(\d{4})-(\d{2})/);
+        const nombreMes = m
+          ? new Date(parseInt(m[1]), parseInt(m[2]) - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+          : f.documento_codigo;
+        const c = f.campos_json || {};
+        const hh = c.horas_firmadas ? `${c.horas_firmadas}h firmadas` : 'firmado';
+        const card = docCard({
+          titulo: `Registro jornada · ${nombreMes}`,
+          subtitulo: `Firmado el ${new Date(f.fecha_firma).toLocaleDateString('es-ES')} · ${hh}`,
+          estado: 'ok',
+          badge: `<span class="badge badge-ok"><span class="dot"></span>Firmado</span>`,
+          cta: 'Descargar PDF',
+          onClick: () => descargarMiJornada(f.id)
+        });
+        docsJornadaList.appendChild(card);
+      });
+
+      // Si no hay nada
+      if (docsJornadaList.children.length === 0) {
+        docsJornadaList.innerHTML = '<div class="text-muted small" style="padding:10px;">Sin firmas mensuales aún. Se firma el último día trabajado del mes o cuando tu coordinador te lo solicite.</div>';
+      }
+    } catch (err) {
+      console.warn('[renderJornadasReales]', err.message);
+      docsJornadaList.innerHTML = '<div class="text-muted small" style="padding:10px;">No se pudo cargar el registro mensual.</div>';
+    }
+  }
+
+  // Firmar jornada real (usa el modal docViewModal + canvas + fichajes del mes hasta hoy)
+  async function openJornadaSignReal({ codigo, motivo, tareaId }) {
+    const empId = empleadoReal?.id;
+    if (!empId || !window.sb) { toast('Aún no hay ficha lista'); return; }
+    document.getElementById('docViewTitle').textContent = 'Firmar registro mensual';
+    document.getElementById('docViewSub').textContent = motivo === 'solicitud'
+      ? 'Tu coordinador ha solicitado la firma con las horas trabajadas hasta hoy.'
+      : 'Firma tu registro mensual antes del cierre.';
+    document.getElementById('docViewModal').classList.add('open');
+
+    // Detectar mes/año del código (formato jornada-YYYY-MM)
+    const mm = codigo.match(/jornada-(\d{4})-(\d{2})/);
+    const anio = mm ? parseInt(mm[1]) : new Date().getFullYear();
+    const mes = mm ? parseInt(mm[2]) - 1 : new Date().getMonth();
+    const desde = new Date(anio, mes, 1).toISOString();
+    const hastaFin = new Date(anio, mes + 1, 1).toISOString();
+    // Para "solicitud" el corte es HOY (horas hasta la fecha); para cierre de mes es fin de mes.
+    const hastaCorte = motivo === 'solicitud' ? new Date().toISOString() : hastaFin;
+
+    let horasReales = 0, diasTrabajados = 0;
+    try {
+      const { data: fichajes } = await window.sb.from('fichajes')
+        .select('id, tipo, hora').eq('empleado_id', empId)
+        .gte('hora', desde).lt('hora', hastaCorte).order('hora', { ascending: true });
+      let totalMins = 0, entrada = null;
+      (fichajes || []).forEach(f => {
+        if (f.tipo === 'entrada') entrada = new Date(f.hora);
+        else if (f.tipo === 'salida' && entrada) {
+          totalMins += Math.max(0, (new Date(f.hora) - entrada) / 60000);
+          entrada = null;
+        }
+      });
+      horasReales = Math.round(totalMins / 60);
+      diasTrabajados = new Set((fichajes || []).filter(f => f.tipo === 'entrada').map(f => new Date(f.hora).toDateString())).size;
+    } catch (_) {}
+
+    // Regla cliente: firmas 40h/sem (máx 160/mes); si trabajaste menos, firmas lo real.
+    const OBJ_MES = 160;
+    const horasFirmadas = Math.min(horasReales, OBJ_MES);
+    const nombreMes = new Date(anio, mes, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+
+    document.getElementById('docViewBody').innerHTML = `
+      <div class="jornada-summary">
+        <div class="jornada-row"><span>Mes</span><b>${nombreMes}</b></div>
+        <div class="jornada-row"><span>Días trabajados</span><b>${diasTrabajados}</b></div>
+        <div class="jornada-row"><span>Horas trabajadas hasta hoy</span><b>${horasReales}h</b></div>
+        <div class="jornada-row total"><span>Firmas por</span><b>${horasFirmadas}h ordinarias</b></div>
+        ${horasReales > OBJ_MES ? '<div class="jornada-note small">El exceso sobre 160h queda registrado para tu coordinador (horas complementarias).</div>' : ''}
+      </div>
+      <div class="field mt-3">
+        <label>Nombre completo</label>
+        <input type="text" id="jornada-firma" placeholder="${(empleadoReal?.nombre || me?.nombre || '').replace(/"/g,'&quot;')}" />
+      </div>
+      <div class="field">
+        <label>Firma manuscrita</label>
+        <div class="firma-canvas-wrap">
+          <canvas id="firmaCanvas" width="500" height="180"></canvas>
+          <div class="firma-canvas-hint">Firma aquí dentro con el dedo o ratón</div>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="limpiarFirma()" style="margin-top:8px;">
+          <svg class="ic ic-14"><use href="#ic-x"/></svg> Limpiar firma
+        </button>
+      </div>`;
+    document.getElementById('docViewActions').innerHTML = `
+      <button class="btn btn-outline" onclick="closeDocView()">Cancelar</button>
+      <button class="btn btn-primary" id="btnFirmarJornadaReal">
+        <svg class="ic ic-16"><use href="#ic-pen"/></svg> Firmar registro
+      </button>`;
+    setTimeout(initFirmaCanvas, 60);
+    document.getElementById('btnFirmarJornadaReal').addEventListener('click', async () => {
+      const nombre = document.getElementById('jornada-firma').value.trim();
+      if (!nombre) { toast('Escribe tu nombre completo'); return; }
+      if (firmaEstaVacia()) { toast('Firma dentro del recuadro'); return; }
+      const firmaImagen = getFirmaImagen();
+      const btn = document.getElementById('btnFirmarJornadaReal');
+      btn.disabled = true; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-signal"/></svg> Guardando…';
+      try {
+        const { error } = await window.sb.from('firmas_documentos').insert({
+          empleado_id: empId,
+          documento_codigo: codigo,
+          firma_nombre: nombre,
+          dni: empleadoReal?.dni || '',
+          dispositivo: 'móvil empleado · registro mensual',
+          firma_imagen: firmaImagen,
+          ubicacion_lat: ultimaPosicion?.lat || null,
+          ubicacion_lng: ultimaPosicion?.lng || null,
+          campos_json: { horas_firmadas: horasFirmadas, horas_reales: horasReales, dias_trabajados: diasTrabajados, motivo }
+        });
+        if (error) throw error;
+        // Cerrar tarea si venía de solicitud
+        if (tareaId) {
+          try { await window.sb.from('tareas').update({ hecha: true, hecha_el: new Date().toISOString() }).eq('id', tareaId); } catch (_) {}
+        }
+        closeDocView();
+        toast('✓ Registro mensual firmado');
+        await cargarFirmasBD();
+        renderDocsHeader();
+        renderDocsLists();
+      } catch (err) {
+        toast('Error: ' + err.message);
+        btn.disabled = false; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-pen"/></svg> Firmar registro';
+      }
+    });
+  }
+  window.openJornadaSignReal = openJornadaSignReal;
 
   /* ---------- Wizard Kit Alta (8 pasos con los 7 sub-docs) ---------- */
   const wizardBody = document.getElementById('wizardBody');
@@ -1570,7 +1753,7 @@
             </div>
             <div class="field mt-3">
               <label>Nombre y apellidos</label>
-              <input type="text" id="wiz-firma" placeholder="${nombreLogueado}" />
+              <input type="text" id="wiz-firma" placeholder="${(empleadoReal?.nombre || me?.nombre || '').replace(/"/g,'&quot;')}" />
             </div>
             <div class="field">
               <label>DNI</label>
