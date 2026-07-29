@@ -843,12 +843,40 @@
     }
   }
 
+  // Cache local del inventario del puesto (cargado de BD)
+  let inventarioCache = [];
+  async function cargarInventarioBD() {
+    const puestoId = puestoReal?.id || empleadoReal?.puesto_id;
+    if (!puestoId || !window.sb) return;
+    try {
+      const { data, error } = await window.sb.from('inventario_puesto')
+        .select('id, stock, minimo, revisado_hoy, ultima_revision, caducidad, carga_bala, item_id, inventario_items(id, nombre, seccion, categoria, unidad, obligatorio, normativa)')
+        .eq('puesto_id', puestoId);
+      if (error) throw error;
+      inventarioCache = (data || []).map(r => ({
+        id: r.item_id,
+        rowId: r.id,
+        nombre: r.inventario_items?.nombre || 'Material',
+        seccion: r.inventario_items?.seccion || 'botiquin',
+        categoria: r.inventario_items?.categoria || '',
+        unidad: r.inventario_items?.unidad || 'ud',
+        obligatorio: !!r.inventario_items?.obligatorio,
+        normativa: r.inventario_items?.normativa || '',
+        stock: r.stock || 0,
+        minimo: r.minimo || 1,
+        revisadoHoy: !!r.revisado_hoy,
+        caducidad: r.caducidad || null,
+        cargaBala: r.carga_bala || null
+      }));
+    } catch (err) { console.warn('[Inventario BD]', err.message); }
+  }
+
   function itemsPorSeccion(sec) {
-    return PS.inventario.filter(it => it.seccion === sec && it.puestoId === me.puestoId);
+    return inventarioCache.filter(it => it.seccion === sec);
   }
 
   function alertasAutomaticas() {
-    return PS.inventario.filter(it => it.puestoId === me.puestoId && it.stock < it.minimo);
+    return inventarioCache.filter(it => it.stock < it.minimo);
   }
 
   function renderTabs() {
@@ -945,19 +973,44 @@
       `;
     }).join('');
 
-    // Checkbox revisión diaria
+    // Checkbox revisión diaria (guarda en BD)
     inventarioList.querySelectorAll('.inv-check').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const id = btn.dataset.id;
-        const it = PS.inventario.find(x => x.id === id);
+        const it = inventarioCache.find(x => x.id === id);
         if (!it) return;
-        it.revisadoHoy = !it.revisadoHoy;
+        const nuevo = !it.revisadoHoy;
+        it.revisadoHoy = nuevo;
         renderInventario();
         renderRevisionSummary();
-        if (it.revisadoHoy) toast(`Revisado ✓ ${it.nombre}`);
+        try {
+          await window.sb.from('inventario_puesto').update({
+            revisado_hoy: nuevo,
+            ultima_revision: nuevo ? new Date().toISOString() : null
+          }).eq('id', it.rowId);
+          if (nuevo) toast(`Revisado ✓ ${it.nombre}`);
+        } catch (err) { toast('Error: ' + err.message); }
       });
     });
   }
+
+  // Recargar inventario cuando llegue el puesto real
+  document.addEventListener('ps-session-updated', async () => {
+    setTimeout(async () => {
+      await cargarInventarioBD();
+      renderTabs();
+      renderRevisionSummary();
+      renderAlertasStock();
+      renderInventario();
+    }, 1500);
+  });
+  setTimeout(async () => {
+    await cargarInventarioBD();
+    renderTabs();
+    renderRevisionSummary();
+    renderAlertasStock();
+    renderInventario();
+  }, 2000);
 
   document.querySelectorAll('#botiquinTabs .chip-tab').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -972,32 +1025,80 @@
   renderAlertasStock();
   renderInventario();
 
-  // Recalcular reporte modal según sección actual
-  window.updateReportOptions = function () {
+  // Recalcular reporte modal → carga items REALES desde BD del puesto del socorrista
+  window.updateReportOptions = async function () {
     const sel = document.getElementById('reportItem');
-    if (!sel) return;
-    sel.innerHTML = PS.inventario
-      .filter(it => it.puestoId === me.puestoId)
-      .sort((a,b) => a.stock/a.minimo - b.stock/b.minimo)
-      .map(it => `<option value="${it.id}">${it.nombre}${it.stock<it.minimo?' · '+it.stock+' '+it.unidad:''}</option>`)
-      .join('');
+    if (!sel || !window.sb) return;
+    const puestoId = puestoReal?.id || empleadoReal?.puesto_id;
+    if (!puestoId) {
+      sel.innerHTML = '<option value="">Sin puesto asignado — pide al coordinador tu puesto</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">Cargando…</option>';
+    try {
+      const { data, error } = await window.sb.from('inventario_puesto')
+        .select('item_id, stock, minimo, inventario_items(id, nombre, unidad)')
+        .eq('puesto_id', puestoId);
+      if (error) throw error;
+      const items = (data || []).sort((a,b) => {
+        const ra = a.minimo > 0 ? a.stock/a.minimo : 999;
+        const rb = b.minimo > 0 ? b.stock/b.minimo : 999;
+        return ra - rb; // bajo mínimo primero
+      });
+      if (items.length === 0) {
+        sel.innerHTML = '<option value="">No hay inventario configurado para tu puesto</option>';
+        return;
+      }
+      sel.innerHTML = items.map(r => {
+        const item = r.inventario_items || {};
+        const bajo = r.stock < (r.minimo || 1);
+        const label = `${item.nombre || 'Material'}${bajo ? ' · quedan ' + r.stock + ' ' + (item.unidad || '') : ''}`;
+        return `<option value="${item.id}" data-nombre="${(item.nombre||'').replace(/"/g,'&quot;')}">${label}</option>`;
+      }).join('');
+    } catch (err) {
+      sel.innerHTML = `<option value="">Error cargando: ${err.message}</option>`;
+    }
   };
-  updateReportOptions();
+  setTimeout(updateReportOptions, 1500);
+  document.addEventListener('ps-session-updated', () => setTimeout(updateReportOptions, 1000));
 
-  /* ---------- Modal reportar ---------- */
+  /* ---------- Modal reportar (guarda alerta REAL en BD) ---------- */
   window.openReportModal = () => {
     updateReportOptions();
     document.getElementById('reportModal').classList.add('open');
   };
   window.closeReportModal = () => document.getElementById('reportModal').classList.remove('open');
-  window.submitReport = function () {
-    const itemId = document.getElementById('reportItem').value;
-    const qty = document.getElementById('reportQty').value;
-    const it = PS.inventario.find(x => x.id === itemId);
-    const nombre = it ? it.nombre : 'material';
-    closeReportModal();
-    toast(`Alerta enviada al coordinador: falta ${qty}× ${nombre}`);
-    document.getElementById('reportNotes').value = '';
+
+  window.submitReport = async function () {
+    const sel = document.getElementById('reportItem');
+    const itemId = sel.value;
+    const qty = parseInt(document.getElementById('reportQty').value) || 1;
+    const notas = document.getElementById('reportNotes').value.trim();
+    const nombre = sel.options[sel.selectedIndex]?.dataset.nombre || 'material';
+    const puestoId = puestoReal?.id || empleadoReal?.puesto_id;
+    const empId = empleadoReal?.id;
+    if (!itemId) { toast('Selecciona el material'); return; }
+    if (!puestoId || !empId) { toast('Aún no tienes puesto asignado'); return; }
+    try {
+      const criticidad = qty >= 5 ? 'alta' : 'media';
+      const mensaje = `Falta ${qty}× ${nombre}${notas ? ' — ' + notas : ''}`;
+      const { error } = await window.sb.from('alertas').insert({
+        puesto_id: puestoId,
+        empleado_id: empId,
+        item_id: itemId,
+        tipo: 'manual',
+        origen: 'socorrista',
+        criticidad,
+        mensaje,
+        cantidad_pedida: qty,
+        resuelto: false
+      });
+      if (error) throw error;
+      closeReportModal();
+      toast(`✓ Alerta enviada al coordinador: falta ${qty}× ${nombre}`);
+      document.getElementById('reportNotes').value = '';
+      document.getElementById('reportQty').value = 1;
+    } catch (err) { toast('Error: ' + err.message); }
   };
 
   /* ---------- Toast ---------- */
