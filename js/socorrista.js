@@ -640,18 +640,18 @@
         return;
       }
       const { data } = await window.sb.from('tareas')
-        .select('id, titulo, descripcion, prioridad, fecha_limite, completada')
-        .eq('empleado_id', empId).order('fecha_limite', { ascending: true });
+        .select('id, titulo, descripcion, prioridad, fecha, hecha')
+        .eq('empleado_id', empId).order('fecha', { ascending: true });
       const rows = data || [];
       if (rows.length === 0) {
         tareasList.innerHTML = '<div class="text-muted small" style="padding:14px;text-align:center;">Sin tareas del coordinador</div>';
         if (tareasProgress) tareasProgress.textContent = '';
         return;
       }
-      const doneCount = rows.filter(t => t.completada).length;
+      const doneCount = rows.filter(t => t.hecha).length;
       if (tareasProgress) tareasProgress.textContent = `${doneCount} de ${rows.length} completadas`;
       tareasList.innerHTML = rows.map(t => {
-        const done = t.completada;
+        const done = t.hecha;
         const prBadge = t.prioridad === 'alta' ? 'badge-danger'
                       : t.prioridad === 'media' ? 'badge-warn' : 'badge-info';
         return `
@@ -662,7 +662,7 @@
               <div class="li-sub">${t.descripcion || ''}</div>
               <div class="row gap-1 mt-2">
                 <span class="badge ${prBadge}"><span class="dot"></span>${t.prioridad || 'baja'}</span>
-                ${t.fecha_limite ? `<span class="badge badge-neutral"><svg class="ic ic-14"><use href="#ic-calendar"/></svg>${new Date(t.fecha_limite).toLocaleDateString('es-ES')}</span>` : ''}
+                ${t.fecha ? `<span class="badge badge-neutral"><svg class="ic ic-14"><use href="#ic-calendar"/></svg>${new Date(t.fecha).toLocaleDateString('es-ES')}</span>` : ''}
               </div>
             </div>
           </div>`;
@@ -673,8 +673,8 @@
           const t = rows.find(x => x.id === id);
           if (!t) return;
           try {
-            await window.sb.from('tareas').update({ completada: !t.completada, fecha_completada: t.completada ? null : new Date().toISOString() }).eq('id', id);
-            toast(t.completada ? 'Tarea reabierta' : 'Tarea marcada como hecha');
+            await window.sb.from('tareas').update({ hecha: !t.hecha, hecha_el: t.hecha ? null : new Date().toISOString() }).eq('id', id);
+            toast(t.hecha ? 'Tarea reabierta' : 'Tarea marcada como hecha');
             renderTareas();
           } catch (err) { toast('Error: ' + err.message); }
         });
@@ -695,7 +695,7 @@
       try {
         const { count } = await window.sb.from('tareas')
           .select('id', { count: 'exact', head: true })
-          .eq('empleado_id', empId).eq('completada', false);
+          .eq('empleado_id', empId).eq('hecha', false);
         tareasPend = count || 0;
       } catch (_) {}
       try {
@@ -890,11 +890,13 @@
   }
 
   function renderRevisionSummary() {
-    const items = PS.inventario.filter(it => it.puestoId === me.puestoId);
-    const total = items.length;
-    const revisados = items.filter(it => it.revisadoHoy).length;
+    const total = inventarioCache.length;
+    const revisados = inventarioCache.filter(it => it.revisadoHoy).length;
     if (revisionSummary) {
-      revisionSummary.textContent = `${miPuesto.nombre} · revisión diaria ${revisados}/${total} comprobados`;
+      const nombrePuesto = puestoReal?.nombre || empleadoReal?.puesto?.nombre || 'Tu puesto';
+      revisionSummary.textContent = total === 0
+        ? `${nombrePuesto} · sin material configurado`
+        : `${nombrePuesto} · revisión diaria ${revisados}/${total} comprobados`;
     }
   }
 
@@ -1737,7 +1739,7 @@
           // Marcar como completada la tarea "Firmar Kit Alta pendiente" si existía
           try {
             await window.sb.from('tareas')
-              .update({ completada: true })
+              .update({ hecha: true, hecha_el: new Date().toISOString() })
               .eq('empleado_id', empleadoId)
               .eq('titulo', 'Firmar Kit Alta pendiente');
           } catch (_) {}
@@ -2010,7 +2012,7 @@
       const { data: tareas } = await window.sb.from('tareas')
         .select('id').eq('empleado_id', empId)
         .eq('titulo', 'Firmar Kit Alta pendiente')
-        .eq('completada', false).limit(1);
+        .eq('hecha', false).limit(1);
       const modalEl = document.getElementById('kitAltaModal');
       const yaAbierto = modalEl?.classList.contains('open');
       const sinFirma = !firmas || firmas.length === 0;

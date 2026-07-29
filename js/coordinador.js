@@ -925,7 +925,7 @@
           titulo: title,
           descripcion: desc || null,
           prioridad: 'media',
-          completada: false
+          hecha: false
         });
         if (error) throw error;
       }
@@ -3362,7 +3362,7 @@
           titulo: 'Firmar Kit Alta pendiente',
           descripcion: 'Debes firmar tu documentación de alta antes de continuar. Al abrir la app te aparecerá el proceso obligatorio.',
           prioridad: 'alta',
-          completada: false
+          hecha: false
         });
         if (errT) throw errT;
       } catch (err) {
