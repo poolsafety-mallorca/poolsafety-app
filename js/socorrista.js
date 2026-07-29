@@ -443,33 +443,147 @@
   })();
 
   function mostrarPantallaFiniquito(emp) {
-    // Reemplaza todo el body con pantalla exclusiva de finiquito
+    // Reemplaza todo el body con pantalla exclusiva de finiquito con firma real
     document.body.innerHTML = `
       <div style="min-height:100vh;background:linear-gradient(135deg,#B91C1C,#7F1D1D);display:flex;align-items:center;justify-content:center;padding:24px;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-        <div style="background:#fff;color:#111827;border-radius:16px;max-width:520px;width:100%;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.3);">
-          <div style="text-align:center;margin-bottom:20px;">
+        <div style="background:#fff;color:#111827;border-radius:16px;max-width:560px;width:100%;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:95vh;overflow-y:auto;">
+          <div style="text-align:center;margin-bottom:16px;">
             <div style="width:64px;height:64px;background:#FEE2E2;border-radius:16px;display:inline-flex;align-items:center;justify-content:center;color:#B91C1C;font-size:32px;">📄</div>
           </div>
-          <h1 style="margin:0 0 8px;font-size:22px;color:#111827;text-align:center;">Firma de finiquito pendiente</h1>
-          <p style="margin:0 0 20px;color:#6B7280;font-size:14px;line-height:1.5;text-align:center;">
-            Hola ${emp.nombre},<br>La empresa ha iniciado tu finiquito. Antes de que puedas seguir usando la app, debes leer y firmar este documento.
+          <h1 style="margin:0 0 8px;font-size:22px;color:#111827;text-align:center;">Firma de finiquito</h1>
+          <p style="margin:0 0 16px;color:#6B7280;font-size:14px;line-height:1.5;text-align:center;">
+            Hola <b>${emp.nombre}</b>, la empresa ha iniciado tu finiquito. Lee y firma para completar el proceso.
           </p>
-          <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:16px;margin-bottom:20px;font-size:13px;color:#374151;">
-            <b>¿Qué firmas?</b><br>
-            El documento de finiquito laboral que confirma la extinción de tu contrato con Pool Safety Des Llevant, S.L. Al firmar reconoces haber recibido las cantidades que te corresponden por ley.
+
+          <div style="background:#FAFBFC;border:1px solid #E5E7EB;border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;color:#374151;line-height:1.5;max-height:200px;overflow-y:auto;">
+            <b style="color:#111827;">FINIQUITO Y EXTINCIÓN DE CONTRATO</b><br><br>
+            Pool Safety Des Llevant, S.L. (CIF B75828418), con domicilio en C/ Hernán Cortés, 8, 2º Dcha., 07670 Portocolom, Baleares, y <b>${emp.nombre}</b> (con DNI que se aportará abajo), acuerdan la extinción de la relación laboral que mantenían.<br><br>
+            Con la firma del presente documento:<br>
+            • El trabajador declara <b>haber recibido las cantidades que legalmente le corresponden</b> por la finalización del contrato (última mensualidad, parte proporcional de pagas extras, vacaciones no disfrutadas e indemnización si procede).<br>
+            • Ambas partes reconocen <b>no tener nada más que reclamarse</b> por concepto alguno derivado de la relación laboral finalizada, más allá de lo aquí firmado.<br>
+            • El acceso a la app queda dado de baja tras esta firma; los datos se conservan por si se produce una nueva alta futura.<br><br>
+            De acuerdo con el RGPD y la LOPDGDD, los datos personales conservados durante los 4 años posteriores por obligación legal (art. 45 ET).
           </div>
-          <button onclick="alert('Función de firma de finiquito en preparación. Contacta con administración: info@poolsafety.es')" style="width:100%;background:#B91C1C;color:#fff;border:0;padding:14px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">
-            Ver y firmar finiquito
+
+          <div style="margin-bottom:12px;">
+            <label style="display:block;font-size:12px;color:#6B7280;font-weight:600;margin-bottom:4px;">Tu nombre completo</label>
+            <input type="text" id="fin-nombre" value="${emp.nombre}" style="width:100%;padding:10px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:14px;box-sizing:border-box;" />
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;font-size:12px;color:#6B7280;font-weight:600;margin-bottom:4px;">DNI</label>
+            <input type="text" id="fin-dni" value="${emp.dni || ''}" placeholder="00000000A" style="width:100%;padding:10px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:14px;box-sizing:border-box;" />
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;font-size:12px;color:#6B7280;font-weight:600;margin-bottom:4px;">Firma manuscrita</label>
+            <div style="border:2px dashed #CBD5E1;border-radius:8px;background:#F9FAFB;">
+              <canvas id="fin-canvas" width="500" height="180" style="display:block;width:100%;height:180px;touch-action:none;"></canvas>
+            </div>
+            <button type="button" onclick="limpiarFinCanvas()" style="margin-top:6px;background:transparent;border:1px solid #E5E7EB;padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;color:#6B7280;">Limpiar firma</button>
+          </div>
+          <label style="display:flex;gap:8px;align-items:flex-start;padding:10px 12px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;cursor:pointer;font-size:13px;margin-bottom:16px;">
+            <input type="checkbox" id="fin-accept" style="margin-top:3px;flex-shrink:0;" />
+            <span><b>He leído y acepto el finiquito. Reconozco no tener nada más que reclamar.</b></span>
+          </label>
+
+          <button onclick="firmarFiniquitoAhora('${emp.id}')" style="width:100%;background:#B91C1C;color:#fff;border:0;padding:14px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">
+            Firmar finiquito
           </button>
           <button onclick="if(window.sb) window.sb.auth.signOut().finally(() => { localStorage.clear(); location.replace('index.html'); }); else { localStorage.clear(); location.replace('index.html'); }" style="width:100%;background:transparent;color:#6B7280;border:0;padding:12px;font-size:13px;cursor:pointer;margin-top:8px;">
-            Cerrar sesión
+            Cerrar sesión sin firmar
           </button>
-          <div style="margin-top:20px;text-align:center;font-size:11px;color:#9CA3AF;">
+          <div style="margin-top:16px;text-align:center;font-size:11px;color:#9CA3AF;">
             Pool Safety Des Llevant, S.L. · info@poolsafety.es
           </div>
         </div>
       </div>`;
+    setTimeout(initFinCanvas, 100);
   }
+
+  // Canvas firma finiquito
+  let finCanvasCtx = null;
+  let finDibujando = false;
+  let finFirmaVacia = true;
+  function initFinCanvas() {
+    const canvas = document.getElementById('fin-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#111827'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    finCanvasCtx = ctx; finFirmaVacia = true;
+    let lastX = 0, lastY = 0;
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const cX = e.touches ? e.touches[0].clientX : e.clientX;
+      const cY = e.touches ? e.touches[0].clientY : e.clientY;
+      return { x: (cX - rect.left) * canvas.width / rect.width, y: (cY - rect.top) * canvas.height / rect.height };
+    }
+    function start(e) { e.preventDefault(); finDibujando = true; const p = getPos(e); lastX = p.x; lastY = p.y; }
+    function move(e) {
+      if (!finDibujando) return; e.preventDefault();
+      const p = getPos(e); ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
+      lastX = p.x; lastY = p.y; finFirmaVacia = false;
+    }
+    function end() { finDibujando = false; }
+    canvas.onmousedown = start; canvas.onmousemove = move; canvas.onmouseup = end; canvas.onmouseleave = end;
+    canvas.ontouchstart = start; canvas.ontouchmove = move; canvas.ontouchend = end;
+  }
+  window.limpiarFinCanvas = function () {
+    const c = document.getElementById('fin-canvas');
+    if (c) { c.getContext('2d').clearRect(0, 0, c.width, c.height); finFirmaVacia = true; }
+  };
+
+  window.firmarFiniquitoAhora = async function (empId) {
+    const nombre = document.getElementById('fin-nombre').value.trim();
+    const dni = document.getElementById('fin-dni').value.trim();
+    const accept = document.getElementById('fin-accept').checked;
+    if (!nombre) { alert('Escribe tu nombre completo'); return; }
+    if (!dni) { alert('Escribe tu DNI'); return; }
+    if (!accept) { alert('Debes marcar la casilla para aceptar'); return; }
+    if (finFirmaVacia) { alert('Firma con el dedo dentro del recuadro'); return; }
+
+    const canvas = document.getElementById('fin-canvas');
+    const firmaImagen = canvas.toDataURL('image/png');
+
+    try {
+      // 1. Insertar firma del finiquito
+      const { error: fErr } = await window.sb.from('firmas_documentos').insert({
+        empleado_id: empId,
+        documento_codigo: 'finiquito-' + new Date().toISOString().slice(0,10),
+        firma_nombre: nombre,
+        dni,
+        dispositivo: 'móvil empleado · finiquito',
+        firma_imagen: firmaImagen,
+        ubicacion_lat: ultimaPosicion?.lat || null,
+        ubicacion_lng: ultimaPosicion?.lng || null
+      });
+      if (fErr) throw fErr;
+
+      // 2. Pasar empleado a BAJA (no 'finiquitado' — así se puede reactivar el año siguiente)
+      await window.sb.from('empleados').update({
+        estado: 'baja',
+        fecha_baja: new Date().toISOString().slice(0,10)
+      }).eq('id', empId);
+
+      // 3. Desactivar usuario para cortar login
+      const psSes = window.PS_SESSION || {};
+      if (psSes.userId) await window.sb.from('usuarios').update({ activo: false }).eq('id', psSes.userId);
+
+      // 4. Pantalla de éxito y cerrar sesión
+      document.body.innerHTML = `
+        <div style="min-height:100vh;background:linear-gradient(135deg,#059669,#047857);display:flex;align-items:center;justify-content:center;padding:24px;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+          <div style="background:#fff;color:#111827;border-radius:16px;max-width:480px;width:100%;padding:32px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+            <div style="width:64px;height:64px;background:#DCFCE7;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#059669;font-size:32px;margin-bottom:16px;">✓</div>
+            <h1 style="margin:0 0 8px;font-size:22px;">Finiquito firmado</h1>
+            <p style="margin:0 0 20px;color:#6B7280;font-size:14px;line-height:1.5;">Gracias por tu trabajo, ${nombre.split(' ')[0]}. El finiquito ha quedado registrado y tu cuenta se ha dado de baja. Si en el futuro vuelves a la empresa, podrán reactivarte con los mismos datos.</p>
+            <button onclick="if(window.sb) window.sb.auth.signOut().finally(() => { localStorage.clear(); location.replace('index.html'); })" style="width:100%;background:#B91C1C;color:#fff;border:0;padding:14px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">
+              Cerrar sesión
+            </button>
+            <div style="margin-top:16px;font-size:11px;color:#9CA3AF;">Pool Safety Des Llevant, S.L.</div>
+          </div>
+        </div>`;
+    } catch (err) {
+      alert('Error al firmar el finiquito: ' + err.message + '\n\nContacta con info@poolsafety.es');
+    }
+  };
 
   // Re-comprobar GPS cada 60 seg (info al usuario)
   setInterval(checkGpsPasivo, 60000);
