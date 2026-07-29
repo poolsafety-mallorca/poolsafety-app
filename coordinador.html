@@ -667,6 +667,57 @@
   <div class="modal" id="postModalBody"></div>
 </div>
 
+<!-- ============ MODAL FIRMAR KIT ALTA EN TABLET (admin + coord) ============ -->
+<div class="modal-backdrop" id="tabletKitModal">
+  <div class="modal wizard-modal" style="max-width:640px;">
+    <div class="wizard-head">
+      <div class="wizard-empresa">
+        <div class="wizard-logo"><svg class="ic ic-22"><use href="#ic-shield"/></svg></div>
+        <div style="flex:1">
+          <div class="wizard-empresa-name">Firmar Kit Alta en tablet</div>
+          <div class="wizard-empresa-sub" id="tabletKitEmpName">—</div>
+        </div>
+        <button type="button" class="wizard-logout" onclick="closeTabletKit()" title="Cancelar">
+          <svg class="ic ic-16"><use href="#ic-x"/></svg>
+          <span>Cerrar</span>
+        </button>
+      </div>
+    </div>
+    <div class="wizard-body">
+      <div class="alert-strip warn" style="margin-bottom:14px;">
+        <svg class="ic ic-14"><use href="#ic-alert"/></svg>
+        <span>El empleado debe estar delante y firmar personalmente. Se registra el origen como "tablet coordinador".</span>
+      </div>
+      <div id="tabletKitDocsList" style="max-height:280px;overflow-y:auto;margin-bottom:14px;"></div>
+      <div class="field">
+        <label>Nombre completo del empleado</label>
+        <input type="text" id="tabletFirmaNombre" placeholder="Como aparece en el DNI" />
+      </div>
+      <div class="field">
+        <label>DNI</label>
+        <input type="text" id="tabletFirmaDni" placeholder="00000000A" />
+      </div>
+      <div class="field">
+        <label>Firma manuscrita del empleado</label>
+        <div class="firma-canvas-wrap">
+          <canvas id="tabletFirmaCanvas" width="600" height="220"></canvas>
+          <div class="firma-canvas-hint">El empleado firma con el dedo o lápiz digital</div>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="limpiarTabletFirma()" style="margin-top:8px;">
+          <svg class="ic ic-14"><use href="#ic-x"/></svg> Limpiar firma
+        </button>
+      </div>
+    </div>
+    <div class="wizard-actions">
+      <button class="btn btn-outline" onclick="closeTabletKit()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarFirmaTablet()">
+        <svg class="ic ic-16"><use href="#ic-check"/></svg>
+        Guardar firma
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ MODAL ASIGNAR TAREA ============ -->
 <div class="modal-backdrop" id="tareaModal">
   <div class="modal">

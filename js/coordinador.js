@@ -917,6 +917,10 @@
               ${jornBadge}
             </div>
             <div class="doc-admin-actions">
+              ${!s.kitOk ? `<button class="btn btn-primary btn-sm" data-tablet-kit="${s.id}" data-tablet-nombre="${s.nombre.replace(/"/g,'&quot;')}">
+                <svg class="ic ic-14"><use href="#ic-pen"/></svg>
+                Firmar en tablet
+              </button>` : ''}
               <button class="btn btn-outline btn-sm" data-view="${s.id}">
                 <svg class="ic ic-14"><use href="#ic-file-text"/></svg>
                 Ver ficha
@@ -926,9 +930,11 @@
         `;
       }).join('');
 
+      docsAdminList.querySelectorAll('[data-tablet-kit]').forEach(btn => {
+        btn.addEventListener('click', () => firmarKitEnTablet(btn.dataset.tabletKit, btn.dataset.tabletNombre));
+      });
       docsAdminList.querySelectorAll('[data-view]').forEach(btn => {
         btn.addEventListener('click', () => {
-          // Abre la ficha del empleado directamente en pestaña Firmas
           window.openEmpleadoModal && window.openEmpleadoModal(btn.dataset.view);
           setTimeout(() => {
             const tab = document.querySelector('.ficha-tab[data-ftab="docs"]');
@@ -941,16 +947,139 @@
     }
   }
 
-  // firmarKitEnTablet: abre la ficha del empleado en pestaña Firmas (el flujo real de firma
-  // debe hacerlo el propio empleado desde su móvil o el coordinador desde la ficha).
-  function firmarKitEnTablet(empId) {
-    window.openEmpleadoModal && window.openEmpleadoModal(empId);
-    setTimeout(() => {
-      const tab = document.querySelector('.ficha-tab[data-ftab="docs"]');
-      if (tab) tab.click();
-    }, 200);
+  /* ==========================================================================
+     FIRMAR KIT ALTA EN TABLET · admin + coordinador
+     Cuando el empleado firma delante del coord con la tablet del coord.
+     Guarda en firmas_documentos con dispositivo='tablet coordinador · <nombre>'
+     ========================================================================== */
+  let tabletKitEmpActual = null;
+  let tabletKitAceptados = {};
+  let tabletCanvasCtx = null;
+  let tabletDibujando = false;
+  let tabletFirmaVacia = true;
+
+  window.firmarKitEnTablet = async function (empId, nombreEmp) {
+    if (!empId) return;
+    // Si solo llega el id, buscamos el nombre
+    if (!nombreEmp) {
+      try {
+        const { data } = await window.sb.from('empleados').select('nombre').eq('id', empId).single();
+        nombreEmp = data?.nombre || '—';
+      } catch (_) { nombreEmp = '—'; }
+    }
+    tabletKitEmpActual = { id: empId, nombre: nombreEmp };
+    tabletKitAceptados = {};
+    document.getElementById('tabletKitEmpName').textContent = `Firma para: ${nombreEmp}`;
+
+    // Lista de subdocumentos con checkbox aceptar
+    const subs = (window.PS && PS.kitAltaSubdocs) || [];
+    document.getElementById('tabletKitDocsList').innerHTML = subs.map(sub => `
+      <div style="border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#FAFBFC;">
+        <div style="font-weight:600;font-size:13px;color:#111827;">${sub.titulo}</div>
+        <div class="small text-muted" style="margin-top:2px;">${sub.norma || 'Consentimiento opcional'}</div>
+        <label style="display:flex;gap:8px;align-items:center;margin-top:8px;cursor:pointer;font-size:13px;">
+          <input type="checkbox" class="tablet-accept" data-sub="${sub.id}" ${sub.obligatorio ? 'checked' : ''} />
+          <span>${sub.obligatorio ? 'He leído y acepto (obligatorio)' : 'Doy mi consentimiento (opcional)'}</span>
+        </label>
+      </div>
+    `).join('');
+
+    // Reset campos
+    document.getElementById('tabletFirmaNombre').value = nombreEmp;
+    document.getElementById('tabletFirmaDni').value = '';
+    document.getElementById('tabletKitModal').classList.add('open');
+
+    // Init canvas con delay
+    setTimeout(initTabletCanvas, 100);
+  };
+
+  window.closeTabletKit = function () {
+    document.getElementById('tabletKitModal').classList.remove('open');
+    tabletKitEmpActual = null;
+  };
+
+  window.limpiarTabletFirma = function () {
+    const c = document.getElementById('tabletFirmaCanvas');
+    if (c) { c.getContext('2d').clearRect(0, 0, c.width, c.height); tabletFirmaVacia = true; }
+  };
+
+  function initTabletCanvas() {
+    const canvas = document.getElementById('tabletFirmaCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    tabletCanvasCtx = ctx;
+    tabletFirmaVacia = true;
+    let lastX = 0, lastY = 0;
+
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: (clientX - rect.left) * canvas.width / rect.width,
+        y: (clientY - rect.top) * canvas.height / rect.height
+      };
+    }
+    function start(e) { e.preventDefault(); tabletDibujando = true; const p = getPos(e); lastX = p.x; lastY = p.y; }
+    function move(e) {
+      if (!tabletDibujando) return;
+      e.preventDefault();
+      const p = getPos(e);
+      ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
+      lastX = p.x; lastY = p.y;
+      tabletFirmaVacia = false;
+    }
+    function end() { tabletDibujando = false; }
+    canvas.onmousedown = start; canvas.onmousemove = move; canvas.onmouseup = end; canvas.onmouseleave = end;
+    canvas.ontouchstart = start; canvas.ontouchmove = move; canvas.ontouchend = end;
   }
-  window.firmarKitEnTablet = firmarKitEnTablet;
+
+  window.guardarFirmaTablet = async function () {
+    if (!tabletKitEmpActual) return;
+    const nombre = document.getElementById('tabletFirmaNombre').value.trim();
+    const dni = document.getElementById('tabletFirmaDni').value.trim();
+    if (!nombre) { toast('Escribe el nombre completo'); return; }
+    if (!dni) { toast('Escribe el DNI'); return; }
+    if (tabletFirmaVacia) { toast('El empleado debe firmar dentro del recuadro'); return; }
+
+    // Validar obligatorios aceptados
+    const subs = (window.PS && PS.kitAltaSubdocs) || [];
+    const aceptados = {};
+    let faltaObligatorio = false;
+    document.querySelectorAll('.tablet-accept').forEach(chk => {
+      aceptados[chk.dataset.sub] = chk.checked;
+      const sub = subs.find(s => s.id === chk.dataset.sub);
+      if (sub && sub.obligatorio && !chk.checked) faltaObligatorio = true;
+    });
+    if (faltaObligatorio) { toast('Todos los documentos obligatorios deben estar marcados'); return; }
+
+    const canvas = document.getElementById('tabletFirmaCanvas');
+    const firmaImagen = canvas.toDataURL('image/png');
+    const psSes = window.PS_SESSION || {};
+    const nombreCoord = psSes.nombre || psSes.email || 'coordinador';
+
+    try {
+      const { error } = await window.sb.from('firmas_documentos').insert({
+        empleado_id: tabletKitEmpActual.id,
+        documento_codigo: 'kit-alta',
+        firma_nombre: nombre,
+        dni,
+        dispositivo: `tablet coordinador · ${nombreCoord}`,
+        aceptados_json: aceptados,
+        firma_imagen: firmaImagen
+      });
+      if (error) throw error;
+      toast(`✓ Kit Alta firmado para ${tabletKitEmpActual.nombre}`);
+      closeTabletKit();
+      // Refrescar vistas afectadas
+      if (window.renderDocsAdmin) renderDocsAdmin();
+      if (window.renderEstadoEquipo) renderEstadoEquipo();
+      if (typeof renderFicha === 'function' && fichaActualId === tabletKitEmpActual.id) renderFicha();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
 
   if (docsFilter) {
     docsFilter.addEventListener('change', () => {
@@ -1725,7 +1854,7 @@
               ${kitFirma?.firma_imagen ? `<img src="${kitFirma.firma_imagen}" class="firma-imagen" style="max-width:220px;margin-top:8px;" alt="Firma"/>` : ''}
               ${kitFirma?.ubicacion_lat ? `<div class="small text-muted mt-1">📍 <a href="https://www.google.com/maps?q=${kitFirma.ubicacion_lat},${kitFirma.ubicacion_lng}" target="_blank">${(+kitFirma.ubicacion_lat).toFixed(4)}, ${(+kitFirma.ubicacion_lng).toFixed(4)}</a></div>` : ''}
             </div>
-            ${!kitFirma ? `<button class="btn btn-primary btn-sm" onclick="firmarKitEnTablet('${e.id}')">Firmar en tablet</button>` : ''}
+            ${!kitFirma ? `<button class="btn btn-primary btn-sm" onclick="firmarKitEnTablet('${e.id}', '${(e.nombre||'').replace(/'/g,'\\\'')}')"><svg class="ic ic-14"><use href="#ic-pen"/></svg> Firmar en tablet</button>` : ''}
           </div>
           ${kitFirma ? `
             <div class="row gap-2 mt-3" style="justify-content:flex-end;flex-wrap:wrap;">
