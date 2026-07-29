@@ -186,13 +186,13 @@
           </div>
           <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
         </div>
-        <div class="notice interactive" onclick="showView('botiquin')">
+        <div class="notice interactive" onclick="showView('botiquin')" id="noticeBotiquin" style="display:none;">
           <div class="notice-icon sky">
             <svg class="ic ic-22"><use href="#ic-medkit"/></svg>
           </div>
           <div class="notice-body">
-            <div class="notice-title">Revisar botiquín</div>
-            <div class="notice-sub">Verifica al empezar tu turno</div>
+            <div class="notice-title" id="noticeBotiquinTitle">Revisar botiquín</div>
+            <div class="notice-sub" id="noticeBotiquinSub">Verifica al empezar tu turno</div>
           </div>
           <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
         </div>
@@ -201,10 +201,14 @@
             <svg class="ic ic-22"><use href="#ic-file-text"/></svg>
           </div>
           <div class="notice-body">
-            <div class="notice-title">Documentación pendiente de firmar</div>
-            <div class="notice-sub">Firma el Kit Alta para acceder a todas las funciones</div>
+            <div class="notice-title" id="noticeDocsTitle">Documentación pendiente de firmar</div>
+            <div class="notice-sub" id="noticeDocsSub">Firma el Kit Alta para acceder a todas las funciones</div>
           </div>
           <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
+        </div>
+        <div id="noticeAllOk" style="display:none;padding:18px;text-align:center;background:#ecfdf5;border:1px solid #10b981;border-radius:10px;color:#065f46;font-weight:600;">
+          <svg class="ic ic-22" style="vertical-align:middle;margin-right:6px;"><use href="#ic-check-circle"/></svg>
+          Todo al día ✓
         </div>
       </div>
     </main>

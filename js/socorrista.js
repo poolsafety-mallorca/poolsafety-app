@@ -690,7 +690,10 @@
   async function renderPendientesYCampana() {
     if (!window.sb) return;
     const empId = empleadoReal?.id;
+    const puestoId = puestoReal?.id || empleadoReal?.puesto_id;
     let tareasPend = 0, kitAltaPendiente = false;
+    let botiquinTotal = 0, botiquinRevHoy = 0;
+
     if (empId) {
       try {
         const { count } = await window.sb.from('tareas')
@@ -705,6 +708,22 @@
       } catch (_) {}
     }
 
+    // Comprobación botiquín: cuántos items del puesto están revisados HOY
+    if (puestoId) {
+      try {
+        const desdeHoy = new Date();
+        desdeHoy.setHours(0, 0, 0, 0);
+        const { data } = await window.sb.from('inventario_puesto')
+          .select('id, revisado_hoy, ultima_revision')
+          .eq('puesto_id', puestoId);
+        botiquinTotal = (data || []).length;
+        botiquinRevHoy = (data || []).filter(r =>
+          r.revisado_hoy && r.ultima_revision && new Date(r.ultima_revision) >= desdeHoy
+        ).length;
+      } catch (_) {}
+    }
+    const botiquinPendiente = botiquinTotal > 0 && botiquinRevHoy < botiquinTotal;
+
     // Notice tareas
     const noticeTareas = document.getElementById('noticeTareas');
     if (noticeTareas) {
@@ -712,14 +731,34 @@
         noticeTareas.style.display = '';
         document.getElementById('noticeTareasTitle').textContent =
           `${tareasPend} tarea${tareasPend === 1 ? '' : 's'} del coordinador`;
-        document.getElementById('noticeTareasSub').textContent = `Pulsa para ver el detalle`;
+        document.getElementById('noticeTareasSub').textContent = 'Pulsa para ver el detalle';
       } else {
         noticeTareas.style.display = 'none';
       }
     }
+
+    // Notice Botiquín (visible solo si aún queda material sin revisar HOY)
+    const noticeBotiquin = document.getElementById('noticeBotiquin');
+    if (noticeBotiquin) {
+      if (botiquinPendiente) {
+        noticeBotiquin.style.display = '';
+        const btit = document.getElementById('noticeBotiquinTitle');
+        const bsub = document.getElementById('noticeBotiquinSub');
+        if (btit) btit.textContent = 'Revisar botiquín';
+        if (bsub) bsub.textContent = `${botiquinRevHoy}/${botiquinTotal} revisados hoy · pulsa para completar`;
+      } else {
+        noticeBotiquin.style.display = 'none';
+      }
+    }
+
     // Notice Docs pendiente
     const noticeDocs = document.getElementById('noticeDocs');
     if (noticeDocs) noticeDocs.style.display = kitAltaPendiente ? '' : 'none';
+
+    // "Todo al día" cuando no hay ninguna alerta
+    const allOk = document.getElementById('noticeAllOk');
+    const nadaPendiente = !kitAltaPendiente && tareasPend === 0 && !botiquinPendiente;
+    if (allOk) allOk.style.display = nadaPendiente ? '' : 'none';
 
     // Punto rojo campana (tareas + kit alta pendiente)
     const notifDot = document.getElementById('notifDot');

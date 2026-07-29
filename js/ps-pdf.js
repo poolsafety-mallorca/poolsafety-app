@@ -74,6 +74,13 @@ window.PSPdf = (function () {
      KIT ALTA · texto legal completo + tabla EPIs + firma
      ========================================================================== */
   async function generarKitAlta(empleado, firma, subdocs) {
+    // Fallback robusto: si no llegan subdocs, léelos de window.PS
+    if (!subdocs || subdocs.length === 0) {
+      subdocs = (window.PS && window.PS.kitAltaSubdocs) || [];
+    }
+    if (subdocs.length === 0) {
+      console.warn('[PSPdf.generarKitAlta] Sin subdocs — el PDF no incluirá el texto legal');
+    }
     const doc = nuevoPdf();
     header(doc, 'Kit Alta Empresa · Documentación laboral firmada',
       'Firmado electrónicamente por el trabajador con evidencia GPS');
