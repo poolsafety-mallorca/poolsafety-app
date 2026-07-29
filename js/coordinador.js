@@ -2105,22 +2105,22 @@
         <div class="ficha-action-row ${kitFirma ? 'ok' : 'warn'}" style="flex-direction:column;align-items:stretch;">
           <div style="display:flex;gap:10px;align-items:flex-start;">
             <div class="icon"><svg class="ic ic-18"><use href="#ic-shield"/></svg></div>
-            <div class="ficha-action-body">
+            <div class="ficha-action-body" style="flex:1;min-width:0;">
               <div class="ficha-action-title">Kit Alta Empresa</div>
               <div class="ficha-action-sub">${kitFirma ? 'Firmado el ' + new Date(kitFirma.fecha_firma).toLocaleString('es-ES') + '<br>Desde: ' + (kitFirma.dispositivo || 'móvil') : 'Pendiente de firma'}</div>
               ${kitFirma?.firma_imagen ? `<img src="${kitFirma.firma_imagen}" class="firma-imagen" style="max-width:220px;margin-top:8px;" alt="Firma"/>` : ''}
               ${kitFirma?.ubicacion_lat ? `<div class="small text-muted mt-1">📍 <a href="https://www.google.com/maps?q=${kitFirma.ubicacion_lat},${kitFirma.ubicacion_lng}" target="_blank">${(+kitFirma.ubicacion_lat).toFixed(4)}, ${(+kitFirma.ubicacion_lng).toFixed(4)}</a></div>` : ''}
             </div>
-            ${!kitFirma ? `
-              <div class="row gap-2" style="margin-top:8px;flex-wrap:wrap;">
-                <button class="btn btn-primary btn-sm" onclick="firmarKitEnTablet('${e.id}', '${(e.nombre||'').replace(/'/g,'\\\'')}')">
-                  <svg class="ic ic-14"><use href="#ic-pen"/></svg> Firmar en tablet
-                </button>
-                <button class="btn btn-outline btn-sm" onclick="enviarKitAltaParaFirmar('${e.id}','${(e.nombre||'').replace(/'/g,'\\\'')}')">
-                  <svg class="ic ic-14"><use href="#ic-bell"/></svg> Solicitar firma en su app
-                </button>
-              </div>` : ''}
           </div>
+          ${!kitFirma ? `
+            <div class="row gap-2 mt-3" style="justify-content:flex-end;flex-wrap:wrap;">
+              <button class="btn btn-outline btn-sm" onclick="enviarKitAltaParaFirmar('${e.id}','${(e.nombre||'').replace(/'/g,'\\\'')}')">
+                <svg class="ic ic-14"><use href="#ic-bell"/></svg> Solicitar firma en su app
+              </button>
+              <button class="btn btn-primary btn-sm" onclick="firmarKitEnTablet('${e.id}', '${(e.nombre||'').replace(/'/g,'\\\'')}')">
+                <svg class="ic ic-14"><use href="#ic-pen"/></svg> Firmar en tablet
+              </button>
+            </div>` : ''}
           ${kitFirma ? `
             <div class="row gap-2 mt-3" style="justify-content:flex-end;flex-wrap:wrap;">
               <button class="btn btn-outline btn-sm" onclick="reenviarKitAlta('${kitFirma.id}','${(e.nombre||'').replace(/'/g,'\\\'')}')" style="color:#B45309;border-color:#F59E0B;">
