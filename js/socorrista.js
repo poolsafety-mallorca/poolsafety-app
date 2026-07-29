@@ -1811,20 +1811,41 @@
   renderDocsLists();
 
   // Al primer login (o si aún no ha firmado kit-alta en BD): mostrar wizard bloqueante.
-  // Comprueba en la tabla real firmas_documentos, NO en el mock.
+  // Se ejecuta periódicamente para detectar cuando admin archiva la firma antigua
+  // (equivalente a "solicitar nueva firma en la app").
+  let kitAltaModalYaAbierto = false;
   async function comprobarKitAltaObligatorio() {
     if (!empleadoReal || !window.sb) return;
     try {
       const { data } = await window.sb.from('firmas_documentos')
         .select('id').eq('empleado_id', empleadoReal.id)
         .eq('documento_codigo', 'kit-alta').limit(1);
-      if (!data || data.length === 0) {
-        setTimeout(() => openKitAltaWizard(), 700);
+      const yaAbierto = document.getElementById('kitAltaModal')?.classList.contains('open');
+      if ((!data || data.length === 0) && !yaAbierto) {
+        // Reload de firmas cache + refresh docs + abrir wizard
+        await cargarFirmasBD();
+        renderDocsHeader();
+        renderDocsLists();
+        setTimeout(() => openKitAltaWizard(), 300);
       }
     } catch (_) {}
   }
   document.addEventListener('ps-session-updated', () => setTimeout(comprobarKitAltaObligatorio, 1200));
   setTimeout(comprobarKitAltaObligatorio, 1800);
+
+  // Polling cada 30s: detecta cuando admin envía nueva solicitud de firma
+  setInterval(comprobarKitAltaObligatorio, 30_000);
+  // Al recuperar foco de la pestaña (móvil PWA la trae de background)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      comprobarKitAltaObligatorio();
+      cargarFirmasBD().then(() => { renderDocsHeader(); renderDocsLists(); });
+    }
+  });
+  // Al pulsar cualquier tab de la app (por si estaban navegando)
+  document.querySelectorAll('.tabbar button').forEach(b => {
+    b.addEventListener('click', () => setTimeout(comprobarKitAltaObligatorio, 300));
+  });
 
   /* ==========================================================================
      TITULACIONES Y DOCUMENTACIÓN LABORAL (DNI, SVB, DEA, PRL, contrato…)
