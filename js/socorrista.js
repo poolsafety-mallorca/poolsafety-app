@@ -932,7 +932,12 @@
       invSectionMeta.textContent = `${rev}/${items.length} revisados hoy`;
     }
 
-    inventarioList.innerHTML = items.map(it => {
+    if (items.length === 0) {
+      inventarioList.innerHTML = `<div class="alert-strip warn"><svg class="ic ic-16"><use href="#ic-alert"/></svg>No hay material configurado en esta sección para tu puesto.</div>`;
+      return;
+    }
+
+    const itemsHTML = items.map(it => {
       const pct = Math.min(100, Math.round((it.stock / (it.minimo * 2)) * 100));
       const level = it.stock === 0 ? 'low' : it.stock < it.minimo ? 'warn' : 'ok';
       const badge = it.stock === 0
@@ -946,7 +951,6 @@
       const extraInfo = [];
       if (it.caducidad) extraInfo.push(`Caduca ${it.caducidad}`);
       if (it.cargaBala) extraInfo.push(`Carga ${it.cargaBala}`);
-      if (it.revisionMensual) extraInfo.push(`Revisión mensual · próx. ${it.proximaRevision || 'este mes'}`);
       const extra = extraInfo.length ? `<div class="inv-extra">${extraInfo.join(' · ')}</div>` : '';
 
       return `
@@ -964,14 +968,42 @@
             </div>
             <div class="row gap-1 mt-1">${obligBadge}</div>
             <div class="inv-meta">
-              <div class="inv-stock">${it.stock} ${it.unidad} · mínimo ${it.minimo}</div>
               <div class="inv-bar"><span class="${level}" style="width:${pct}%"></span></div>
+            </div>
+            <div class="row gap-2 mt-2" style="align-items:center;flex-wrap:wrap;">
+              <label class="small text-muted" style="margin:0;">Cantidad actual:</label>
+              <button class="btn btn-outline btn-sm inv-minus" data-id="${it.id}" style="padding:4px 10px;font-weight:700;">−</button>
+              <input type="number" class="inv-stock-input" data-id="${it.id}" value="${it.stock}" min="0" style="width:70px;text-align:center;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-weight:600;" />
+              <button class="btn btn-outline btn-sm inv-plus" data-id="${it.id}" style="padding:4px 10px;font-weight:700;">+</button>
+              <span class="small text-muted">${it.unidad} · mín. ${it.minimo}</span>
+              <button class="btn btn-primary btn-sm inv-save" data-id="${it.id}" style="margin-left:auto;">
+                <svg class="ic ic-14"><use href="#ic-check"/></svg> Guardar
+              </button>
             </div>
             ${extra}
           </div>
         </div>
       `;
     }).join('');
+
+    const revCount = items.filter(it => it.revisadoHoy).length;
+    const totalCount = items.length;
+    const allDone = revCount === totalCount;
+
+    inventarioList.innerHTML = itemsHTML + `
+      <div class="card" style="margin-top:16px;padding:14px;background:${allDone?'#ecfdf5':'#f8fafc'};border:2px solid ${allDone?'#10b981':'#cbd5e1'};">
+        <div class="row between" style="align-items:center;">
+          <div>
+            <div style="font-weight:700;font-size:15px;">${revCount} de ${totalCount} revisados</div>
+            <div class="small text-muted">Marca los ticks conforme compruebes cada material</div>
+          </div>
+          <button class="btn ${allDone?'btn-outline':'btn-primary'} btn-lg" id="btnComprobarTodo" style="min-width:160px;">
+            <svg class="ic ic-18"><use href="#${allDone?'ic-check-circle':'ic-check'}"/></svg>
+            ${allDone ? '✓ Todo comprobado' : 'Marcar todo comprobado'}
+          </button>
+        </div>
+      </div>
+    `;
 
     // Checkbox revisión diaria (guarda en BD)
     inventarioList.querySelectorAll('.inv-check').forEach(btn => {
@@ -992,6 +1024,77 @@
         } catch (err) { toast('Error: ' + err.message); }
       });
     });
+
+    // Botones + / − para modificar stock localmente
+    inventarioList.querySelectorAll('.inv-plus').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const inp = inventarioList.querySelector(`.inv-stock-input[data-id="${btn.dataset.id}"]`);
+        if (inp) inp.value = (parseInt(inp.value) || 0) + 1;
+      });
+    });
+    inventarioList.querySelectorAll('.inv-minus').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const inp = inventarioList.querySelector(`.inv-stock-input[data-id="${btn.dataset.id}"]`);
+        if (inp) inp.value = Math.max(0, (parseInt(inp.value) || 0) - 1);
+      });
+    });
+
+    // Guardar stock editado (persistir en BD)
+    inventarioList.querySelectorAll('.inv-save').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const it = inventarioCache.find(x => x.id === id);
+        const inp = inventarioList.querySelector(`.inv-stock-input[data-id="${id}"]`);
+        if (!it || !inp) return;
+        const nuevoStock = Math.max(0, parseInt(inp.value) || 0);
+        btn.disabled = true; btn.innerHTML = '<svg class="ic ic-14"><use href="#ic-signal"/></svg> Guardando…';
+        try {
+          const { error } = await window.sb.from('inventario_puesto').update({
+            stock: nuevoStock,
+            revisado_hoy: true,
+            ultima_revision: new Date().toISOString()
+          }).eq('id', it.rowId);
+          if (error) throw error;
+          it.stock = nuevoStock;
+          it.revisadoHoy = true;
+          toast(`✓ ${it.nombre}: ${nuevoStock} ${it.unidad}`);
+          renderInventario();
+          renderRevisionSummary();
+          renderAlertasStock();
+        } catch (err) {
+          toast('Error: ' + err.message);
+          btn.disabled = false;
+          btn.innerHTML = '<svg class="ic ic-14"><use href="#ic-check"/></svg> Guardar';
+        }
+      });
+    });
+
+    // Botón "Marcar todo comprobado" — marca todos los items de la sección como revisados
+    const btnAll = inventarioList.querySelector('#btnComprobarTodo');
+    if (btnAll) {
+      btnAll.addEventListener('click', async () => {
+        if (allDone) { toast('Ya está todo comprobado ✓'); return; }
+        btnAll.disabled = true;
+        btnAll.innerHTML = '<svg class="ic ic-18"><use href="#ic-signal"/></svg> Guardando…';
+        try {
+          const rowIds = items.filter(it => !it.revisadoHoy).map(it => it.rowId);
+          if (rowIds.length) {
+            const { error } = await window.sb.from('inventario_puesto').update({
+              revisado_hoy: true,
+              ultima_revision: new Date().toISOString()
+            }).in('id', rowIds);
+            if (error) throw error;
+          }
+          items.forEach(it => { it.revisadoHoy = true; });
+          toast(`✓ ${totalCount} artículos comprobados`);
+          renderInventario();
+          renderRevisionSummary();
+        } catch (err) {
+          toast('Error: ' + err.message);
+          btnAll.disabled = false;
+        }
+      });
+    }
   }
 
   // Recargar inventario cuando llegue el puesto real
@@ -1025,19 +1128,24 @@
   renderAlertasStock();
   renderInventario();
 
+  // Cache de items para el modal reportar
+  let reportItemsCache = [];
+
   // Recalcular reporte modal → carga items REALES desde BD del puesto del socorrista
   window.updateReportOptions = async function () {
-    const sel = document.getElementById('reportItem');
-    if (!sel || !window.sb) return;
+    const cont = document.getElementById('reportItemList');
+    const hidden = document.getElementById('reportItem');
+    if (!cont || !window.sb) return;
     const puestoId = puestoReal?.id || empleadoReal?.puesto_id;
     if (!puestoId) {
-      sel.innerHTML = '<option value="">Sin puesto asignado — pide al coordinador tu puesto</option>';
+      cont.innerHTML = '<div class="alert-strip warn" style="margin:6px;"><svg class="ic ic-16"><use href="#ic-alert"/></svg>Sin puesto asignado — pide al coordinador tu puesto</div>';
+      if (hidden) hidden.value = '';
       return;
     }
-    sel.innerHTML = '<option value="">Cargando…</option>';
+    cont.innerHTML = '<div class="text-muted small" style="padding:14px;text-align:center;">Cargando material del hotel…</div>';
     try {
       const { data, error } = await window.sb.from('inventario_puesto')
-        .select('item_id, stock, minimo, inventario_items(id, nombre, unidad)')
+        .select('item_id, stock, minimo, inventario_items(id, nombre, unidad, categoria, seccion)')
         .eq('puesto_id', puestoId);
       if (error) throw error;
       const items = (data || []).sort((a,b) => {
@@ -1045,20 +1153,74 @@
         const rb = b.minimo > 0 ? b.stock/b.minimo : 999;
         return ra - rb; // bajo mínimo primero
       });
-      if (items.length === 0) {
-        sel.innerHTML = '<option value="">No hay inventario configurado para tu puesto</option>';
+      reportItemsCache = items.map(r => ({
+        id: r.inventario_items?.id,
+        nombre: r.inventario_items?.nombre || 'Material',
+        unidad: r.inventario_items?.unidad || 'ud',
+        categoria: r.inventario_items?.categoria || '',
+        seccion: r.inventario_items?.seccion || 'botiquin',
+        stock: r.stock || 0,
+        minimo: r.minimo || 1
+      }));
+      if (reportItemsCache.length === 0) {
+        cont.innerHTML = '<div class="alert-strip warn" style="margin:6px;">No hay inventario configurado para tu puesto</div>';
         return;
       }
-      sel.innerHTML = items.map(r => {
-        const item = r.inventario_items || {};
-        const bajo = r.stock < (r.minimo || 1);
-        const label = `${item.nombre || 'Material'}${bajo ? ' · quedan ' + r.stock + ' ' + (item.unidad || '') : ''}`;
-        return `<option value="${item.id}" data-nombre="${(item.nombre||'').replace(/"/g,'&quot;')}">${label}</option>`;
-      }).join('');
+      renderReportItemList('');
     } catch (err) {
-      sel.innerHTML = `<option value="">Error cargando: ${err.message}</option>`;
+      cont.innerHTML = `<div class="alert-strip warn" style="margin:6px;">Error: ${err.message}</div>`;
     }
   };
+
+  function renderReportItemList(filtro) {
+    const cont = document.getElementById('reportItemList');
+    const hidden = document.getElementById('reportItem');
+    if (!cont) return;
+    const q = (filtro || '').toLowerCase().trim();
+    const list = q ? reportItemsCache.filter(it => it.nombre.toLowerCase().includes(q) || (it.categoria||'').toLowerCase().includes(q)) : reportItemsCache;
+    if (list.length === 0) {
+      cont.innerHTML = '<div class="text-muted small" style="padding:14px;text-align:center;">Ningún material coincide con la búsqueda</div>';
+      return;
+    }
+    const selected = hidden ? hidden.value : '';
+    cont.innerHTML = list.map(it => {
+      const bajo = it.stock < it.minimo;
+      const sinStock = it.stock === 0;
+      const badge = sinStock
+        ? '<span class="badge badge-danger"><span class="dot"></span>Sin stock</span>'
+        : bajo
+        ? '<span class="badge badge-warn"><span class="dot"></span>Bajo mínimo</span>'
+        : '';
+      const isSel = selected === it.id;
+      return `
+        <button type="button" class="report-item ${isSel?'selected':''}" data-id="${it.id}" data-nombre="${it.nombre.replace(/"/g,'&quot;')}"
+          style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;margin:4px 0;border:2px solid ${isSel?'#B91C1C':'#e2e8f0'};border-radius:8px;background:${isSel?'#fef2f2':'#fff'};cursor:pointer;">
+          <div style="width:22px;height:22px;border-radius:50%;border:2px solid ${isSel?'#B91C1C':'#cbd5e1'};background:${isSel?'#B91C1C':'#fff'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            ${isSel?'<svg class="ic ic-14" style="color:#fff;"><use href="#ic-check"/></svg>':''}
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:14px;">${it.nombre}</div>
+            <div class="small text-muted">Quedan ${it.stock} ${it.unidad} · mín. ${it.minimo}</div>
+          </div>
+          ${badge}
+        </button>
+      `;
+    }).join('');
+    cont.querySelectorAll('.report-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (hidden) hidden.value = btn.dataset.id;
+        renderReportItemList(document.getElementById('reportSearch')?.value || '');
+      });
+    });
+  }
+
+  window.filterReportList = function (v) { renderReportItemList(v); };
+  window.ajustarReportQty = function (delta) {
+    const inp = document.getElementById('reportQty');
+    if (!inp) return;
+    inp.value = Math.max(1, (parseInt(inp.value) || 1) + delta);
+  };
+
   setTimeout(updateReportOptions, 1500);
   document.addEventListener('ps-session-updated', () => setTimeout(updateReportOptions, 1000));
 
@@ -1105,14 +1267,15 @@
   window.closeReportModal = () => document.getElementById('reportModal').classList.remove('open');
 
   window.submitReport = async function () {
-    const sel = document.getElementById('reportItem');
-    const itemId = sel && sel.value;
+    const hidden = document.getElementById('reportItem');
+    const itemId = hidden && hidden.value;
     const qty = parseInt(document.getElementById('reportQty').value) || 1;
     const notas = document.getElementById('reportNotes').value.trim();
-    const nombre = sel && sel.options[sel.selectedIndex]?.dataset.nombre || 'material';
+    const selItem = reportItemsCache.find(x => x.id === itemId);
+    const nombre = selItem?.nombre || 'material';
     const puestoId = puestoReal?.id || empleadoReal?.puesto_id;
     const empId = empleadoReal?.id;
-    if (!itemId) { toast('Selecciona el material del desplegable'); return; }
+    if (!itemId) { toast('Toca el material que te falta en la lista'); return; }
     if (!puestoId || !empId) { toast('Aún no tienes puesto asignado. Contacta con el coordinador.'); return; }
 
     const btn = document.querySelector('#reportModal .btn-primary');
@@ -1134,13 +1297,16 @@
       });
       if (error) throw error;
       closeReportModal();
-      toast(`✓ Alerta enviada. Falta ${qty}× ${nombre}. El coordinador la verá en su panel.`);
+      toast(`✓ Aviso enviado. Falta ${qty}× ${nombre}. El coordinador y dirección lo verán.`);
       document.getElementById('reportNotes').value = '';
       document.getElementById('reportQty').value = 1;
+      if (hidden) hidden.value = '';
+      const search = document.getElementById('reportSearch');
+      if (search) search.value = '';
     } catch (err) {
       toast('Error: ' + err.message);
     } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg> Enviar alerta'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg> Avisar al coordinador'; }
     }
   };
 
@@ -1568,6 +1734,13 @@
             });
             if (error) throw error;
           }
+          // Marcar como completada la tarea "Firmar Kit Alta pendiente" si existía
+          try {
+            await window.sb.from('tareas')
+              .update({ completada: true })
+              .eq('empleado_id', empleadoId)
+              .eq('titulo', 'Firmar Kit Alta pendiente');
+          } catch (_) {}
           // También en localStorage para respuesta inmediata
           PS.firmarDocumento(me.id, 'kit-alta', {
             completado: true,
@@ -1813,38 +1986,82 @@
   // Al primer login (o si aún no ha firmado kit-alta en BD): mostrar wizard bloqueante.
   // Se ejecuta periódicamente para detectar cuando admin archiva la firma antigua
   // (equivalente a "solicitar nueva firma en la app").
-  let kitAltaModalYaAbierto = false;
-  async function comprobarKitAltaObligatorio() {
-    if (!empleadoReal || !window.sb) return;
+  async function comprobarKitAltaObligatorio(motivo) {
+    if (!window.sb) return;
+    // Si empleadoReal aún no está, intentamos leer desde auth
+    let empId = empleadoReal?.id;
+    if (!empId) {
+      try {
+        const { data: { user } } = await window.sb.auth.getUser();
+        if (user) {
+          const { data: emp } = await window.sb.from('empleados')
+            .select('id').eq('usuario_id', user.id).maybeSingle();
+          if (emp) empId = emp.id;
+        }
+      } catch (_) {}
+    }
+    if (!empId) return;
     try {
-      const { data } = await window.sb.from('firmas_documentos')
-        .select('id').eq('empleado_id', empleadoReal.id)
+      // Comprobar firma kit-alta existente
+      const { data: firmas } = await window.sb.from('firmas_documentos')
+        .select('id').eq('empleado_id', empId)
         .eq('documento_codigo', 'kit-alta').limit(1);
-      const yaAbierto = document.getElementById('kitAltaModal')?.classList.contains('open');
-      if ((!data || data.length === 0) && !yaAbierto) {
-        // Reload de firmas cache + refresh docs + abrir wizard
+      // Comprobar tarea pendiente "Firmar Kit Alta"
+      const { data: tareas } = await window.sb.from('tareas')
+        .select('id').eq('empleado_id', empId)
+        .eq('titulo', 'Firmar Kit Alta pendiente')
+        .eq('completada', false).limit(1);
+      const modalEl = document.getElementById('kitAltaModal');
+      const yaAbierto = modalEl?.classList.contains('open');
+      const sinFirma = !firmas || firmas.length === 0;
+      const tienePendiente = tareas && tareas.length > 0;
+      if ((sinFirma || tienePendiente) && !yaAbierto) {
         await cargarFirmasBD();
         renderDocsHeader();
         renderDocsLists();
-        setTimeout(() => openKitAltaWizard(), 300);
+        setTimeout(() => openKitAltaWizard(), 250);
+        if (motivo === 'realtime') toast('📋 Debes firmar tu Kit Alta ahora');
       }
     } catch (_) {}
   }
-  document.addEventListener('ps-session-updated', () => setTimeout(comprobarKitAltaObligatorio, 1200));
-  setTimeout(comprobarKitAltaObligatorio, 1800);
+  window.comprobarKitAltaObligatorio = comprobarKitAltaObligatorio;
+  document.addEventListener('ps-session-updated', () => setTimeout(() => comprobarKitAltaObligatorio('session'), 1000));
+  setTimeout(() => comprobarKitAltaObligatorio('init'), 1500);
 
-  // Polling cada 30s: detecta cuando admin envía nueva solicitud de firma
-  setInterval(comprobarKitAltaObligatorio, 30_000);
+  // Polling cada 10s (antes 30s — muy lento para piloto real)
+  setInterval(() => comprobarKitAltaObligatorio('polling'), 10_000);
+
+  // Realtime: escucha cambios de firmas_documentos y tareas del empleado
+  // Cuando admin archiva firma o inserta tarea → dispara comprobación INMEDIATA
+  async function suscribirRealtimeKit() {
+    if (!window.sb || !empleadoReal?.id) {
+      setTimeout(suscribirRealtimeKit, 1500);
+      return;
+    }
+    try {
+      window.sb.channel('kit-alta-' + empleadoReal.id)
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'firmas_documentos', filter: `empleado_id=eq.${empleadoReal.id}` },
+          () => setTimeout(() => comprobarKitAltaObligatorio('realtime'), 400))
+        .on('postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'tareas', filter: `empleado_id=eq.${empleadoReal.id}` },
+          () => setTimeout(() => comprobarKitAltaObligatorio('realtime'), 400))
+        .subscribe();
+    } catch (err) { console.warn('[Realtime kit-alta]', err.message); }
+  }
+  document.addEventListener('ps-session-updated', () => setTimeout(suscribirRealtimeKit, 1500));
+  setTimeout(suscribirRealtimeKit, 2500);
+
   // Al recuperar foco de la pestaña (móvil PWA la trae de background)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      comprobarKitAltaObligatorio();
+      comprobarKitAltaObligatorio('visibility');
       cargarFirmasBD().then(() => { renderDocsHeader(); renderDocsLists(); });
     }
   });
   // Al pulsar cualquier tab de la app (por si estaban navegando)
   document.querySelectorAll('.tabbar button').forEach(b => {
-    b.addEventListener('click', () => setTimeout(comprobarKitAltaObligatorio, 300));
+    b.addEventListener('click', () => setTimeout(() => comprobarKitAltaObligatorio('tab'), 300));
   });
 
   /* ==========================================================================

@@ -455,7 +455,7 @@
     <div class="modal-head">
       <div>
         <h3>Reportar falta de material</h3>
-        <p class="small text-muted mt-1" style="margin:4px 0 0;">Se enviará una alerta inmediata al coordinador con puesto, hora y material.</p>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;">Selecciona el material que falta. Se avisará al coordinador y a dirección.</p>
       </div>
       <button class="modal-close" onclick="closeReportModal()">
         <svg class="ic ic-16"><use href="#ic-x"/></svg>
@@ -463,14 +463,23 @@
     </div>
 
     <div class="field">
-      <label>Material</label>
-      <select id="reportItem"></select>
-      <div class="small text-muted mt-1">Ordenado por urgencia · los que están bajo mínimo aparecen primero</div>
+      <label>Buscar material</label>
+      <input type="text" id="reportSearch" placeholder="Escribe para filtrar…" oninput="filterReportList(this.value)" />
+    </div>
+
+    <div class="field">
+      <label>Toca el material que falta</label>
+      <div id="reportItemList" style="max-height:340px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:6px;background:#fafafa;"></div>
+      <input type="hidden" id="reportItem" />
     </div>
 
     <div class="field">
       <label>Cantidad que falta</label>
-      <input type="number" id="reportQty" value="1" min="1" />
+      <div class="row gap-2" style="align-items:center;">
+        <button type="button" class="btn btn-outline" onclick="ajustarReportQty(-1)" style="padding:6px 14px;font-weight:700;">−</button>
+        <input type="number" id="reportQty" value="1" min="1" style="width:80px;text-align:center;" />
+        <button type="button" class="btn btn-outline" onclick="ajustarReportQty(1)" style="padding:6px 14px;font-weight:700;">+</button>
+      </div>
     </div>
 
     <div class="field">
@@ -482,7 +491,7 @@
       <button class="btn btn-outline" onclick="closeReportModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="submitReport()">
         <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
-        Enviar alerta
+        Avisar al coordinador
       </button>
     </div>
   </div>

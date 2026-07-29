@@ -3344,28 +3344,31 @@
         .select('id').eq('empleado_id', empId).eq('documento_codigo', 'kit-alta').limit(1);
       const yaFirmado = firmas && firmas.length > 0;
       const msg = yaFirmado
-        ? `${nombre} ya firmó el Kit Alta. ¿Solicitar que lo firme de NUEVO?\n\n• Se archiva la firma actual.\n• Aparece tarea pendiente en su app (campana con aviso).\n• Al entrar le saldrá el wizard bloqueante con todo el texto legal.`
-        : `Solicitar a ${nombre} que firme el Kit Alta en su app?\n\n• Aparece tarea pendiente en su app (campana con aviso rojo).\n• Al entrar le sale el wizard bloqueante hasta firmar.\n\nSin enviar email — puedes avisarle por WhatsApp de que entre.`;
+        ? `${nombre} ya firmó el Kit Alta. ¿Solicitar que lo firme de NUEVO?\n\n• Se archiva la firma actual.\n• Si tiene la app abierta le salta el wizard EN EL ACTO.\n• Si no, le sale al abrirla (o refrescar).`
+        : `¿Solicitar a ${nombre} que firme el Kit Alta en su app?\n\n• Si tiene la app abierta le salta el wizard EN EL ACTO (Realtime).\n• Si no, le sale al abrirla o refrescar.\n\nSin enviar email — puedes avisarle por WhatsApp de que entre.`;
       if (!confirm(msg)) return;
       if (yaFirmado) {
         await window.sb.from('firmas_documentos')
           .update({ documento_codigo: 'kit-alta-archivada-' + Date.now() })
           .eq('id', firmas[0].id);
       }
-      // Insertar tarea recordatoria (aparece en tareas socorrista + campana)
+      // Insertar tarea recordatoria (aparece en tareas socorrista + campana + dispara Realtime)
       try {
         // Borrar tarea previa "Firmar Kit Alta" para no duplicar
         await window.sb.from('tareas').delete()
           .eq('empleado_id', empId).eq('titulo', 'Firmar Kit Alta pendiente');
-        await window.sb.from('tareas').insert({
+        const { error: errT } = await window.sb.from('tareas').insert({
           empleado_id: empId,
           titulo: 'Firmar Kit Alta pendiente',
           descripcion: 'Debes firmar tu documentación de alta antes de continuar. Al abrir la app te aparecerá el proceso obligatorio.',
           prioridad: 'alta',
           completada: false
         });
-      } catch (_) {}
-      toast(`✓ ${nombre} verá tarea pendiente + wizard obligatorio al abrir la app`);
+        if (errT) throw errT;
+      } catch (err) {
+        toast('⚠ Aviso: no se pudo crear la tarea (' + err.message + '). Aún así, el wizard le saldrá al abrir la app.');
+      }
+      toast(`✓ ${nombre}: se le abrirá el wizard automáticamente (Realtime en piloto real)`);
       if (window.renderFicha && fichaActualId === empId) renderFicha();
       if (window.renderEstadoEquipo) window.renderEstadoEquipo();
     } catch (err) { toast('Error: ' + err.message); }
