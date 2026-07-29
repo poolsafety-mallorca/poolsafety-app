@@ -75,11 +75,17 @@ window.PSPdf = (function () {
      ========================================================================== */
   async function generarKitAlta(empleado, firma, subdocs) {
     // Fallback robusto: si no llegan subdocs, léelos de window.PS
+    // Con reintentos por si data.js aún no cargó
     if (!subdocs || subdocs.length === 0) {
-      subdocs = (window.PS && window.PS.kitAltaSubdocs) || [];
+      for (let i = 0; i < 20; i++) {
+        subdocs = (window.PS && window.PS.kitAltaSubdocs) || [];
+        if (subdocs.length > 0) break;
+        await new Promise(r => setTimeout(r, 100));
+      }
     }
-    if (subdocs.length === 0) {
-      console.warn('[PSPdf.generarKitAlta] Sin subdocs — el PDF no incluirá el texto legal');
+    if (!subdocs || subdocs.length === 0) {
+      console.error('[PSPdf] ERROR: PS.kitAltaSubdocs sigue vacío tras 2s. El PDF NO tendrá texto legal.');
+      alert('Error: no se ha podido cargar el texto legal (data.js no disponible). Recarga la app con Ctrl+Shift+R y vuelve a intentarlo.');
     }
     const doc = nuevoPdf();
     header(doc, 'Kit Alta Empresa · Documentación laboral firmada',

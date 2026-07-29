@@ -1169,18 +1169,17 @@
   renderAlertasStock();
   renderInventario();
 
-  // Cache de items para el modal reportar
+  // Cache de items para el modal reportar + mapa de selección {itemId: cantidad}
   let reportItemsCache = [];
+  let reportSelection = {}; // { itemId: qty }
 
   // Recalcular reporte modal → carga items REALES desde BD del puesto del socorrista
   window.updateReportOptions = async function () {
     const cont = document.getElementById('reportItemList');
-    const hidden = document.getElementById('reportItem');
     if (!cont || !window.sb) return;
     const puestoId = puestoReal?.id || empleadoReal?.puesto_id;
     if (!puestoId) {
       cont.innerHTML = '<div class="alert-strip warn" style="margin:6px;"><svg class="ic ic-16"><use href="#ic-alert"/></svg>Sin puesto asignado — pide al coordinador tu puesto</div>';
-      if (hidden) hidden.value = '';
       return;
     }
     cont.innerHTML = '<div class="text-muted small" style="padding:14px;text-align:center;">Cargando material del hotel…</div>';
@@ -1203,6 +1202,7 @@
         stock: r.stock || 0,
         minimo: r.minimo || 1
       }));
+      reportSelection = {}; // resetear selección al recargar
       if (reportItemsCache.length === 0) {
         cont.innerHTML = '<div class="alert-strip warn" style="margin:6px;">No hay inventario configurado para tu puesto</div>';
         return;
@@ -1213,17 +1213,31 @@
     }
   };
 
+  function actualizarInfoSeleccion() {
+    const info = document.getElementById('reportSelectionInfo');
+    if (!info) return;
+    const ids = Object.keys(reportSelection);
+    if (ids.length === 0) {
+      info.textContent = 'Sin selección';
+      info.style.color = '';
+    } else {
+      const totalUds = ids.reduce((s, id) => s + (reportSelection[id] || 0), 0);
+      info.textContent = `${ids.length} producto${ids.length===1?'':'s'} · ${totalUds} unidades en total`;
+      info.style.color = '#059669';
+      info.style.fontWeight = '600';
+    }
+  }
+
   function renderReportItemList(filtro) {
     const cont = document.getElementById('reportItemList');
-    const hidden = document.getElementById('reportItem');
     if (!cont) return;
     const q = (filtro || '').toLowerCase().trim();
     const list = q ? reportItemsCache.filter(it => it.nombre.toLowerCase().includes(q) || (it.categoria||'').toLowerCase().includes(q)) : reportItemsCache;
     if (list.length === 0) {
       cont.innerHTML = '<div class="text-muted small" style="padding:14px;text-align:center;">Ningún material coincide con la búsqueda</div>';
+      actualizarInfoSeleccion();
       return;
     }
-    const selected = hidden ? hidden.value : '';
     cont.innerHTML = list.map(it => {
       const bajo = it.stock < it.minimo;
       const sinStock = it.stock === 0;
@@ -1232,35 +1246,66 @@
         : bajo
         ? '<span class="badge badge-warn"><span class="dot"></span>Bajo mínimo</span>'
         : '';
-      const isSel = selected === it.id;
+      const isSel = reportSelection[it.id] != null;
+      const qty = isSel ? reportSelection[it.id] : 1;
       return `
-        <button type="button" class="report-item ${isSel?'selected':''}" data-id="${it.id}" data-nombre="${it.nombre.replace(/"/g,'&quot;')}"
-          style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;margin:4px 0;border:2px solid ${isSel?'#B91C1C':'#e2e8f0'};border-radius:8px;background:${isSel?'#fef2f2':'#fff'};cursor:pointer;">
-          <div style="width:22px;height:22px;border-radius:50%;border:2px solid ${isSel?'#B91C1C':'#cbd5e1'};background:${isSel?'#B91C1C':'#fff'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            ${isSel?'<svg class="ic ic-14" style="color:#fff;"><use href="#ic-check"/></svg>':''}
-          </div>
-          <div style="flex:1;min-width:0;">
+        <div class="report-item ${isSel?'selected':''}" data-id="${it.id}"
+          style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;margin:4px 0;border:2px solid ${isSel?'#B91C1C':'#e2e8f0'};border-radius:8px;background:${isSel?'#fef2f2':'#fff'};">
+          <button type="button" class="rep-check" data-id="${it.id}" title="Marcar / desmarcar"
+            style="width:26px;height:26px;border-radius:6px;border:2px solid ${isSel?'#B91C1C':'#cbd5e1'};background:${isSel?'#B91C1C':'#fff'};display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;padding:0;">
+            ${isSel?'<svg class="ic ic-16" style="color:#fff;"><use href="#ic-check"/></svg>':''}
+          </button>
+          <div style="flex:1;min-width:0;cursor:pointer;" class="rep-label" data-id="${it.id}">
             <div style="font-weight:600;font-size:14px;">${it.nombre}</div>
-            <div class="small text-muted">Quedan ${it.stock} ${it.unidad} · mín. ${it.minimo}</div>
+            <div class="small text-muted">Quedan ${it.stock} ${it.unidad} · mín. ${it.minimo} ${badge?' · ':''}</div>
           </div>
-          ${badge}
-        </button>
+          ${badge ? `<div style="flex-shrink:0;">${badge}</div>` : ''}
+          <div class="row gap-1" style="align-items:center;flex-shrink:0;${isSel?'':'opacity:0.4;pointer-events:none;'}">
+            <button type="button" class="btn btn-outline btn-sm rep-minus" data-id="${it.id}" style="padding:2px 8px;font-weight:700;min-width:28px;">−</button>
+            <input type="number" class="rep-qty" data-id="${it.id}" value="${qty}" min="1" style="width:56px;text-align:center;padding:4px;border:1px solid #cbd5e1;border-radius:6px;font-weight:600;" />
+            <button type="button" class="btn btn-outline btn-sm rep-plus" data-id="${it.id}" style="padding:2px 8px;font-weight:700;min-width:28px;">+</button>
+          </div>
+        </div>
       `;
     }).join('');
-    cont.querySelectorAll('.report-item').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (hidden) hidden.value = btn.dataset.id;
-        renderReportItemList(document.getElementById('reportSearch')?.value || '');
-      });
-    });
+
+    // Toggle selección al pulsar checkbox o etiqueta
+    const toggle = (id) => {
+      if (reportSelection[id] != null) delete reportSelection[id];
+      else reportSelection[id] = 1;
+      renderReportItemList(document.getElementById('reportSearch')?.value || '');
+    };
+    cont.querySelectorAll('.rep-check').forEach(b => b.addEventListener('click', () => toggle(b.dataset.id)));
+    cont.querySelectorAll('.rep-label').forEach(b => b.addEventListener('click', () => toggle(b.dataset.id)));
+
+    // + / - / input de cantidad (solo para seleccionados)
+    cont.querySelectorAll('.rep-plus').forEach(b => b.addEventListener('click', () => {
+      const id = b.dataset.id;
+      if (reportSelection[id] == null) return;
+      reportSelection[id] = (reportSelection[id] || 0) + 1;
+      const inp = cont.querySelector(`.rep-qty[data-id="${id}"]`);
+      if (inp) inp.value = reportSelection[id];
+      actualizarInfoSeleccion();
+    }));
+    cont.querySelectorAll('.rep-minus').forEach(b => b.addEventListener('click', () => {
+      const id = b.dataset.id;
+      if (reportSelection[id] == null) return;
+      reportSelection[id] = Math.max(1, (reportSelection[id] || 1) - 1);
+      const inp = cont.querySelector(`.rep-qty[data-id="${id}"]`);
+      if (inp) inp.value = reportSelection[id];
+      actualizarInfoSeleccion();
+    }));
+    cont.querySelectorAll('.rep-qty').forEach(inp => inp.addEventListener('input', () => {
+      const id = inp.dataset.id;
+      if (reportSelection[id] == null) return;
+      reportSelection[id] = Math.max(1, parseInt(inp.value) || 1);
+      actualizarInfoSeleccion();
+    }));
+
+    actualizarInfoSeleccion();
   }
 
   window.filterReportList = function (v) { renderReportItemList(v); };
-  window.ajustarReportQty = function (delta) {
-    const inp = document.getElementById('reportQty');
-    if (!inp) return;
-    inp.value = Math.max(1, (parseInt(inp.value) || 1) + delta);
-  };
 
   setTimeout(updateReportOptions, 1500);
   document.addEventListener('ps-session-updated', () => setTimeout(updateReportOptions, 1000));
@@ -1308,40 +1353,43 @@
   window.closeReportModal = () => document.getElementById('reportModal').classList.remove('open');
 
   window.submitReport = async function () {
-    const hidden = document.getElementById('reportItem');
-    const itemId = hidden && hidden.value;
-    const qty = parseInt(document.getElementById('reportQty').value) || 1;
-    const notas = document.getElementById('reportNotes').value.trim();
-    const selItem = reportItemsCache.find(x => x.id === itemId);
-    const nombre = selItem?.nombre || 'material';
+    const ids = Object.keys(reportSelection);
+    if (ids.length === 0) { toast('Marca al menos un producto que falte'); return; }
     const puestoId = puestoReal?.id || empleadoReal?.puesto_id;
     const empId = empleadoReal?.id;
-    if (!itemId) { toast('Toca el material que te falta en la lista'); return; }
     if (!puestoId || !empId) { toast('Aún no tienes puesto asignado. Contacta con el coordinador.'); return; }
+    const notas = document.getElementById('reportNotes').value.trim();
 
     const btn = document.querySelector('#reportModal .btn-primary');
     if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-signal"/></svg> Enviando…'; }
 
     try {
-      const criticidad = qty >= 5 ? 'alta' : 'media';
-      const mensaje = `Falta ${qty}× ${nombre}${notas ? ' — ' + notas : ''}${puestoReal?.nombre ? ' (' + puestoReal.nombre + ')' : ''}`;
-      const { error } = await window.sb.from('alertas').insert({
-        puesto_id: puestoId,
-        empleado_id: empId,
-        item_id: itemId,
-        tipo: 'manual',
-        origen: 'socorrista',
-        criticidad,
-        mensaje,
-        cantidad_pedida: qty,
-        resuelto: false
+      // Un INSERT por cada producto seleccionado (para que el coord pueda resolverlos por separado)
+      const rows = ids.map(itemId => {
+        const it = reportItemsCache.find(x => x.id === itemId);
+        const qty = reportSelection[itemId] || 1;
+        const nombre = it?.nombre || 'material';
+        const criticidad = qty >= 5 ? 'alta' : 'media';
+        const mensaje = `Falta ${qty}× ${nombre}${notas ? ' — ' + notas : ''}${puestoReal?.nombre ? ' (' + puestoReal.nombre + ')' : ''}`;
+        return {
+          puesto_id: puestoId,
+          empleado_id: empId,
+          item_id: itemId,
+          tipo: 'manual',
+          origen: 'socorrista',
+          criticidad,
+          mensaje,
+          cantidad_pedida: qty,
+          resuelto: false
+        };
       });
+      const { error } = await window.sb.from('alertas').insert(rows);
       if (error) throw error;
       closeReportModal();
-      toast(`✓ Aviso enviado. Falta ${qty}× ${nombre}. El coordinador y dirección lo verán.`);
+      const totalUds = ids.reduce((s, id) => s + (reportSelection[id] || 0), 0);
+      toast(`✓ Aviso enviado · ${ids.length} producto${ids.length===1?'':'s'} (${totalUds} uds). Coordinador y dirección lo verán.`);
       document.getElementById('reportNotes').value = '';
-      document.getElementById('reportQty').value = 1;
-      if (hidden) hidden.value = '';
+      reportSelection = {};
       const search = document.getElementById('reportSearch');
       if (search) search.value = '';
     } catch (err) {
