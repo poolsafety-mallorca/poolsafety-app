@@ -32,10 +32,19 @@
           <svg class="ic ic-16"><use href="#ic-search"/></svg>
           <input type="text" id="postSearch" placeholder="Buscar puesto o socorrista…" />
         </label>
-        <button class="btn-icon" title="Alertas de botiquín" id="notifBtnCoord" onclick="document.querySelector('[data-section=&quot;botiquin&quot;]')?.click()" style="position:relative;">
-          <svg class="ic ic-18"><use href="#ic-bell"/></svg>
-          <span id="notifCoordBadge" style="display:none;position:absolute;top:2px;right:2px;background:#B91C1C;color:#fff;font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:8px;padding:0 4px;line-height:16px;text-align:center;"></span>
-        </button>
+        <div style="position:relative;">
+          <button class="btn-icon" title="Ver notificaciones" id="notifBtnCoord" onclick="toggleNotifPanel()" style="position:relative;overflow:visible;">
+            <svg class="ic ic-18"><use href="#ic-bell"/></svg>
+            <span id="notifCoordBadge" style="display:none;position:absolute;top:-6px;right:-6px;background:#B91C1C;color:#fff;font-size:11px;font-weight:700;min-width:20px;height:20px;border-radius:10px;padding:0 5px;line-height:20px;text-align:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.2);"></span>
+          </button>
+          <div id="notifPanel" style="display:none;position:absolute;top:calc(100% + 8px);right:0;width:380px;max-width:calc(100vw - 20px);max-height:70vh;overflow-y:auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.15);z-index:1000;">
+            <div style="padding:12px 16px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#f8fafc;border-radius:12px 12px 0 0;">
+              <strong style="font-size:14px;">Notificaciones</strong>
+              <button onclick="marcarTodasResueltas()" class="btn btn-outline btn-sm" style="font-size:11px;padding:4px 10px;">Marcar todas resueltas</button>
+            </div>
+            <div id="notifPanelList" style="padding:6px;"></div>
+          </div>
+        </div>
         <button class="user-chip" title="Mi perfil" onclick="openMiPerfilModal()">
           <span class="user-chip-avatar" id="userAvatar">JF</span>
           <span class="col">

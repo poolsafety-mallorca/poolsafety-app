@@ -427,18 +427,117 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderAlertas(); });
 
   // Badge campana admin/coord = nº de alertas abiertas
+  let alertasPanelCache = [];
   async function refrescarCampana() {
     const badge = document.getElementById('notifCoordBadge');
     if (!badge || !window.sb) return;
     try {
-      const { count } = await window.sb.from('alertas')
-        .select('id', { count: 'exact', head: true }).eq('resuelto', false);
-      if (count && count > 0) { badge.textContent = count > 99 ? '99+' : String(count); badge.style.display = 'inline-block'; }
+      const { data, error } = await window.sb.from('alertas')
+        .select('id, tipo, origen, criticidad, mensaje, cantidad_pedida, resuelto, created_at, puesto_id, empleado_id, item_id, puestos(nombre), empleados(nombre), inventario_items(nombre, unidad)')
+        .eq('resuelto', false)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      alertasPanelCache = data || [];
+      const count = alertasPanelCache.length;
+      if (count > 0) { badge.textContent = count > 99 ? '99+' : String(count); badge.style.display = 'inline-block'; }
       else { badge.style.display = 'none'; }
+      renderNotifPanel();
     } catch (_) { badge.style.display = 'none'; }
   }
+
+  function renderNotifPanel() {
+    const cont = document.getElementById('notifPanelList');
+    if (!cont) return;
+    if (alertasPanelCache.length === 0) {
+      cont.innerHTML = '<div style="padding:24px;text-align:center;color:#64748b;font-size:13px;">No hay alertas pendientes ✓</div>';
+      return;
+    }
+    cont.innerHTML = alertasPanelCache.map(a => {
+      const puesto = a.puestos?.nombre || '—';
+      const emp = a.empleados?.nombre || '';
+      const item = a.inventario_items?.nombre || '';
+      const critColor = a.criticidad === 'alta' ? '#DC2626' : a.criticidad === 'media' ? '#D97706' : '#0891B2';
+      const critBg = a.criticidad === 'alta' ? '#FEE2E2' : a.criticidad === 'media' ? '#FEF3C7' : '#CFFAFE';
+      const cuando = new Date(a.created_at);
+      const hace = tiempoRelativo(cuando);
+      const iconTipo = a.tipo === 'otro' ? 'ic-message-circle' : a.tipo === 'manual' ? 'ic-alert' : 'ic-bell';
+      return `
+        <div style="display:flex;gap:10px;padding:12px;margin:4px 0;border:1px solid #e2e8f0;border-radius:8px;background:#fff;">
+          <div style="width:36px;height:36px;border-radius:8px;background:${critBg};color:${critColor};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg class="ic ic-16"><use href="#${iconTipo}"/></svg>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:13px;line-height:1.3;">${a.mensaje || item || 'Alerta'}</div>
+            <div style="color:#64748b;font-size:11px;margin-top:3px;">
+              📍 ${puesto}${emp ? ' · 👤 ' + emp : ''} · ${hace}
+            </div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="resolverAlerta('${a.id}')" style="padding:4px 8px;font-size:11px;flex-shrink:0;height:26px;align-self:center;">
+            ✓ Resolver
+          </button>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function tiempoRelativo(fecha) {
+    const diff = (Date.now() - fecha.getTime()) / 1000;
+    if (diff < 60) return 'ahora';
+    if (diff < 3600) return `hace ${Math.floor(diff/60)} min`;
+    if (diff < 86400) return `hace ${Math.floor(diff/3600)} h`;
+    return fecha.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+
+  window.toggleNotifPanel = function () {
+    const panel = document.getElementById('notifPanel');
+    if (!panel) return;
+    const isOpen = panel.style.display !== 'none';
+    panel.style.display = isOpen ? 'none' : 'block';
+    if (!isOpen) refrescarCampana(); // recarga al abrir
+  };
+
+  window.resolverAlerta = async function (id) {
+    try {
+      await window.sb.from('alertas').update({ resuelto: true, resuelto_el: new Date().toISOString() }).eq('id', id);
+      alertasPanelCache = alertasPanelCache.filter(a => a.id !== id);
+      const badge = document.getElementById('notifCoordBadge');
+      if (badge) {
+        if (alertasPanelCache.length > 0) badge.textContent = String(alertasPanelCache.length);
+        else badge.style.display = 'none';
+      }
+      renderNotifPanel();
+      toast('✓ Alerta resuelta');
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  window.marcarTodasResueltas = async function () {
+    if (alertasPanelCache.length === 0) return;
+    if (!confirm(`¿Marcar como resueltas las ${alertasPanelCache.length} alertas?`)) return;
+    try {
+      const ids = alertasPanelCache.map(a => a.id);
+      await window.sb.from('alertas').update({ resuelto: true, resuelto_el: new Date().toISOString() }).in('id', ids);
+      alertasPanelCache = [];
+      const badge = document.getElementById('notifCoordBadge');
+      if (badge) badge.style.display = 'none';
+      renderNotifPanel();
+      toast('✓ Todas resueltas');
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  // Cerrar panel al clicar fuera
+  document.addEventListener('click', (e) => {
+    const panel = document.getElementById('notifPanel');
+    const btn = document.getElementById('notifBtnCoord');
+    if (!panel || !btn) return;
+    if (panel.style.display === 'none') return;
+    if (!panel.contains(e.target) && !btn.contains(e.target)) {
+      panel.style.display = 'none';
+    }
+  });
+
   refrescarCampana();
-  setInterval(refrescarCampana, 45_000);
+  setInterval(refrescarCampana, 30_000);
 
   /* ---------- Gestión de botiquines (selector de puesto + inventario) ---------- */
   const botiquinPuestoSelect = document.getElementById('botiquinPuestoSelect');
