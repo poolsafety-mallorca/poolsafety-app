@@ -1696,7 +1696,7 @@
       </div>
       <div class="field mt-3">
         <label>Nombre completo</label>
-        <input type="text" id="jornada-firma" placeholder="${(empleadoReal?.nombre || me?.nombre || '').replace(/"/g,'&quot;')}" />
+        <input type="text" id="jornada-firma" value="${(empleadoReal?.nombre || me?.nombre || '').replace(/"/g,'&quot;')}" />
       </div>
       <div class="field">
         <label>Firma manuscrita</label>
@@ -1840,11 +1840,11 @@
             </div>
             <div class="field mt-3">
               <label>Nombre y apellidos</label>
-              <input type="text" id="wiz-firma" placeholder="${(empleadoReal?.nombre || me?.nombre || '').replace(/"/g,'&quot;')}" />
+              <input type="text" id="wiz-firma" value="${(empleadoReal?.nombre || me?.nombre || '').replace(/"/g,'&quot;')}" placeholder="Escribe tu nombre completo" />
             </div>
             <div class="field">
               <label>DNI</label>
-              <input type="text" id="wiz-dni" placeholder="00000000A" />
+              <input type="text" id="wiz-dni" value="${(empleadoReal?.dni || '').replace(/"/g,'&quot;')}" placeholder="00000000A" />
             </div>
             <div class="field">
               <label>Firma manuscrita</label>
@@ -2183,7 +2183,7 @@
       </div>
       <div class="field mt-3">
         <label>Firma (nombre completo)</label>
-        <input type="text" id="jornada-firma" placeholder="${me.nombre}" />
+        <input type="text" id="jornada-firma" value="${(empleadoReal?.nombre || me?.nombre || '').replace(/"/g,'&quot;')}" />
       </div>
       <div class="field">
         <label>Firma manuscrita</label>
