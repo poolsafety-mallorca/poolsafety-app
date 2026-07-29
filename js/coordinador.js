@@ -600,47 +600,201 @@
     toast(`"${nombre}" añadido al inventario`);
   };
 
-  /* ---------- Horas mes ---------- */
-  function renderHours(mode) {
+  /* ---------- Horas mes (REAL desde BD: empleados + fichajes del mes) ---------- */
+  async function renderHours(mode) {
     const tbody = document.querySelector('#hoursTable tbody');
-    let list = PS.socorristas.map(s => ({
-      ...s,
-      total: s.horasNormales + s.horasExtra,
-      puesto: s.puestoId ? PS.puestoById(s.puestoId).nombre : '—'
-    }));
-    if (mode === 'extra') list = list.filter(s => s.horasExtra > 0).sort((a,b) => b.horasExtra - a.horasExtra);
-    else if (mode === 'top') list = list.sort((a,b) => b.total - a.total).slice(0, 10);
-    else list = list.slice(0, 20);
-
-    tbody.innerHTML = list.map(s => `
-      <tr>
-        <td>
-          <div class="hours-name">
-            <div class="mini-av sky">${s.iniciales}</div>
-            <span style="font-weight:500;">${s.nombre}</span>
-          </div>
-        </td>
-        <td class="text-muted">${s.puesto}</td>
-        <td class="num">${s.diasTrabajados}</td>
-        <td class="num">${s.horasNormales}</td>
-        <td class="num">
-          <span class="hours-extras ${s.horasExtra > 0 ? '' : 'zero'}">${s.horasExtra}</span>
-        </td>
-        <td class="num"><span class="hours-total">${s.total}h</span></td>
-      </tr>
-    `).join('');
+    if (!tbody || !window.sb) return;
+    tbody.innerHTML = '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--ink-500,#6B7280);">Cargando…</td></tr>';
+    try {
+      // 1. Empleados activos con su puesto asignado
+      const { data: emps, error: e1 } = await window.sb.from('empleados')
+        .select('id, nombre, puesto_id, puestos(nombre)')
+        .neq('estado', 'eliminado').is('fecha_baja', null)
+        .order('nombre');
+      if (e1) throw e1;
+      const empleados = emps || [];
+      if (empleados.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:var(--ink-500,#6B7280);">Aún no hay socorristas dados de alta.</td></tr>';
+        const cnt = document.querySelector('#hoursSection .panel-count');
+        if (cnt) cnt.textContent = '0 socorristas';
+        return;
+      }
+      // 2. Fichajes del mes actual
+      const hoy = new Date();
+      const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
+      const hasta = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1).toISOString();
+      const { data: fichs } = await window.sb.from('fichajes')
+        .select('empleado_id, tipo, hora')
+        .gte('hora', desde).lt('hora', hasta)
+        .order('hora', { ascending: true });
+      // 3. Agrupar por empleado → días trabajados + horas ordinarias + extras
+      const OBJ_DIA = 8;
+      const stats = {};
+      empleados.forEach(e => { stats[e.id] = { dias: new Set(), ord: 0, extra: 0 }; });
+      let entradaTmp = {};
+      (fichs || []).forEach(f => {
+        const s = stats[f.empleado_id];
+        if (!s) return;
+        const d = new Date(f.hora);
+        if (f.tipo === 'entrada') {
+          entradaTmp[f.empleado_id] = d;
+          s.dias.add(d.toDateString());
+        } else if (f.tipo === 'salida' && entradaTmp[f.empleado_id]) {
+          const h = Math.max(0, (d - entradaTmp[f.empleado_id]) / 3600000);
+          s.ord += Math.min(OBJ_DIA, h);
+          if (h > OBJ_DIA) s.extra += h - OBJ_DIA;
+          delete entradaTmp[f.empleado_id];
+        }
+      });
+      // 4. Construir filas
+      let list = empleados.map(e => {
+        const s = stats[e.id];
+        const puesto = (e.puestos && e.puestos.nombre) || '—';
+        const iniciales = (e.nombre || '?').split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase();
+        return {
+          id: e.id,
+          nombre: e.nombre,
+          iniciales,
+          puesto,
+          dias: s.dias.size,
+          normales: Math.round(s.ord),
+          extras: Math.round(s.extra),
+          total: Math.round(s.ord + s.extra)
+        };
+      });
+      // 5. Filtros
+      if (mode === 'extra') list = list.filter(x => x.extras > 0).sort((a,b) => b.extras - a.extras);
+      else if (mode === 'top') list = list.sort((a,b) => b.total - a.total).slice(0, 10);
+      // 6. Contador
+      const cnt = document.querySelector('#hoursSection .panel-count');
+      const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long' });
+      if (cnt) cnt.textContent = `${nombreMes} · ${list.length} de ${empleados.length}`;
+      // 7. Pintar
+      if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:var(--ink-500,#6B7280);">Sin resultados con este filtro.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = list.map(s => `
+        <tr>
+          <td>
+            <div class="hours-name">
+              <div class="mini-av sky">${s.iniciales}</div>
+              <span style="font-weight:500;">${s.nombre}</span>
+            </div>
+          </td>
+          <td class="text-muted">${s.puesto}</td>
+          <td class="num">${s.dias}</td>
+          <td class="num">${s.normales}</td>
+          <td class="num">
+            <span class="hours-extras ${s.extras > 0 ? '' : 'zero'}">${s.extras}</span>
+          </td>
+          <td class="num"><span class="hours-total">${s.total}h</span></td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--danger);">Error: ${err.message}</td></tr>`;
+    }
   }
-  renderHours('all');
-  document.getElementById('hourFilter').addEventListener('change', e => renderHours(e.target.value));
+  window.renderHours = renderHours;
+  setTimeout(() => renderHours('all'), 1200);
+  document.querySelectorAll('[data-section="horas"]').forEach(el => el.addEventListener('click', () => setTimeout(() => renderHours(document.getElementById('hourFilter')?.value || 'all'), 200)));
+  document.getElementById('hourFilter')?.addEventListener('change', e => renderHours(e.target.value));
 
-  /* ---------- Modal asignar tarea ---------- */
+  // Descargar informe de horas del mes (CSV para Excel / gestoría)
+  window.descargarInformeHoras = async function () {
+    if (!window.sb) { toast('Sistema no disponible'); return; }
+    toast('Generando informe…');
+    try {
+      const { data: emps } = await window.sb.from('empleados')
+        .select('id, nombre, dni, email, telefono, puestos(nombre)')
+        .neq('estado','eliminado').is('fecha_baja', null).order('nombre');
+      const hoy = new Date();
+      const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
+      const hasta = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1).toISOString();
+      const { data: fichs } = await window.sb.from('fichajes')
+        .select('empleado_id, tipo, hora, fuera_de_zona')
+        .gte('hora', desde).lt('hora', hasta).order('hora');
+
+      const OBJ_DIA = 8;
+      const stats = {};
+      (emps || []).forEach(e => { stats[e.id] = { dias: new Set(), ord: 0, extra: 0, fueraZona: 0 }; });
+      const entradaTmp = {};
+      (fichs || []).forEach(f => {
+        const s = stats[f.empleado_id]; if (!s) return;
+        const d = new Date(f.hora);
+        if (f.tipo === 'entrada') { entradaTmp[f.empleado_id] = d; s.dias.add(d.toDateString()); if (f.fuera_de_zona) s.fueraZona++; }
+        else if (f.tipo === 'salida' && entradaTmp[f.empleado_id]) {
+          const h = Math.max(0, (d - entradaTmp[f.empleado_id]) / 3600000);
+          s.ord += Math.min(OBJ_DIA, h);
+          if (h > OBJ_DIA) s.extra += h - OBJ_DIA;
+          delete entradaTmp[f.empleado_id];
+        }
+      });
+
+      const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+      const filas = [
+        ['Informe de horas del mes', nombreMes],
+        ['Pool Safety Des Llevant, S.L. · CIF B75828418'],
+        [],
+        ['Socorrista', 'DNI', 'Email', 'Teléfono', 'Puesto', 'Días', 'Horas ordinarias', 'Horas extras', 'Total', 'Fuera de zona']
+      ];
+      (emps || []).forEach(e => {
+        const s = stats[e.id];
+        filas.push([
+          e.nombre,
+          e.dni || '',
+          e.email || '',
+          e.telefono || '',
+          (e.puestos && e.puestos.nombre) || '',
+          s.dias.size,
+          Math.round(s.ord),
+          Math.round(s.extra),
+          Math.round(s.ord + s.extra),
+          s.fueraZona
+        ]);
+      });
+      // Fila total
+      const totOrd = Object.values(stats).reduce((a, s) => a + s.ord, 0);
+      const totExtra = Object.values(stats).reduce((a, s) => a + s.extra, 0);
+      filas.push([]);
+      filas.push(['TOTAL EMPRESA', '', '', '', '', '', Math.round(totOrd), Math.round(totExtra), Math.round(totOrd + totExtra), '']);
+
+      // Serializar como CSV (separador ; para Excel español) con BOM UTF-8
+      const csv = '﻿' + filas.map(r => r.map(c => {
+        const v = String(c ?? '');
+        return v.includes(';') || v.includes('"') || v.includes('\n') ? '"' + v.replace(/"/g,'""') + '"' : v;
+      }).join(';')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `PoolSafety-horas-${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast('✓ Informe descargado (CSV para Excel)');
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  /* ---------- Modal asignar tarea (socorristas REALES de BD) ---------- */
   const socSelect = document.getElementById('taskSocorrista');
-  socSelect.innerHTML = PS.socorristas.slice(0, 30).map(s => {
-    const p = s.puestoId ? PS.puestoById(s.puestoId).nombre : 'sin puesto';
-    return `<option value="${s.id}">${s.nombre} — ${p}</option>`;
-  }).join('');
+  async function refrescarSelectSocorristasTarea() {
+    if (!socSelect || !window.sb) return;
+    socSelect.innerHTML = '<option value="">Cargando…</option>';
+    try {
+      const { data } = await window.sb.from('empleados')
+        .select('id, nombre, puestos(nombre)')
+        .neq('estado','eliminado').is('fecha_baja', null)
+        .order('nombre');
+      const rows = data || [];
+      socSelect.innerHTML = rows.length === 0
+        ? '<option value="">Aún no hay socorristas</option>'
+        : rows.map(s => `<option value="${s.id}">${s.nombre}${s.puestos ? ' — ' + s.puestos.nombre : ''}</option>`).join('');
+    } catch (_) { socSelect.innerHTML = '<option value="">Error</option>'; }
+  }
+  refrescarSelectSocorristasTarea();
 
-  window.openTareaModal = function (socId) {
+  window.openTareaModal = async function (socId) {
+    await refrescarSelectSocorristasTarea();
     if (socId) socSelect.value = socId;
     document.getElementById('tareaModal').classList.add('open');
   };
@@ -685,111 +839,130 @@
     return { kitOk, jornadasPend, total, firmas };
   }
 
-  function renderDocsAdmin() {
-    if (!docsAdminList) return;
-    const rows = PS.socorristas.slice(0, 30).map(s => {
-      const st = estadoDocsSocorrista(s.id);
-      const puesto = s.puestoId ? PS.puestoById(s.puestoId).nombre : '—';
-      return { s, st, puesto };
-    });
+  async function renderDocsAdmin() {
+    if (!docsAdminList || !window.sb) return;
+    docsAdminList.innerHTML = '<div style="padding:30px;text-align:center;color:var(--ink-500);">Cargando documentación real…</div>';
+    try {
+      const { data: emps } = await window.sb.from('empleados')
+        .select('id, nombre, puesto_id, puestos(nombre)')
+        .neq('estado', 'eliminado').is('fecha_baja', null)
+        .order('nombre');
+      const empleados = emps || [];
+      if (empleados.length === 0) {
+        docsAdminList.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink-500);font-size:13.5px;">Aún no hay socorristas dados de alta. Cuando crees uno con el modal Nuevo Empleado aparecerá aquí.</div>';
+        if (docsStats) docsStats.textContent = '0 socorristas';
+        return;
+      }
 
-    const alDia = rows.filter(r => r.st.total === 0).length;
-    const pendTotal = rows.filter(r => r.st.total > 0).length;
-    if (docsStats) docsStats.textContent = `${alDia}/${rows.length} al día · ${pendTotal} pendientes`;
+      // Firmas kit-alta reales por empleado
+      const ids = empleados.map(e => e.id);
+      const { data: kitFirmas } = await window.sb.from('firmas_documentos')
+        .select('empleado_id, fecha_firma').eq('documento_codigo','kit-alta').in('empleado_id', ids);
+      const kitPorEmp = new Set((kitFirmas || []).map(f => f.empleado_id));
 
-    let visibles = rows;
-    if (docsCurrentFilter === 'pendientes') visibles = rows.filter(r => r.st.total > 0);
-    else if (docsCurrentFilter === 'firmados') visibles = rows.filter(r => r.st.total === 0);
+      // Jornadas firmadas reales (para futuro badge)
+      const { data: jornFirmas } = await window.sb.from('firmas_documentos')
+        .select('empleado_id, documento_codigo').like('documento_codigo','jornada-%').in('empleado_id', ids);
+      const jornPorEmp = new Map();
+      (jornFirmas || []).forEach(f => {
+        const arr = jornPorEmp.get(f.empleado_id) || [];
+        arr.push(f.documento_codigo);
+        jornPorEmp.set(f.empleado_id, arr);
+      });
 
-    if (visibles.length === 0) {
-      docsAdminList.innerHTML = `<div style="padding: 30px; text-align:center; color: var(--ink-500); font-size: 13.5px;">
-        <svg class="ic ic-24" style="opacity:.5; margin: 0 auto 8px;"><use href="#ic-check-circle"/></svg>
-        <div>${docsCurrentFilter === 'pendientes' ? '¡Todos los socorristas al día!' : 'Sin resultados'}</div>
-      </div>`;
-      return;
-    }
+      const hoyMes = 'jornada-' + new Date().toISOString().slice(0,7);
+      const rows = empleados.map(e => ({
+        id: e.id,
+        nombre: e.nombre,
+        iniciales: (e.nombre || '?').split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase(),
+        puesto: (e.puestos && e.puestos.nombre) || '—',
+        kitOk: kitPorEmp.has(e.id),
+        jornadaMesFirmada: (jornPorEmp.get(e.id) || []).includes(hoyMes)
+      }));
 
-    docsAdminList.innerHTML = visibles.map(({s, st, puesto}) => {
-      const kitBadge = st.kitOk
-        ? `<span class="badge badge-ok"><span class="dot"></span>Kit Alta ✓</span>`
-        : `<span class="badge badge-danger"><span class="dot"></span>Kit Alta pendiente</span>`;
-      const jornBadge = st.jornadasPend === 0
-        ? `<span class="badge badge-ok"><span class="dot"></span>Jornadas al día</span>`
-        : `<span class="badge badge-warn"><span class="dot"></span>${st.jornadasPend} jornada${st.jornadasPend>1?'s':''} pend.</span>`;
-      return `
-        <div class="doc-admin-row">
-          <div class="doc-admin-main">
-            <div class="mini-av sky">${s.iniciales}</div>
-            <div style="min-width:0;flex:1;">
-              <div class="doc-admin-name">${s.nombre}</div>
-              <div class="doc-admin-sub">${puesto}</div>
+      const alDia = rows.filter(r => r.kitOk && r.jornadaMesFirmada).length;
+      const pendTotal = rows.length - alDia;
+      if (docsStats) docsStats.textContent = `${alDia}/${rows.length} al día · ${pendTotal} pendientes`;
+
+      let visibles = rows;
+      if (docsCurrentFilter === 'pendientes') visibles = rows.filter(r => !r.kitOk || !r.jornadaMesFirmada);
+      else if (docsCurrentFilter === 'firmados') visibles = rows.filter(r => r.kitOk && r.jornadaMesFirmada);
+
+      if (visibles.length === 0) {
+        docsAdminList.innerHTML = `<div style="padding: 30px; text-align:center; color: var(--ink-500); font-size: 13.5px;">
+          <svg class="ic ic-24" style="opacity:.5; margin: 0 auto 8px;"><use href="#ic-check-circle"/></svg>
+          <div>${docsCurrentFilter === 'pendientes' ? '¡Todos los socorristas al día!' : 'Sin resultados'}</div>
+        </div>`;
+        return;
+      }
+
+      docsAdminList.innerHTML = visibles.map(s => {
+        const kitBadge = s.kitOk
+          ? `<span class="badge badge-ok"><span class="dot"></span>Kit Alta ✓</span>`
+          : `<span class="badge badge-danger"><span class="dot"></span>Kit Alta pendiente</span>`;
+        const jornBadge = s.jornadaMesFirmada
+          ? `<span class="badge badge-ok"><span class="dot"></span>Jornada del mes ✓</span>`
+          : `<span class="badge badge-warn"><span class="dot"></span>Jornada del mes pendiente</span>`;
+        return `
+          <div class="doc-admin-row">
+            <div class="doc-admin-main">
+              <div class="mini-av sky">${s.iniciales}</div>
+              <div style="min-width:0;flex:1;">
+                <div class="doc-admin-name">${s.nombre}</div>
+                <div class="doc-admin-sub">${s.puesto}</div>
+              </div>
+            </div>
+            <div class="doc-admin-badges">
+              ${kitBadge}
+              ${jornBadge}
+            </div>
+            <div class="doc-admin-actions">
+              <button class="btn btn-outline btn-sm" data-view="${s.id}">
+                <svg class="ic ic-14"><use href="#ic-file-text"/></svg>
+                Ver ficha
+              </button>
             </div>
           </div>
-          <div class="doc-admin-badges">
-            ${kitBadge}
-            ${jornBadge}
-          </div>
-          <div class="doc-admin-actions">
-            ${!st.kitOk ? `<button class="btn btn-primary btn-sm" data-tablet-kit="${s.id}">
-              <svg class="ic ic-14"><use href="#ic-pen"/></svg>
-              Firmar en tablet
-            </button>` : ''}
-            <button class="btn btn-outline btn-sm" data-view="${s.id}">
-              Ver docs
-            </button>
-          </div>
-        </div>
-      `;
-    }).join('');
+        `;
+      }).join('');
 
-    docsAdminList.querySelectorAll('[data-tablet-kit]').forEach(btn => {
-      btn.addEventListener('click', () => firmarKitEnTablet(btn.dataset.tabletKit));
-    });
-    docsAdminList.querySelectorAll('[data-view]').forEach(btn => {
-      btn.addEventListener('click', () => verDocsSocorrista(btn.dataset.view));
-    });
+      docsAdminList.querySelectorAll('[data-view]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          // Abre la ficha del empleado directamente en pestaña Firmas
+          window.openEmpleadoModal && window.openEmpleadoModal(btn.dataset.view);
+          setTimeout(() => {
+            const tab = document.querySelector('.ficha-tab[data-ftab="docs"]');
+            if (tab) tab.click();
+          }, 200);
+        });
+      });
+    } catch (err) {
+      docsAdminList.innerHTML = `<div style="padding:20px;text-align:center;color:var(--danger);">Error: ${err.message}</div>`;
+    }
   }
 
-  function firmarKitEnTablet(socId) {
-    const s = PS.socorristas.find(x => x.id === socId);
-    if (!s) return;
-    if (!confirm(`Vas a firmar el Kit Alta en nombre de ${s.nombre} desde la tablet del coordinador. El sistema registrará el origen "tablet coordinador".\n\n¿Continuar?`)) return;
-    // Registro simplificado desde coordinador (todos aceptados por defecto, requiere firma escrita)
-    const firma = prompt(`Escribe el nombre completo del empleado (${s.nombre}) tal como debe firmar:`);
-    if (!firma) return;
-    const dni = prompt('DNI del empleado:');
-    if (!dni) return;
-    const aceptados = {};
-    PS.kitAltaSubdocs.forEach(sub => { aceptados[sub.id] = true; });
-    PS.firmarDocumento(socId, 'kit-alta', {
-      completado: true,
-      firma, dni,
-      dispositivo: 'tablet coordinador · ' + (nombre || 'coordinador'),
-      aceptados
-    });
-    toast(`Kit Alta firmado para ${s.nombre}`);
-    renderDocsAdmin();
+  // firmarKitEnTablet: abre la ficha del empleado en pestaña Firmas (el flujo real de firma
+  // debe hacerlo el propio empleado desde su móvil o el coordinador desde la ficha).
+  function firmarKitEnTablet(empId) {
+    window.openEmpleadoModal && window.openEmpleadoModal(empId);
+    setTimeout(() => {
+      const tab = document.querySelector('.ficha-tab[data-ftab="docs"]');
+      if (tab) tab.click();
+    }, 200);
   }
-
-  function verDocsSocorrista(socId) {
-    const s = PS.socorristas.find(x => x.id === socId);
-    const firmas = PS.firmasDeSocorrista(socId);
-    const kitOk = firmas['kit-alta']?.completado === true;
-    const jornadasFirmadas = Object.keys(firmas).filter(k => k.startsWith('jornada-'));
-    const msg = `Documentación de ${s.nombre}:
-- Kit Alta: ${kitOk ? '✓ Firmado el ' + new Date(firmas['kit-alta'].fecha).toLocaleDateString('es-ES') + ' desde ' + firmas['kit-alta'].dispositivo : '✗ Pendiente'}
-- Jornadas firmadas: ${jornadasFirmadas.length}
-- Pendientes de firma este mes: ${estadoDocsSocorrista(socId).jornadasPend}`;
-    alert(msg);
-  }
+  window.firmarKitEnTablet = firmarKitEnTablet;
 
   if (docsFilter) {
-    docsFilter.addEventListener('change', e => {
-      docsCurrentFilter = e.target.value;
+    docsFilter.addEventListener('change', () => {
+      docsCurrentFilter = docsFilter.value;
       renderDocsAdmin();
     });
   }
-  renderDocsAdmin();
+  setTimeout(renderDocsAdmin, 1400);
+  document.querySelectorAll('[data-section="documentacion"]').forEach(el => {
+    el.addEventListener('click', () => setTimeout(renderDocsAdmin, 200));
+  });
+  document.addEventListener('ps-session-updated', () => setTimeout(renderDocsAdmin, 500));
 
   /* ==========================================================================
      NAVEGACIÓN POR SECCIONES DEL DASHBOARD
