@@ -971,17 +971,41 @@
     tabletKitAceptados = {};
     document.getElementById('tabletKitEmpName').textContent = `Firma para: ${nombreEmp}`;
 
-    // Lista de subdocumentos con checkbox aceptar
+    // Lista de subdocumentos con texto legal completo + checkbox aceptar
     const subs = (window.PS && PS.kitAltaSubdocs) || [];
-    document.getElementById('tabletKitDocsList').innerHTML = subs.map(sub => `
-      <div style="border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#FAFBFC;">
-        <div style="font-weight:600;font-size:13px;color:#111827;">${sub.titulo}</div>
-        <div class="small text-muted" style="margin-top:2px;">${sub.norma || 'Consentimiento opcional'}</div>
-        <label style="display:flex;gap:8px;align-items:center;margin-top:8px;cursor:pointer;font-size:13px;">
-          <input type="checkbox" class="tablet-accept" data-sub="${sub.id}" ${sub.obligatorio ? 'checked' : ''} />
-          <span>${sub.obligatorio ? 'He leído y acepto (obligatorio)' : 'Doy mi consentimiento (opcional)'}</span>
-        </label>
-      </div>
+    const escapeHtml = s => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const renderTexto = txt => (txt || '').split('\n').map(l => {
+      const t = escapeHtml(l).trim();
+      if (!t) return '<div class="wizard-doc-blank"></div>';
+      if (/^[A-ZÁÉÍÓÚÑ0-9· ,\.\(\)\/]+$/.test(t) && t.length > 4 && t.length < 90) return `<div class="wizard-doc-h">${t}</div>`;
+      return `<div class="wizard-doc-p">${t}</div>`;
+    }).join('');
+    document.getElementById('tabletKitDocsList').innerHTML = subs.map((sub, i) => `
+      <details ${i === 0 ? 'open' : ''} style="border:1px solid #E5E7EB;border-radius:10px;margin-bottom:10px;background:#FAFBFC;">
+        <summary style="padding:12px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;">
+          <div style="width:24px;height:24px;background:#B91C1C;color:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${i + 1}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:13.5px;color:#111827;">${sub.titulo}</div>
+            <div class="small text-muted" style="margin-top:2px;">${sub.norma || 'Consentimiento opcional'} · <b style="color:#B91C1C;">pulsa para leer</b></div>
+          </div>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" style="color:#6B7280;flex-shrink:0;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </summary>
+        <div style="padding:0 14px 14px;">
+          ${sub.textoCompleto ? `<div class="wizard-doc-full" style="max-height:220px;">${renderTexto(sub.textoCompleto)}</div>` : `<div class="small text-muted" style="padding:8px;">${sub.resumen || ''}</div>`}
+          ${sub.esListaEpis ? `
+            <div class="wizard-doc-h" style="margin-top:10px;">EPIs a entregar</div>
+            <div class="wizard-epi-table-wrap">
+              <table class="wizard-epi-table">
+                <thead><tr><th>Equipo</th><th>Color</th><th>Modelo</th><th>Unidades</th></tr></thead>
+                <tbody>${(sub.epis || []).map(e => `<tr><td><b>${e.nombre}</b></td><td>${e.color}</td><td>${e.modelo}</td><td>${e.unidades}</td></tr>`).join('')}</tbody>
+              </table>
+            </div>` : ''}
+          <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding:10px 12px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;cursor:pointer;font-size:13px;">
+            <input type="checkbox" class="tablet-accept" data-sub="${sub.id}" ${sub.obligatorio ? 'checked' : ''} style="margin-top:3px;flex-shrink:0;" />
+            <span><b>${sub.obligatorio ? 'He leído y acepto expresamente este documento (obligatorio)' : 'Doy mi consentimiento (opcional, revocable)'}</b></span>
+          </label>
+        </div>
+      </details>
     `).join('');
 
     // Reset campos
