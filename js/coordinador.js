@@ -3613,15 +3613,22 @@
     const conf = prompt(`Escribe el nombre para confirmar: ${nombre}`);
     if ((conf || '').trim().toLowerCase() !== nombre.trim().toLowerCase()) { toast('Cancelado.'); return; }
     try {
-      // Si el usuario ELIMINADO es un socorrista con ficha empleado (extremo), avisamos
+      // Si es socorrista con ficha empleado, redirigir al flujo correcto
       if (rol === 'socorrista') {
         const { data: emp } = await window.sb.from('empleados').select('id').eq('usuario_id', id).maybeSingle();
         if (emp) { alert('Este usuario tiene ficha de empleado. Ve a Empleados → su ficha → Acciones → Eliminar permanente. Ahí se hace la limpieza en cascada correcta.'); return; }
       }
-      await window.sb.from('usuarios').delete().eq('id', id);
+      // .select() devuelve las filas realmente borradas → así detectamos si RLS bloquea
+      const { data: borrados, error } = await window.sb.from('usuarios')
+        .delete().eq('id', id).select('id');
+      if (error) throw error;
+      if (!borrados || borrados.length === 0) {
+        alert(`No se pudo borrar la fila (0 filas afectadas).\n\nProbablemente falta la política RLS 'usuarios_delete' en Supabase.\n\nEjecuta este SQL en Supabase SQL Editor y vuelve a intentar:\n\ndrop policy if exists usuarios_delete on usuarios;\ncreate policy usuarios_delete on usuarios\n  for delete using (auth_es_admin() and empresa_id = auth_empresa());`);
+        return;
+      }
       toast(`✓ ${nombre} eliminado. Recuerda borrar también la cuenta auth desde Supabase Dashboard → Auth → Users.`);
       renderEquipoBlock();
-    } catch (err) { toast('Error: ' + err.message); }
+    } catch (err) { toast('Error: ' + err.message); alert('Detalle del error:\n' + err.message); }
   };
 
   window.desactivarMiembroEquipo = async function (id, nombre) {

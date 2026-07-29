@@ -66,6 +66,8 @@ drop policy if exists usuarios_insert on usuarios;
 create policy usuarios_insert on usuarios for insert with check (auth_es_admin());
 drop policy if exists usuarios_update on usuarios;
 create policy usuarios_update on usuarios for update using (auth_es_admin() and empresa_id = auth_empresa());
+drop policy if exists usuarios_delete on usuarios;
+create policy usuarios_delete on usuarios for delete using (auth_es_admin() and empresa_id = auth_empresa());
 
 -- ---------------------------------------------------------------------------
 -- PUESTOS (todos los de la empresa pueden ver, solo admin edita)
