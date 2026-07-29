@@ -1074,18 +1074,27 @@
   }
 
   function renderDocsHeader() {
-    const firmas = misFirmas();
-    const kitOk = !!firmas['kit-alta'];
-    const jornadaPend = (PS.documentos || []).filter(d => d.grupo === 'mensual' && !firmas[d.id]).length;
-    const total = (kitOk ? 0 : 1) + jornadaPend;
-    if (docsSummary) {
-      docsSummary.textContent = total === 0
-        ? `${me.nombre} · toda la documentación al día`
-        : `${me.nombre} · ${total} documento${total>1?'s':''} pendiente${total>1?'s':''} de firmar`;
+    try {
+      const firmas = misFirmas();
+      const kitOk = !!firmas['kit-alta'];
+      const jornadaPend = (PS.documentos || []).filter(d => d.grupo === 'mensual' && !firmas[d.id]).length;
+      const total = (kitOk ? 0 : 1) + jornadaPend;
+      if (docsSummary) {
+        docsSummary.textContent = total === 0
+          ? `${me.nombre} · toda la documentación al día`
+          : `${me.nombre} · ${total} documento${total>1?'s':''} pendiente${total>1?'s':''} de firmar`;
+      }
+      if (docsPendingDot) docsPendingDot.style.display = total > 0 ? 'inline-block' : 'none';
+      if (docAltaBadge) docAltaBadge.textContent = kitOk ? 'Firmado' : 'Pendiente';
+    } catch (err) {
+      console.warn('[renderDocsHeader]', err);
+      if (docsSummary) docsSummary.textContent = `${me.nombre || 'Empleado'}`;
     }
-    if (docsPendingDot) docsPendingDot.style.display = total > 0 ? 'inline-block' : 'none';
-    if (docAltaBadge) docAltaBadge.textContent = kitOk ? 'Firmado' : 'Pendiente';
   }
+  // Fallback: si a los 3 seg sigue en "Cargando…", forzar re-render
+  setTimeout(() => {
+    if (docsSummary && docsSummary.textContent.startsWith('Cargando')) renderDocsHeader();
+  }, 3000);
 
   function docCard(opts) {
     const { titulo, subtitulo, estado, badge, cta, disabled, onClick, extra } = opts;

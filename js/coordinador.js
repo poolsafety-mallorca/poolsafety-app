@@ -3209,28 +3209,36 @@
   };
 
   // Solicitar firma Kit Alta en la app (sin email — solo notificación dentro de la app).
-  // Como el wizard bloqueante YA salta si no hay firma en BD, esta función simplemente:
-  //  - Si ya está firmado: archiva la firma anterior → volverá a saltarle el wizard.
-  //  - Si NO está firmado: no hace nada especial, ya le salta al entrar.
+  // Además de archivar la firma anterior si existe, inserta una tarea 'Firmar Kit Alta'
+  // en tabla tareas para que aparezca en tareas pendientes + campana del socorrista.
   window.enviarKitAltaParaFirmar = async function (empId, nombre) {
     try {
-      // ¿Ya está firmado?
       const { data: firmas } = await window.sb.from('firmas_documentos')
         .select('id').eq('empleado_id', empId).eq('documento_codigo', 'kit-alta').limit(1);
       const yaFirmado = firmas && firmas.length > 0;
       const msg = yaFirmado
-        ? `${nombre} ya tiene Kit Alta firmado. ¿Solicitar que lo firme de nuevo?\n\nLa firma actual se archiva y al entrar en la app le saldrá el wizard obligatorio (con todo el texto legal para leer).`
-        : `Solicitar a ${nombre} que firme el Kit Alta en su app?\n\nLa próxima vez que abra la app (con su usuario y contraseña) le saldrá el wizard bloqueante obligatorio hasta que firme. Puedes avisarle tú por WhatsApp de que entre.`;
+        ? `${nombre} ya firmó el Kit Alta. ¿Solicitar que lo firme de NUEVO?\n\n• Se archiva la firma actual.\n• Aparece tarea pendiente en su app (campana con aviso).\n• Al entrar le saldrá el wizard bloqueante con todo el texto legal.`
+        : `Solicitar a ${nombre} que firme el Kit Alta en su app?\n\n• Aparece tarea pendiente en su app (campana con aviso rojo).\n• Al entrar le sale el wizard bloqueante hasta firmar.\n\nSin enviar email — puedes avisarle por WhatsApp de que entre.`;
       if (!confirm(msg)) return;
       if (yaFirmado) {
-        // Archivar la firma actual → el wizard vuelve a salirle al entrar
         await window.sb.from('firmas_documentos')
           .update({ documento_codigo: 'kit-alta-archivada-' + Date.now() })
           .eq('id', firmas[0].id);
-        toast(`✓ ${nombre} firmará de nuevo la próxima vez que entre en la app`);
-      } else {
-        toast(`✓ ${nombre} verá el wizard obligatorio al abrir la app`);
       }
+      // Insertar tarea recordatoria (aparece en tareas socorrista + campana)
+      try {
+        // Borrar tarea previa "Firmar Kit Alta" para no duplicar
+        await window.sb.from('tareas').delete()
+          .eq('empleado_id', empId).eq('titulo', 'Firmar Kit Alta pendiente');
+        await window.sb.from('tareas').insert({
+          empleado_id: empId,
+          titulo: 'Firmar Kit Alta pendiente',
+          descripcion: 'Debes firmar tu documentación de alta antes de continuar. Al abrir la app te aparecerá el proceso obligatorio.',
+          prioridad: 'alta',
+          completada: false
+        });
+      } catch (_) {}
+      toast(`✓ ${nombre} verá tarea pendiente + wizard obligatorio al abrir la app`);
       if (window.renderFicha && fichaActualId === empId) renderFicha();
       if (window.renderEstadoEquipo) window.renderEstadoEquipo();
     } catch (err) { toast('Error: ' + err.message); }
