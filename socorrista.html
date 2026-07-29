@@ -425,6 +425,30 @@
   </button>
 </nav>
 
+<!-- ============ MODAL MENSAJE AL COORDINADOR ============ -->
+<div class="modal-backdrop" id="msgCoordModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>Mensaje al coordinador</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;">Se enviará al coordinador que esté disponible. Le aparece en su panel al instante.</p>
+      </div>
+      <button class="modal-close" onclick="closeMsgCoord()"><svg class="ic ic-16"><use href="#ic-x"/></svg></button>
+    </div>
+    <div class="field">
+      <label>Tu mensaje</label>
+      <textarea id="msgCoordText" rows="5" placeholder="p.ej. Hoy no podré llegar a mi puesto por avería del coche, ¿pueden mandar suplente?"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeMsgCoord()">Cancelar</button>
+      <button class="btn btn-primary" onclick="enviarMsgCoord()">
+        <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
+        Enviar mensaje
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ MODAL REPORTAR ============ -->
 <div class="modal-backdrop" id="reportModal">
   <div class="modal">

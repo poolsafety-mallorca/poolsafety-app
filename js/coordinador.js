@@ -700,6 +700,106 @@
   document.querySelectorAll('[data-section="horas"]').forEach(el => el.addEventListener('click', () => setTimeout(() => renderHours(document.getElementById('hourFilter')?.value || 'all'), 200)));
   document.getElementById('hourFilter')?.addEventListener('change', e => renderHours(e.target.value));
 
+  // Exportar parte diario del día actual: fichajes por puesto + alertas
+  window.exportarParteDiario = async function () {
+    if (!window.sb) { toast('Sistema no disponible'); return; }
+    toast('Generando parte diario…');
+    try {
+      const hoy = new Date();
+      const desde = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString();
+      const hasta = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1).toISOString();
+
+      const [puestosR, fichR, alertR] = await Promise.all([
+        window.sb.from('puestos').select('id, nombre, zona').eq('activo', true).order('nombre'),
+        window.sb.from('fichajes')
+          .select('empleado_id, puesto_id, tipo, hora, gps_ok, fuera_de_zona, empleados(nombre, dni)')
+          .gte('hora', desde).lt('hora', hasta).order('hora'),
+        window.sb.from('alertas')
+          .select('puesto_id, mensaje, criticidad, origen, fecha_creacion')
+          .gte('fecha_creacion', desde).lt('fecha_creacion', hasta)
+      ]);
+
+      const puestos = puestosR.data || [];
+      const fichajes = fichR.data || [];
+      const alertas = alertR.data || [];
+
+      // Agrupar fichajes por puesto (entrada + salida por par)
+      const porPuesto = {};
+      puestos.forEach(p => { porPuesto[p.id] = { puesto: p, entradas: [], salidas: [], alertas: [] }; });
+      fichajes.forEach(f => {
+        if (!porPuesto[f.puesto_id]) return;
+        if (f.tipo === 'entrada') porPuesto[f.puesto_id].entradas.push(f);
+        else if (f.tipo === 'salida') porPuesto[f.puesto_id].salidas.push(f);
+      });
+      alertas.forEach(a => {
+        if (porPuesto[a.puesto_id]) porPuesto[a.puesto_id].alertas.push(a);
+      });
+
+      const fechaStr = hoy.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const filas = [
+        ['Parte diario ' + fechaStr],
+        ['Pool Safety Des Llevant, S.L. · CIF B75828418'],
+        [],
+        ['Hotel', 'Zona', 'Socorrista', 'DNI', 'Hora entrada', 'GPS entrada', 'Hora salida', 'Alertas del día']
+      ];
+
+      let totalFichados = 0, totalVacantes = 0, totalAlertas = 0;
+      puestos.forEach(p => {
+        const s = porPuesto[p.id];
+        totalAlertas += s.alertas.length;
+        if (s.entradas.length === 0) {
+          filas.push([p.nombre, p.zona || '', '(sin fichaje hoy)', '', '', '', '', s.alertas.length]);
+          totalVacantes++;
+        } else {
+          s.entradas.forEach(ent => {
+            const emp = ent.empleados || {};
+            // Buscar salida del mismo empleado
+            const sal = s.salidas.find(x => x.empleado_id === ent.empleado_id && new Date(x.hora) > new Date(ent.hora));
+            const gpsEnt = ent.fuera_de_zona ? 'FUERA' : (ent.gps_ok ? 'OK' : '—');
+            filas.push([
+              p.nombre, p.zona || '',
+              emp.nombre || '', emp.dni || '',
+              new Date(ent.hora).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+              gpsEnt,
+              sal ? new Date(sal.hora).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '(sin salida)',
+              s.alertas.length
+            ]);
+            totalFichados++;
+          });
+        }
+      });
+
+      filas.push([]);
+      filas.push(['TOTAL', puestos.length + ' puestos', totalFichados + ' fichajes', '', '', '', '', totalAlertas + ' alertas']);
+      if (alertas.length) {
+        filas.push([]);
+        filas.push(['DETALLE DE ALERTAS']);
+        filas.push(['Hora', 'Hotel', 'Criticidad', 'Origen', 'Mensaje']);
+        alertas.forEach(a => {
+          const p = puestos.find(x => x.id === a.puesto_id) || {};
+          filas.push([
+            new Date(a.fecha_creacion).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+            p.nombre || '—',
+            a.criticidad, a.origen, a.mensaje
+          ]);
+        });
+      }
+
+      const csv = '﻿' + filas.map(r => r.map(c => {
+        const v = String(c ?? '');
+        return v.includes(';') || v.includes('"') || v.includes('\n') ? '"' + v.replace(/"/g,'""') + '"' : v;
+      }).join(';')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `PoolSafety-parte-diario-${hoy.toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast(`✓ Parte diario descargado (${totalFichados} fichajes · ${totalAlertas} alertas)`);
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
   // Descargar informe de horas del mes (CSV para Excel / gestoría)
   window.descargarInformeHoras = async function () {
     if (!window.sb) { toast('Sistema no disponible'); return; }
@@ -799,15 +899,42 @@
     document.getElementById('tareaModal').classList.add('open');
   };
   window.closeTareaModal = () => document.getElementById('tareaModal').classList.remove('open');
-  window.submitTarea = function () {
+  window.submitTarea = async function () {
     const socId = socSelect.value;
+    const tipo = document.getElementById('taskType').value;
     const title = document.getElementById('taskTitle').value.trim();
-    if (!title) { toast('Escribe un título antes de enviar'); return; }
-    const soc = PS.socorristas.find(s => s.id === socId);
-    closeTareaModal();
-    document.getElementById('taskTitle').value = '';
-    document.getElementById('taskDesc').value = '';
-    toast(`Enviado a ${soc.nombre}`);
+    const desc = document.getElementById('taskDesc').value.trim();
+    if (!socId) { toast('Selecciona un socorrista'); return; }
+    if (!title) { toast('Escribe un título o mensaje antes de enviar'); return; }
+    const psSes = window.PS_SESSION || {};
+    try {
+      if (tipo === 'nota') {
+        // NOTA informativa → tabla notas
+        const { error } = await window.sb.from('notas').insert({
+          empleado_id: socId,
+          autor_id: psSes.userId,
+          autor_nombre: psSes.nombre || psSes.email || 'Coordinador',
+          mensaje: title + (desc ? '\n\n' + desc : '')
+        });
+        if (error) throw error;
+      } else {
+        // TAREA con checkbox → tabla tareas
+        const { error } = await window.sb.from('tareas').insert({
+          empleado_id: socId,
+          asignada_por: psSes.userId,
+          titulo: title,
+          descripcion: desc || null,
+          prioridad: 'media',
+          completada: false
+        });
+        if (error) throw error;
+      }
+      closeTareaModal();
+      document.getElementById('taskTitle').value = '';
+      document.getElementById('taskDesc').value = '';
+      const nombreSoc = socSelect.options[socSelect.selectedIndex]?.text.split(' — ')[0] || 'socorrista';
+      toast(`✓ ${tipo === 'nota' ? 'Nota' : 'Tarea'} enviada a ${nombreSoc}`);
+    } catch (err) { toast('Error: ' + err.message); }
   };
 
   /* ---------- Toast ---------- */

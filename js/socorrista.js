@@ -1062,6 +1062,35 @@
   setTimeout(updateReportOptions, 1500);
   document.addEventListener('ps-session-updated', () => setTimeout(updateReportOptions, 1000));
 
+  /* ---------- Mensaje al coordinador (socorrista → alerta tipo 'otro') ---------- */
+  window.openMsgCoord = function () {
+    document.getElementById('msgCoordText').value = '';
+    document.getElementById('msgCoordModal').classList.add('open');
+  };
+  window.closeMsgCoord = () => document.getElementById('msgCoordModal').classList.remove('open');
+
+  window.enviarMsgCoord = async function () {
+    const txt = document.getElementById('msgCoordText').value.trim();
+    if (!txt) { toast('Escribe un mensaje'); return; }
+    const empId = empleadoReal?.id;
+    if (!empId) { toast('Aún no tienes ficha creada'); return; }
+    const puestoId = puestoReal?.id || empleadoReal?.puesto_id || null;
+    try {
+      const { error } = await window.sb.from('alertas').insert({
+        puesto_id: puestoId,
+        empleado_id: empId,
+        tipo: 'otro',
+        origen: 'socorrista',
+        criticidad: 'media',
+        mensaje: `[Mensaje de ${empleadoReal?.nombre || 'socorrista'}] ${txt}`,
+        resuelto: false
+      });
+      if (error) throw error;
+      closeMsgCoord();
+      toast('✓ Mensaje enviado al coordinador');
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
   /* ---------- Modal reportar (guarda alerta REAL en BD + notifica coord) ---------- */
   window.openReportModal = () => {
     const modal = document.getElementById('reportModal');
@@ -1918,18 +1947,24 @@
         cont.innerHTML = '<div class="li"><div class="li-body"><div class="li-title text-muted">Ningún coordinador disponible ahora mismo</div><div class="li-sub">Vuelve a intentarlo más tarde</div></div></div>';
         return;
       }
-      cont.innerHTML = rows.map(u => {
+      // Botón general "Enviar mensaje a coordinador" arriba de la lista
+      const btnMsg = `<button class="btn btn-primary btn-block" onclick="openMsgCoord()" style="margin-bottom:10px;">
+        <svg class="ic ic-16"><use href="#ic-message"/></svg>
+        Enviar mensaje al coordinador
+      </button>`;
+      cont.innerHTML = btnMsg + rows.map(u => {
         const rolLabel = u.rol === 'dueno' ? 'Administrador' : 'Coordinador';
         const iniciales = (u.nombre || u.email).split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase();
         const tel = u.telefono ? u.telefono.replace(/\s/g,'') : '';
         return `
-        <div class="li interactive" onclick="window.location.href='mailto:${u.email}'">
+        <div class="li">
           <div class="li-icon" style="background:#DCFCE7;color:#166534;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;">${iniciales}</div>
           <div class="li-body">
             <div class="li-title">${u.nombre || u.email.split('@')[0]} · <span class="text-muted" style="font-weight:400;">${rolLabel}</span></div>
             <div class="li-sub">${u.email}${tel ? ' · ' + u.telefono : ''}</div>
           </div>
-          ${tel ? `<a href="tel:${tel}" onclick="event.stopPropagation()" class="btn-icon" title="Llamar" style="text-decoration:none;"><svg class="ic ic-16"><use href="#ic-phone"/></svg></a>` : `<svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>`}
+          ${tel ? `<a href="tel:${tel}" class="btn-icon" title="Llamar" style="text-decoration:none;"><svg class="ic ic-16"><use href="#ic-phone"/></svg></a>` : ''}
+          <a href="mailto:${u.email}" class="btn-icon" title="Email" style="text-decoration:none;margin-left:4px;"><svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg></a>
         </div>`;
       }).join('');
     } catch (err) {
