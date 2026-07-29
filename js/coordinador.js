@@ -210,6 +210,13 @@
     currentSearch = e.target.value;
     renderPostsFromCache();
   });
+  // Delegated click listener: pulsar cualquier tarjeta de puesto abre su ficha
+  document.getElementById('postsGrid')?.addEventListener('click', (e) => {
+    const card = e.target.closest('.post[data-post]');
+    if (!card) return;
+    const puestoId = card.dataset.post;
+    if (puestoId) window.openPostModal(puestoId);
+  });
   renderPosts();
   // Refrescar cada 25s + al recuperar foco. Realtime subscription para entrada/salida
   // inmediatas cuando el socorrista ficha desde el móvil.
