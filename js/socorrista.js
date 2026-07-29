@@ -1062,26 +1062,36 @@
   setTimeout(updateReportOptions, 1500);
   document.addEventListener('ps-session-updated', () => setTimeout(updateReportOptions, 1000));
 
-  /* ---------- Modal reportar (guarda alerta REAL en BD) ---------- */
+  /* ---------- Modal reportar (guarda alerta REAL en BD + notifica coord) ---------- */
   window.openReportModal = () => {
-    updateReportOptions();
-    document.getElementById('reportModal').classList.add('open');
+    const modal = document.getElementById('reportModal');
+    if (!modal) { toast('Modal no disponible'); return; }
+    // 1) Abrir modal INMEDIATO
+    modal.classList.add('open');
+    // 2) Cargar items después (async — que no bloquee la apertura)
+    const sel = document.getElementById('reportItem');
+    if (sel) sel.innerHTML = '<option value="">Cargando material del hotel…</option>';
+    setTimeout(() => updateReportOptions(), 50);
   };
   window.closeReportModal = () => document.getElementById('reportModal').classList.remove('open');
 
   window.submitReport = async function () {
     const sel = document.getElementById('reportItem');
-    const itemId = sel.value;
+    const itemId = sel && sel.value;
     const qty = parseInt(document.getElementById('reportQty').value) || 1;
     const notas = document.getElementById('reportNotes').value.trim();
-    const nombre = sel.options[sel.selectedIndex]?.dataset.nombre || 'material';
+    const nombre = sel && sel.options[sel.selectedIndex]?.dataset.nombre || 'material';
     const puestoId = puestoReal?.id || empleadoReal?.puesto_id;
     const empId = empleadoReal?.id;
-    if (!itemId) { toast('Selecciona el material'); return; }
-    if (!puestoId || !empId) { toast('Aún no tienes puesto asignado'); return; }
+    if (!itemId) { toast('Selecciona el material del desplegable'); return; }
+    if (!puestoId || !empId) { toast('Aún no tienes puesto asignado. Contacta con el coordinador.'); return; }
+
+    const btn = document.querySelector('#reportModal .btn-primary');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-signal"/></svg> Enviando…'; }
+
     try {
       const criticidad = qty >= 5 ? 'alta' : 'media';
-      const mensaje = `Falta ${qty}× ${nombre}${notas ? ' — ' + notas : ''}`;
+      const mensaje = `Falta ${qty}× ${nombre}${notas ? ' — ' + notas : ''}${puestoReal?.nombre ? ' (' + puestoReal.nombre + ')' : ''}`;
       const { error } = await window.sb.from('alertas').insert({
         puesto_id: puestoId,
         empleado_id: empId,
@@ -1095,10 +1105,14 @@
       });
       if (error) throw error;
       closeReportModal();
-      toast(`✓ Alerta enviada al coordinador: falta ${qty}× ${nombre}`);
+      toast(`✓ Alerta enviada. Falta ${qty}× ${nombre}. El coordinador la verá en su panel.`);
       document.getElementById('reportNotes').value = '';
       document.getElementById('reportQty').value = 1;
-    } catch (err) { toast('Error: ' + err.message); }
+    } catch (err) {
+      toast('Error: ' + err.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg> Enviar alerta'; }
+    }
   };
 
   /* ---------- Toast ---------- */
