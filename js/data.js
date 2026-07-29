@@ -532,3 +532,4 @@ Con la firma de este documento reconozco haber recibido el/los equipo/s de prote
     socorristaByPuesto, puestoById, ahora, fechaLarga
   };
 })();
+window.PS = PS;
