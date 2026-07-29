@@ -1543,10 +1543,21 @@
   renderDocsHeader();
   renderDocsLists();
 
-  // Al primer login (o si aún no ha firmado kit-alta): mostrar wizard bloqueante
-  if (!PS.haFirmadoKitAlta(me.id)) {
-    setTimeout(() => openKitAltaWizard(), 700);
+  // Al primer login (o si aún no ha firmado kit-alta en BD): mostrar wizard bloqueante.
+  // Comprueba en la tabla real firmas_documentos, NO en el mock.
+  async function comprobarKitAltaObligatorio() {
+    if (!empleadoReal || !window.sb) return;
+    try {
+      const { data } = await window.sb.from('firmas_documentos')
+        .select('id').eq('empleado_id', empleadoReal.id)
+        .eq('documento_codigo', 'kit-alta').limit(1);
+      if (!data || data.length === 0) {
+        setTimeout(() => openKitAltaWizard(), 700);
+      }
+    } catch (_) {}
   }
+  document.addEventListener('ps-session-updated', () => setTimeout(comprobarKitAltaObligatorio, 1200));
+  setTimeout(comprobarKitAltaObligatorio, 1800);
 
   /* ==========================================================================
      TITULACIONES Y DOCUMENTACIÓN LABORAL (DNI, SVB, DEA, PRL, contrato…)

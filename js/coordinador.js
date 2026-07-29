@@ -3208,17 +3208,25 @@
     } catch (err) { toast('Error: ' + err.message); }
   };
 
-  // Envía email al empleado recordándole que firme el Kit Alta.
-  // Reutiliza resetPasswordForEmail — al pulsar el link entra y le sale el wizard.
+  // Envía email al empleado recordándole que firme el Kit Alta en la app.
+  // El email lleva un link → al pulsarlo entra a la app → detecta que no hay firma
+  // en BD → le abre wizard obligatorio (con texto completo de los documentos) →
+  // firma → puede descargar el PDF firmado.
   window.enviarKitAltaParaFirmar = async function (empId, nombre) {
     try {
       const { data: e, error } = await window.sb.from('empleados')
         .select('email').eq('id', empId).single();
       if (error) throw error;
-      if (!e.email) { toast('Este empleado no tiene email en su ficha'); return; }
-      if (!confirm(`Enviar email a ${nombre} (${e.email}) recordándole firmar el Kit Alta?\n\nAl abrir el link entra en la app y le aparece el wizard obligatorio.`)) return;
+      if (!e.email) { toast('Este empleado no tiene email en su ficha. Añádelo primero en pestaña Datos.'); return; }
+      const msg = `Enviar email a ${nombre} (${e.email})?\n\n` +
+        `• Le llega un enlace desde info@poolsafety.es.\n` +
+        `• Al pulsarlo entra directo a la app.\n` +
+        `• La app detecta que no ha firmado el Kit Alta y le abre el wizard obligatorio con TODO el texto para leer.\n` +
+        `• Firma → puede descargar el PDF firmado.\n\n` +
+        `Útil si no le salió al entrar por primera vez o no llegó a firmarlo.`;
+      if (!confirm(msg)) return;
       const r = await window.enviarAccesoEmailRaw(e.email);
-      if (r.ok) toast(`✓ Enlace enviado a ${e.email}`);
+      if (r.ok) toast(`✓ Enlace enviado a ${e.email} · el empleado firmará en su móvil`);
       else toast('Error: ' + r.err);
     } catch (err) { toast('Error: ' + err.message); }
   };
@@ -3646,7 +3654,7 @@
         if (r.rol === 'socorrista') {
           await window.sb.from('empleados').insert({
             usuario_id: nuevoId, empresa_id: psSes.empresa_id,
-            nombre: r.nombre, email: r.email, estado: 'alta-pendiente'
+            nombre: r.nombre, email: r.email, estado: 'activo'
           });
         }
 
