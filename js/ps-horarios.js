@@ -66,7 +66,7 @@
   async function listByPuesto(puestoId) {
     const { data, error } = await sb()
       .from('horarios')
-      .select('id, empleado_id, puesto_id, hora_inicio, duracion, dias, activo, empleados(id, nombre, es_correturnos)')
+      .select('id, empleado_id, puesto_id, hora_inicio, hora_fin, duracion, es_partido, hora_inicio_2, hora_fin_2, dias, activo, empleados(id, nombre, es_correturnos)')
       .eq('puesto_id', puestoId)
       .eq('activo', true)
       .order('hora_inicio', { ascending: true });
@@ -77,12 +77,22 @@
   async function listByEmpleado(empleadoId) {
     const { data, error } = await sb()
       .from('horarios')
-      .select('id, empleado_id, puesto_id, hora_inicio, duracion, dias, activo, puestos(id, nombre, zona)')
+      .select('id, empleado_id, puesto_id, hora_inicio, hora_fin, duracion, es_partido, hora_inicio_2, hora_fin_2, dias, activo, puestos(id, nombre, zona)')
       .eq('empleado_id', empleadoId)
       .eq('activo', true)
       .order('hora_inicio', { ascending: true });
     if (error) { console.warn('PSHor listByEmpleado:', error.message); return []; }
     return data || [];
+  }
+
+  // Formato bonito para tabla: "10:00-14:30 · 16:00-20:30" o "09:00-20:30"
+  function horarioLabel(r) {
+    const hi = toHHMM(r.hora_inicio);
+    const hf = r.hora_fin ? toHHMM(r.hora_fin) : horaFin(r.hora_inicio, r.duracion);
+    if (r.es_partido && r.hora_inicio_2 && r.hora_fin_2) {
+      return `${hi}–${hf} · ${toHHMM(r.hora_inicio_2)}–${toHHMM(r.hora_fin_2)}`;
+    }
+    return `${hi}–${hf}`;
   }
 
   async function listEmpleadosActivos() {
@@ -105,11 +115,15 @@
     return data || [];
   }
 
-  async function crear({ empleado_id, puesto_id, hora_inicio, duracion, dias }) {
+  async function crear({ empleado_id, puesto_id, hora_inicio, hora_fin, duracion, dias, es_partido, hora_inicio_2, hora_fin_2 }) {
     const payload = {
       empleado_id, puesto_id,
       hora_inicio: toHHMM(hora_inicio),
+      hora_fin: hora_fin ? toHHMM(hora_fin) : null,
       duracion: parseInt(duracion) || 8,
+      es_partido: !!es_partido,
+      hora_inicio_2: es_partido && hora_inicio_2 ? toHHMM(hora_inicio_2) : null,
+      hora_fin_2:    es_partido && hora_fin_2    ? toHHMM(hora_fin_2)    : null,
       dias: serializeDias(dias),
       activo: true
     };
@@ -121,6 +135,10 @@
   async function actualizar(id, patch) {
     const clean = { ...patch };
     if (clean.hora_inicio) clean.hora_inicio = toHHMM(clean.hora_inicio);
+    if (clean.hora_fin) clean.hora_fin = toHHMM(clean.hora_fin);
+    if ('es_partido' in clean) clean.es_partido = !!clean.es_partido;
+    if (clean.hora_inicio_2) clean.hora_inicio_2 = toHHMM(clean.hora_inicio_2);
+    if (clean.hora_fin_2)    clean.hora_fin_2    = toHHMM(clean.hora_fin_2);
     if (clean.dias) clean.dias = serializeDias(clean.dias);
     const { data, error } = await sb().from('horarios').update(clean).eq('id', id).select().single();
     if (error) throw error;
@@ -199,15 +217,14 @@
         <div class="hor-table-wrap">
           <table class="hor-table">
             <thead>
-              <tr><th>Servicio</th><th>Socorrista</th><th>Entrada</th><th>Salida</th><th>Días</th><th></th></tr>
+              <tr><th>Servicio</th><th>Socorrista</th><th>Horario</th><th>Días</th><th></th></tr>
             </thead>
             <tbody>
               ${rows.map((r, i) => `
                 <tr data-id="${r.id}">
                   <td><span class="hor-badge">Servicio ${i + 1}</span></td>
                   <td>${(r.empleados && r.empleados.nombre) || '—'}${r.empleados && r.empleados.es_correturnos ? ' <span class="hor-badge" style="background:#FEF3C7;color:#92400E;">Correturnos</span>' : ''}</td>
-                  <td>${toHHMM(r.hora_inicio)}</td>
-                  <td>${horaFin(r.hora_inicio, r.duracion)}</td>
+                  <td><b>${horarioLabel(r)}</b>${r.es_partido ? ' <span class="hor-badge" style="background:#DBEAFE;color:#1D4ED8;">partido</span>' : ''}</td>
                   <td>${diasCortos(parseDias(r.dias))}</td>
                   <td class="hor-actions">
                     <button class="icon-btn-mini" data-edit title="Editar"><svg class="ic ic-14"><use href="#ic-pen"/></svg></button>
@@ -275,14 +292,13 @@
         <div class="hor-table-wrap">
           <table class="hor-table">
             <thead>
-              <tr><th>Puesto</th><th>Entrada</th><th>Salida</th><th>Días</th><th></th></tr>
+              <tr><th>Puesto</th><th>Horario</th><th>Días</th><th></th></tr>
             </thead>
             <tbody>
               ${rows.map(r => `
                 <tr data-id="${r.id}">
                   <td>${(r.puestos && r.puestos.nombre) || '—'}<div class="hor-td-sub">${(r.puestos && r.puestos.zona) || ''}</div></td>
-                  <td>${toHHMM(r.hora_inicio)}</td>
-                  <td>${horaFin(r.hora_inicio, r.duracion)}</td>
+                  <td><b>${horarioLabel(r)}</b>${r.es_partido ? ' <span class="hor-badge" style="background:#DBEAFE;color:#1D4ED8;">partido</span>' : ''}</td>
                   <td>${diasCortos(parseDias(r.dias))}</td>
                   <td class="hor-actions">
                     <button class="icon-btn-mini" data-edit title="Editar"><svg class="ic ic-14"><use href="#ic-pen"/></svg></button>
@@ -335,7 +351,10 @@
     const isEmpleadoView = !!ctx.empleado_id; // estamos en ficha empleado → seleccionar puesto
     const row = ctx.row || null;
     const hi = row ? toHHMM(row.hora_inicio) : '10:00';
-    const hf = row ? horaFin(row.hora_inicio, row.duracion) : '18:00';
+    const hf = row ? (row.hora_fin ? toHHMM(row.hora_fin) : horaFin(row.hora_inicio, row.duracion)) : '18:00';
+    const esPartido = row ? !!row.es_partido : false;
+    const hi2 = row && row.hora_inicio_2 ? toHHMM(row.hora_inicio_2) : '16:00';
+    const hf2 = row && row.hora_fin_2 ? toHHMM(row.hora_fin_2) : '20:30';
     const diasSel = row ? parseDias(row.dias) : ['L','M','X','J','V'];
 
     const formTitle = isPuestoView
@@ -366,14 +385,36 @@
             </div>
           ` : ''}
           <div class="hor-field">
-            <label>Entrada</label>
+            <label>${esPartido ? 'Entrada mañana' : 'Entrada'}</label>
             <input type="time" id="hor-ini" value="${hi}" />
           </div>
           <div class="hor-field">
-            <label>Salida</label>
+            <label>${esPartido ? 'Salida mañana' : 'Salida'}</label>
             <input type="time" id="hor-fin" value="${hf}" />
           </div>
         </div>
+
+        <div class="hor-field">
+          <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;font-weight:400;">
+            <input type="checkbox" id="hor-partido" ${esPartido ? 'checked' : ''} style="margin-top:3px;" />
+            <span>
+              <b>Turno partido (mañana + tarde)</b>
+              <div class="small text-muted">Marca esta casilla si el socorrista trabaja en dos tramos con un descanso intermedio (p. ej. 10:00–14:30 y 16:00–20:30).</div>
+            </span>
+          </label>
+        </div>
+
+        <div id="hor-tarde-block" style="display:${esPartido ? 'grid' : 'none'};grid-template-columns:100px 100px;gap:10px;margin-bottom:10px;">
+          <div class="hor-field">
+            <label>Entrada tarde</label>
+            <input type="time" id="hor-ini-2" value="${hi2}" />
+          </div>
+          <div class="hor-field">
+            <label>Salida tarde</label>
+            <input type="time" id="hor-fin-2" value="${hf2}" />
+          </div>
+        </div>
+
         <div class="hor-field">
           <label>Días de trabajo</label>
           ${chipsDias(diasSel)}
@@ -390,16 +431,53 @@
 
     attachDiasShortcuts(slotEl);
 
+    // Toggle turno partido: muestra/oculta bloque tarde y renombra labels
+    const chkPartido = slotEl.querySelector('#hor-partido');
+    const tardeBlock = slotEl.querySelector('#hor-tarde-block');
+    const lblIni = slotEl.querySelector('label[for="hor-ini"], .hor-field:has(#hor-ini) label');
+    const lblFin = slotEl.querySelector('.hor-field:has(#hor-fin) label');
+    if (chkPartido) {
+      chkPartido.addEventListener('change', () => {
+        const on = chkPartido.checked;
+        if (tardeBlock) tardeBlock.style.display = on ? 'grid' : 'none';
+        // Renombrar labels de tramo 1
+        const l1 = slotEl.querySelectorAll('.hor-form-grid .hor-field label');
+        // Solo el primer/segundo (los que están junto a los inputs time)
+        // Alternativa robusta: buscar por id
+        const inp1 = slotEl.querySelector('#hor-ini');
+        const inp2 = slotEl.querySelector('#hor-fin');
+        if (inp1 && inp1.previousElementSibling && inp1.previousElementSibling.tagName === 'LABEL') {
+          inp1.previousElementSibling.textContent = on ? 'Entrada mañana' : 'Entrada';
+        }
+        if (inp2 && inp2.previousElementSibling && inp2.previousElementSibling.tagName === 'LABEL') {
+          inp2.previousElementSibling.textContent = on ? 'Salida mañana' : 'Salida';
+        }
+      });
+    }
+
     slotEl.querySelector('[data-cancel]').addEventListener('click', () => { slotEl.innerHTML = ''; });
     slotEl.querySelector('[data-save]').addEventListener('click', async () => {
       const ini = slotEl.querySelector('#hor-ini').value;
       const fin = slotEl.querySelector('#hor-fin').value;
+      const partido = slotEl.querySelector('#hor-partido')?.checked || false;
+      const ini2 = partido ? slotEl.querySelector('#hor-ini-2').value : null;
+      const fin2 = partido ? slotEl.querySelector('#hor-fin-2').value : null;
       const dias = leerDiasFromForm(slotEl);
       if (!ini || !fin) { alert('Introduce hora de entrada y salida.'); return; }
+      if (partido && (!ini2 || !fin2)) { alert('Introduce las horas del segundo tramo (tarde).'); return; }
       if (!dias.length) { alert('Selecciona al menos un día.'); return; }
+
+      // Duracion total en horas (para compatibilidad con campo duracion int)
+      let horas = duracionEntre(ini, fin);
+      if (partido) horas += duracionEntre(ini2, fin2);
+
       const payload = {
         hora_inicio: ini,
-        duracion: duracionEntre(ini, fin),
+        hora_fin: fin,
+        duracion: horas,
+        es_partido: partido,
+        hora_inicio_2: partido ? ini2 : null,
+        hora_fin_2:    partido ? fin2 : null,
         dias
       };
       if (isPuestoView) {

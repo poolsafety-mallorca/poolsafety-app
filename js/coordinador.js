@@ -1878,7 +1878,15 @@
               ${kitFirma?.firma_imagen ? `<img src="${kitFirma.firma_imagen}" class="firma-imagen" style="max-width:220px;margin-top:8px;" alt="Firma"/>` : ''}
               ${kitFirma?.ubicacion_lat ? `<div class="small text-muted mt-1">📍 <a href="https://www.google.com/maps?q=${kitFirma.ubicacion_lat},${kitFirma.ubicacion_lng}" target="_blank">${(+kitFirma.ubicacion_lat).toFixed(4)}, ${(+kitFirma.ubicacion_lng).toFixed(4)}</a></div>` : ''}
             </div>
-            ${!kitFirma ? `<button class="btn btn-primary btn-sm" onclick="firmarKitEnTablet('${e.id}', '${(e.nombre||'').replace(/'/g,'\\\'')}')"><svg class="ic ic-14"><use href="#ic-pen"/></svg> Firmar en tablet</button>` : ''}
+            ${!kitFirma ? `
+              <div class="row gap-2" style="margin-top:8px;flex-wrap:wrap;">
+                <button class="btn btn-primary btn-sm" onclick="firmarKitEnTablet('${e.id}', '${(e.nombre||'').replace(/'/g,'\\\'')}')">
+                  <svg class="ic ic-14"><use href="#ic-pen"/></svg> Firmar en tablet
+                </button>
+                <button class="btn btn-outline btn-sm" onclick="enviarKitAltaParaFirmar('${e.id}','${(e.nombre||'').replace(/'/g,'\\\'')}')" ${!e.email ? 'disabled title="El empleado no tiene email en su ficha"' : ''}>
+                  <svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg> Enviar para firmar (por email)
+                </button>
+              </div>` : ''}
           </div>
           ${kitFirma ? `
             <div class="row gap-2 mt-3" style="justify-content:flex-end;flex-wrap:wrap;">
@@ -1891,7 +1899,9 @@
                 Descargar PDF
               </button>
               ${kitFirma.archivo_pdf_url ? `<a class="btn btn-outline btn-sm" href="${kitFirma.archivo_pdf_url}" target="_blank">📎 Ver PDF guardado</a>` : ''}
-            </div>` : ''}
+            </div>
+            <div class="small text-muted mt-2" style="text-align:right;">"Reenviar" archiva la firma actual y obliga al empleado a firmar de nuevo cuando entre en la app.</div>
+            ` : ''}
         </div>
         ${jornadas.map(j => {
           const c = j.campos_json || {};
@@ -3152,6 +3162,21 @@
       await window.PSPdf.descargar(empData, firma, subdocs, nombreArchivo);
       toast('✓ PDF descargado');
       try { await window.PSPdf.generarYSubir(empData, firma, subdocs); } catch(e) { /* ignore */ }
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  // Envía email al empleado recordándole que firme el Kit Alta.
+  // Reutiliza resetPasswordForEmail — al pulsar el link entra y le sale el wizard.
+  window.enviarKitAltaParaFirmar = async function (empId, nombre) {
+    try {
+      const { data: e, error } = await window.sb.from('empleados')
+        .select('email').eq('id', empId).single();
+      if (error) throw error;
+      if (!e.email) { toast('Este empleado no tiene email en su ficha'); return; }
+      if (!confirm(`Enviar email a ${nombre} (${e.email}) recordándole firmar el Kit Alta?\n\nAl abrir el link entra en la app y le aparece el wizard obligatorio.`)) return;
+      const r = await window.enviarAccesoEmailRaw(e.email);
+      if (r.ok) toast(`✓ Enlace enviado a ${e.email}`);
+      else toast('Error: ' + r.err);
     } catch (err) { toast('Error: ' + err.message); }
   };
 

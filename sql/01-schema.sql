@@ -110,7 +110,11 @@ create table if not exists horarios (
   empleado_id uuid not null references empleados(id) on delete cascade,
   puesto_id uuid not null references puestos(id) on delete cascade,
   hora_inicio time not null,
+  hora_fin time,
   duracion int not null default 8,
+  es_partido boolean default false,
+  hora_inicio_2 time,
+  hora_fin_2 time,
   dias text default 'Lun-Vie',
   fecha_desde date default current_date,
   fecha_hasta date,
@@ -119,6 +123,11 @@ create table if not exists horarios (
   created_at timestamptz default now()
 );
 create index if not exists idx_horarios_empleado on horarios(empleado_id, activo);
+-- Migración idempotente para BDs existentes:
+alter table horarios add column if not exists hora_fin time;
+alter table horarios add column if not exists es_partido boolean default false;
+alter table horarios add column if not exists hora_inicio_2 time;
+alter table horarios add column if not exists hora_fin_2 time;
 
 -- ---------------------------------------------------------------------------
 -- 6. FICHAJES (entradas / salidas con GPS)

@@ -1361,9 +1361,49 @@
       </div>
       ${f.campos?.emailPersonal ? `<div class="doc-signed-meta"><b>Email:</b> ${f.campos.emailPersonal} · <b>Tel:</b> ${f.campos.telefonoPersonal}</div>` : ''}
     `;
-    document.getElementById('docViewActions').innerHTML = `<button class="btn btn-outline" onclick="closeDocView()">Cerrar</button>`;
+    const firmaId = f.idBD;
+    document.getElementById('docViewActions').innerHTML = `
+      <button class="btn btn-outline" onclick="closeDocView()">Cerrar</button>
+      ${firmaId ? `<button class="btn btn-primary" onclick="descargarMiKitAlta('${firmaId}')">
+        <svg class="ic ic-16"><use href="#ic-download"/></svg> Descargar PDF firmado
+      </button>` : ''}`;
     document.getElementById('docViewModal').classList.add('open');
   }
+
+  window.descargarMiKitAlta = async function (firmaId) {
+    if (!window.PSPdf || !window.sb) { toast('Sistema no disponible'); return; }
+    toast('Generando PDF…');
+    try {
+      const { data: firma, error } = await window.sb.from('firmas_documentos').select('*').eq('id', firmaId).single();
+      if (error) throw error;
+      const empData = {
+        nombre: empleadoReal?.nombre || me.nombre,
+        dni: empleadoReal?.dni || firma.dni,
+        email: empleadoReal?.email || null,
+        telefono: empleadoReal?.telefono || null,
+        puesto_nombre: puestoReal?.nombre || null
+      };
+      const subdocs = (window.PS && PS.kitAltaSubdocs) || [];
+      await window.PSPdf.descargar(empData, firma, subdocs, `PoolSafety-KitAlta-${(empData.nombre||'yo').replace(/\s+/g,'_')}.pdf`);
+      toast('✓ PDF descargado');
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  window.descargarMiJornada = async function (firmaId, oficial) {
+    if (!window.PSPdf || !window.sb) { toast('Sistema no disponible'); return; }
+    toast('Generando PDF…');
+    try {
+      const { data: firma, error } = await window.sb.from('firmas_documentos').select('*').eq('id', firmaId).single();
+      if (error) throw error;
+      const empData = {
+        nombre: empleadoReal?.nombre || me.nombre,
+        dni: empleadoReal?.dni || firma.dni,
+        puesto_nombre: puestoReal?.nombre || null
+      };
+      await window.PSPdf.descargar(empData, firma, [], `PoolSafety-Jornada-${firma.documento_codigo}.pdf`);
+      toast('✓ PDF descargado');
+    } catch (err) { toast('Error: ' + err.message); }
+  };
 
   async function openJornadaSign(d) {
     document.getElementById('docViewTitle').textContent = d.titulo;
