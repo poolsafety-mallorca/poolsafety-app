@@ -2017,6 +2017,16 @@
           <button class="btn btn-primary btn-sm" onclick="enviarResetPassword()" ${!e.email ? 'disabled' : ''}>Enviar</button>
         </div>
 
+        ${e.estado === 'alta-pendiente' ? `
+          <div class="ficha-action-row ok">
+            <div class="icon" style="background:#DCFCE7;color:#166534;"><svg class="ic ic-18"><use href="#ic-check-circle"/></svg></div>
+            <div class="ficha-action-body">
+              <div class="ficha-action-title">Alta pendiente de confirmar</div>
+              <div class="ficha-action-sub">Este empleado se creó pero aún NO está formalmente dado de alta. Pulsa para activarlo y que pueda fichar.</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="confirmarAlta()">Dar de alta</button>
+          </div>` : ''}
+
         ${!esAdmin ? `
           <div class="ficha-action-row" style="opacity:.7;">
             <div class="icon" style="background:var(--ink-100,#E5E7EB);color:var(--ink-500,#6B7280);"><svg class="ic ic-18"><use href="#ic-alert"/></svg></div>
@@ -2130,6 +2140,37 @@
     }
     return true;
   }
+
+  // 0) DAR DE ALTA · confirma un socorrista pendiente → activo. Admin + coord.
+  window.confirmarAlta = async function () {
+    const e = empleadoData(fichaActualId);
+    if (!confirm(`¿Dar de alta a ${e.nombre}?\n\nPasará a estado ACTIVO y podrá fichar.`)) return;
+    try {
+      await actualizarEmpleado(fichaActualId, { estado: 'activo' });
+      if (e.usuarioId) await window.sb.from('usuarios').update({ activo: true }).eq('id', e.usuarioId);
+      await cargarEmpleadosDB();
+      renderFicha();
+      if (window.renderEstadoEquipo) window.renderEstadoEquipo();
+      toast(`✓ ${e.nombre} dado de alta y activo`);
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  // Botón masivo: dar de alta a TODOS los que estén en alta-pendiente
+  window.darDeAltaMasivo = async function () {
+    if (!confirm('¿Dar de alta de golpe a TODOS los socorristas en estado "alta-pendiente"?\n\nPasarán a activos y podrán fichar.')) return;
+    try {
+      const { data: pendientes } = await window.sb.from('empleados')
+        .select('id, usuario_id').eq('estado', 'alta-pendiente');
+      if (!pendientes || pendientes.length === 0) { toast('Ninguno en alta-pendiente'); return; }
+      for (const p of pendientes) {
+        await window.sb.from('empleados').update({ estado: 'activo' }).eq('id', p.id);
+        if (p.usuario_id) await window.sb.from('usuarios').update({ activo: true }).eq('id', p.usuario_id);
+      }
+      await cargarEmpleadosDB();
+      if (window.renderEstadoEquipo) window.renderEstadoEquipo();
+      toast(`✓ ${pendientes.length} socorristas dados de alta`);
+    } catch (err) { toast('Error: ' + err.message); }
+  };
 
   // 1) BAJA · corta acceso app, sin finiquito
   window.darDeBaja = async function () {
@@ -2357,7 +2398,9 @@
       });
       if (usrErr) throw usrErr;
 
-      // 3. Si es socorrista, crear también la ficha empleado
+      // 3. Si es socorrista, crear también la ficha empleado (estado 'activo' directamente
+      //    — el admin ya lo está dando de alta al crearlo. 'alta-pendiente' solo aplica en
+      //    imports masivos preparatorios).
       if (rol === 'socorrista') {
         const puestoId = document.getElementById('nePuesto').value || null;
         const fechaAlta = document.getElementById('neFechaAlta').value || new Date().toISOString().slice(0,10);
@@ -2371,7 +2414,7 @@
           fecha_alta: fechaAlta,
           tipo_contrato: contrato,
           es_correturnos: esCorr,
-          estado: 'alta-pendiente'
+          estado: 'activo'
         });
         if (empErr) console.warn('No se pudo crear ficha empleado:', empErr.message);
       }
