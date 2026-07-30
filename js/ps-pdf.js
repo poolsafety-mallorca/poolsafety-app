@@ -332,11 +332,7 @@ window.PSPdf = (function () {
     y += 5;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
-    doc.text('DESGLOSE SEMANAL DE HORAS TRABAJADAS', 15, y); y += 6;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.text('Regla: máx 40 h/sem firmadas por el trabajador. Las horas complementarias quedan a disposición de administración.', 15, y);
-    y += 6;
+    doc.text('DESGLOSE SEMANAL DE HORAS TRABAJADAS', 15, y); y += 8;
 
     if (semanas.length === 0) {
       doc.setFont('helvetica', 'italic');
