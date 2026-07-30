@@ -3542,17 +3542,37 @@
   };
 
   window.reenviarKitAlta = async function (firmaId, nombre) {
-    if (!confirm(`¿Reenviar Kit Alta para que ${nombre || 'el trabajador'} lo firme de nuevo?\n\nLa firma anterior queda archivada y al abrir la app le saldrá el wizard obligatorio.`)) return;
+    if (!confirm(`¿Reenviar Kit Alta para que ${nombre || 'el trabajador'} lo firme de nuevo?\n\n• Se archiva la firma actual.\n• Si tiene la app abierta le salta el wizard EN EL ACTO (Realtime).\n• Si no, le sale al abrirla o refrescar.`)) return;
     try {
-      // Marca la firma anterior con fecha de archivado en dispositivo (sin borrar)
+      // Recuperar empleado_id de la firma que vamos a archivar (para crear su tarea)
+      const { data: firmaOrig } = await window.sb.from('firmas_documentos')
+        .select('empleado_id').eq('id', firmaId).single();
+      const empId = firmaOrig?.empleado_id;
+
+      // Archivar cambiando el documento_codigo (sin data-loss)
+      const codigo = 'kit-alta-archivada-' + Date.now();
       await window.sb.from('firmas_documentos').update({
+        documento_codigo: codigo,
         dispositivo: '[REEMPLAZADA · ' + new Date().toLocaleDateString('es-ES') + ']'
       }).eq('id', firmaId);
-      // Borramos la fila principal con documento_codigo='kit-alta' para que el socorrista vea 'pendiente'
-      // Estrategia sin data-loss: cambiamos el documento_codigo a 'kit-alta-archivada-<timestamp>'
-      const codigo = 'kit-alta-archivada-' + Date.now();
-      await window.sb.from('firmas_documentos').update({ documento_codigo: codigo }).eq('id', firmaId);
-      toast(`✓ ${nombre} tendrá que volver a firmar la próxima vez que entre`);
+
+      // Crear tarea pendiente (dispara Realtime en la app del socorrista → wizard al momento)
+      if (empId) {
+        try {
+          await window.sb.from('tareas').delete()
+            .eq('empleado_id', empId).eq('titulo', 'Firmar Kit Alta pendiente');
+          await window.sb.from('tareas').insert({
+            empleado_id: empId,
+            titulo: 'Firmar Kit Alta pendiente',
+            descripcion: 'Se te ha solicitado firmar de nuevo tu Kit Alta. Al abrir la app te aparecerá el proceso obligatorio.',
+            prioridad: 'alta',
+            hecha: false
+          });
+        } catch (err) {
+          toast('⚠ Firma archivada pero no se pudo crear la tarea: ' + err.message);
+        }
+      }
+      toast(`✓ ${nombre || 'El trabajador'}: se le abrirá el wizard automáticamente (Realtime)`);
       renderFicha();
       if (window.renderEstadoEquipo) window.renderEstadoEquipo();
     } catch (err) { toast('Error: ' + err.message); }

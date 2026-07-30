@@ -310,7 +310,12 @@ window.PSPdf = (function () {
      ========================================================================== */
   async function generarJornadaResumen(empleado, firma) {
     const doc = nuevoPdf();
-    header(doc, 'Registro Mensual de Jornada', firma.documento_codigo);
+    // Título con mes en formato legible si el código es jornada-YYYY-MM
+    const mm = (firma.documento_codigo || '').match(/jornada-(\d{4})-(\d{2})/);
+    const subtHeader = mm
+      ? new Date(parseInt(mm[1]), parseInt(mm[2]) - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+      : firma.documento_codigo;
+    header(doc, 'Registro Mensual de Jornada', subtHeader);
 
     let y = 58;
     doc.setFontSize(10);
@@ -322,17 +327,72 @@ window.PSPdf = (function () {
     if (empleado.puesto_nombre) { doc.text(`Puesto: ${empleado.puesto_nombre}`, 15, y); y += 4.5; }
 
     const campos = firma.campos_json || {};
+    const semanas = Array.isArray(campos.semanas) ? campos.semanas : [];
+
     y += 5;
     doc.setFont('helvetica', 'bold');
-    doc.text('HORAS DECLARADAS ESTE MES', 15, y); y += 6;
+    doc.setFontSize(10);
+    doc.text('DESGLOSE SEMANAL DE HORAS TRABAJADAS', 15, y); y += 6;
     doc.setFont('helvetica', 'normal');
-    doc.text(`Horas ordinarias (40h/sem · 160h/mes máx): ${campos.horas_firmadas || 160}h`, 15, y); y += 5;
-    if (campos.horas_reales && campos.horas_reales > (campos.horas_firmadas || 160)) {
+    doc.setFontSize(9);
+    doc.text('Regla: máx 40 h/sem firmadas por el trabajador. Las horas complementarias quedan a disposición de administración.', 15, y);
+    y += 6;
+
+    if (semanas.length === 0) {
+      doc.setFont('helvetica', 'italic');
       doc.setTextColor(120, 120, 120);
-      doc.text(`(Horas reales trabajadas registradas por el sistema: ${campos.horas_reales}h — solo visible para administración)`, 15, y);
+      doc.text('Sin fichajes registrados este mes.', 15, y); y += 6;
       doc.setTextColor(0, 0, 0);
-      y += 5;
+    } else {
+      // Tabla desglose semanal
+      const cols = [{ h: 'Semana', w: 60 }, { h: 'Días', w: 20, num: true }, { h: 'H. reales', w: 30, num: true }, { h: 'H. firmadas', w: 35, num: true }, { h: 'Extras', w: 25, num: true }];
+      // Header
+      doc.setFillColor(240, 240, 240);
+      doc.setDrawColor(200, 200, 200);
+      const anchoTot = cols.reduce((a, c) => a + c.w, 0);
+      doc.rect(15, y, anchoTot, 6, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      let cx = 15;
+      cols.forEach(c => { doc.text(c.h, cx + (c.num ? c.w - 2 : 2), y + 4, c.num ? { align: 'right' } : {}); cx += c.w; });
+      y += 6;
+      doc.setFont('helvetica', 'normal');
+      semanas.forEach(s => {
+        y = checkPage(doc, y, 6);
+        doc.rect(15, y, anchoTot, 5.5, 'D');
+        cx = 15;
+        const extras = Math.max(0, s.horas_reales - s.horas_firmadas);
+        const valores = [s.rangoTxt || '—', String(s.dias || 0), `${s.horas_reales || 0}h`, `${s.horas_firmadas || 0}h`, extras > 0 ? `${extras}h` : '—'];
+        valores.forEach((v, i) => {
+          const c = cols[i];
+          doc.text(v, cx + (c.num ? c.w - 2 : 2), y + 4, c.num ? { align: 'right' } : {});
+          cx += c.w;
+        });
+        y += 5.5;
+      });
+      // Total
+      doc.setFillColor(254, 226, 226);
+      doc.rect(15, y, anchoTot, 6, 'FD');
+      doc.setFont('helvetica', 'bold');
+      cx = 15;
+      const totExtras = Math.max(0, (campos.horas_reales || 0) - (campos.horas_firmadas || 0));
+      const tots = [`TOTAL MES (${campos.dias_trabajados || 0} días)`, '', `${campos.horas_reales || 0}h`, `${campos.horas_firmadas || 0}h`, totExtras > 0 ? `${totExtras}h` : '—'];
+      // Combinar 1ª y 2ª columna para el label
+      doc.text(tots[0], 17, y + 4);
+      cx = 15 + cols[0].w + cols[1].w;
+      for (let i = 2; i < 5; i++) {
+        doc.text(tots[i], cx + cols[i].w - 2, y + 4, { align: 'right' });
+        cx += cols[i].w;
+      }
+      y += 8;
+      doc.setFont('helvetica', 'normal');
     }
+
+    // Resumen firma final
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`El trabajador firma ${campos.horas_firmadas || 0} h ordinarias este mes.`, 15, y);
+    y += 6;
 
     // Evidencia
     y += 5;

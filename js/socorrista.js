@@ -630,39 +630,63 @@
   /* ---------- Tareas (real desde BD) ---------- */
   const tareasList = document.getElementById('tareasList');
   const tareasProgress = document.getElementById('tareasProgress');
+  let tareasFilter = 'pendientes'; // 'pendientes' | 'hechas' | 'todas'
+  window.setTareasFilter = function (f) {
+    tareasFilter = f;
+    document.querySelectorAll('#tareasFilterTabs .chip-tab').forEach(b => {
+      b.classList.toggle('active', b.dataset.filter === f);
+    });
+    renderTareas();
+  };
   async function renderTareas() {
     if (!tareasList) return;
     try {
       const empId = empleadoReal?.id;
       if (!empId || !window.sb) {
-        tareasList.innerHTML = '<div class="text-muted small" style="padding:14px;text-align:center;">Sin tareas pendientes</div>';
+        tareasList.innerHTML = '<div class="text-muted small" style="padding:14px;text-align:center;">Sin tareas</div>';
         if (tareasProgress) tareasProgress.textContent = '';
         return;
       }
       const { data } = await window.sb.from('tareas')
-        .select('id, titulo, descripcion, prioridad, fecha, hecha')
+        .select('id, titulo, descripcion, prioridad, fecha, hecha, hecha_el')
         .eq('empleado_id', empId).order('fecha', { ascending: true });
       const rows = data || [];
-      if (rows.length === 0) {
-        tareasList.innerHTML = '<div class="text-muted small" style="padding:14px;text-align:center;">Sin tareas del coordinador</div>';
-        if (tareasProgress) tareasProgress.textContent = '';
+      const pendientes = rows.filter(t => !t.hecha);
+      const hechas = rows.filter(t => t.hecha);
+      const cp = document.getElementById('cnt-tar-pend');
+      const ch = document.getElementById('cnt-tar-hechas');
+      if (cp) cp.textContent = pendientes.length;
+      if (ch) ch.textContent = hechas.length;
+
+      const filtradas = tareasFilter === 'hechas' ? hechas
+                     : tareasFilter === 'todas' ? rows
+                     : pendientes;
+
+      if (filtradas.length === 0) {
+        const vacio = tareasFilter === 'hechas'
+          ? 'Aún no has completado ninguna tarea este mes.'
+          : tareasFilter === 'todas'
+          ? 'No tienes tareas del coordinador todavía.'
+          : '✓ Sin tareas pendientes';
+        tareasList.innerHTML = `<div class="text-muted small" style="padding:20px;text-align:center;">${vacio}</div>`;
+        if (tareasProgress) tareasProgress.textContent = `${hechas.length} de ${rows.length} completadas`;
         return;
       }
-      const doneCount = rows.filter(t => t.hecha).length;
-      if (tareasProgress) tareasProgress.textContent = `${doneCount} de ${rows.length} completadas`;
-      tareasList.innerHTML = rows.map(t => {
+      if (tareasProgress) tareasProgress.textContent = `${hechas.length} de ${rows.length} completadas`;
+      tareasList.innerHTML = filtradas.map(t => {
         const done = t.hecha;
         const prBadge = t.prioridad === 'alta' ? 'badge-danger'
                       : t.prioridad === 'media' ? 'badge-warn' : 'badge-info';
         return `
-          <div class="li ${done ? 'done' : ''}" data-task="${t.id}">
+          <div class="li ${done ? 'done' : ''}" data-task="${t.id}" style="${done?'opacity:0.7;':''}">
             <div class="check ${done ? 'done' : ''}">${done ? `<svg class="ic ic-14"><use href="#ic-check"/></svg>` : ''}</div>
             <div class="li-body">
-              <div class="li-title">${t.titulo}</div>
+              <div class="li-title" style="${done?'text-decoration:line-through;':''}">${t.titulo}</div>
               <div class="li-sub">${t.descripcion || ''}</div>
               <div class="row gap-1 mt-2">
                 <span class="badge ${prBadge}"><span class="dot"></span>${t.prioridad || 'baja'}</span>
                 ${t.fecha ? `<span class="badge badge-neutral"><svg class="ic ic-14"><use href="#ic-calendar"/></svg>${new Date(t.fecha).toLocaleDateString('es-ES')}</span>` : ''}
+                ${done && t.hecha_el ? `<span class="badge badge-ok"><svg class="ic ic-14"><use href="#ic-check"/></svg>Hecha ${new Date(t.hecha_el).toLocaleDateString('es-ES')}</span>` : ''}
               </div>
             </div>
           </div>`;
@@ -676,6 +700,7 @@
             await window.sb.from('tareas').update({ hecha: !t.hecha, hecha_el: t.hecha ? null : new Date().toISOString() }).eq('id', id);
             toast(t.hecha ? 'Tarea reabierta' : 'Tarea marcada como hecha');
             renderTareas();
+            renderPendientesYCampana();
           } catch (err) { toast('Error: ' + err.message); }
         });
       });
@@ -1472,22 +1497,35 @@
     return { ordinarias: totalOrdi, extras, mostrarExtras, promedioSemana, objMes };
   }
 
-  function renderDocsHeader() {
+  async function renderDocsHeader() {
     try {
       const firmas = misFirmas();
       const kitOk = !!firmas['kit-alta'];
-      const jornadaPend = (PS.documentos || []).filter(d => d.grupo === 'mensual' && !firmas[d.id]).length;
+      // Solo cuenta solicitudes REALES de jornada mensual (tarea pendiente del coord)
+      let jornadaPend = 0;
+      const empId = empleadoReal?.id;
+      if (empId && window.sb) {
+        try {
+          const { count } = await window.sb.from('tareas')
+            .select('id', { count: 'exact', head: true })
+            .eq('empleado_id', empId)
+            .eq('titulo', 'Firmar registro mensual pendiente')
+            .eq('hecha', false);
+          jornadaPend = count || 0;
+        } catch (_) {}
+      }
       const total = (kitOk ? 0 : 1) + jornadaPend;
+      const nom = empleadoReal?.nombre || me?.nombre || 'Empleado';
       if (docsSummary) {
         docsSummary.textContent = total === 0
-          ? `${me.nombre} · toda la documentación al día`
-          : `${me.nombre} · ${total} documento${total>1?'s':''} pendiente${total>1?'s':''} de firmar`;
+          ? `${nom} · toda la documentación al día`
+          : `${nom} · ${total} documento${total>1?'s':''} pendiente${total>1?'s':''} de firmar`;
       }
       if (docsPendingDot) docsPendingDot.style.display = total > 0 ? 'inline-block' : 'none';
       if (docAltaBadge) docAltaBadge.textContent = kitOk ? 'Firmado' : 'Pendiente';
     } catch (err) {
       console.warn('[renderDocsHeader]', err);
-      if (docsSummary) docsSummary.textContent = `${me.nombre || 'Empleado'}`;
+      if (docsSummary) docsSummary.textContent = `${empleadoReal?.nombre || me?.nombre || 'Empleado'}`;
     }
   }
   // Fallback: si a los 3 seg sigue en "Cargando…", forzar re-render
@@ -1645,6 +1683,65 @@
     }
   }
 
+  // Cálculo de semanas ISO del mes (lunes-domingo) con cap 40h/sem.
+  // Empareja entrada+salida; agrupa por semana en la que cayó la entrada.
+  // Devuelve { semanas:[{lunes, domingo, rangoTxt, dias, horas_reales, horas_firmadas}],
+  //           horasReales, horasFirmadas (suma capada), diasTrabajados }
+  function calcularSemanasMes(fichajes, anio, mesIdx) {
+    const pares = [];
+    let entrada = null;
+    (fichajes || []).forEach(f => {
+      if (f.tipo === 'entrada') entrada = new Date(f.hora);
+      else if (f.tipo === 'salida' && entrada) {
+        pares.push({ entrada, salida: new Date(f.hora) });
+        entrada = null;
+      }
+    });
+
+    // Devuelve el lunes 00:00 de la semana a la que pertenece la fecha
+    const lunesDe = (d) => {
+      const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const dia = (x.getDay() + 6) % 7; // 0=lun … 6=dom
+      x.setDate(x.getDate() - dia);
+      x.setHours(0, 0, 0, 0);
+      return x;
+    };
+    const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+
+    const mapSem = new Map(); // keyLunesISO -> {lunes, minutos, dias:Set}
+    pares.forEach(p => {
+      const lun = lunesDe(p.entrada);
+      const key = lun.toISOString();
+      const mins = Math.max(0, (p.salida - p.entrada) / 60000);
+      const dia = p.entrada.toDateString();
+      const cur = mapSem.get(key) || { lunes: lun, minutos: 0, dias: new Set() };
+      cur.minutos += mins;
+      cur.dias.add(dia);
+      mapSem.set(key, cur);
+    });
+
+    const semanas = Array.from(mapSem.values())
+      .sort((a, b) => a.lunes - b.lunes)
+      .map(s => {
+        const dom = new Date(s.lunes); dom.setDate(dom.getDate() + 6);
+        const horas = Math.round(s.minutos / 60);
+        return {
+          lunes: s.lunes.toISOString().slice(0, 10),
+          domingo: dom.toISOString().slice(0, 10),
+          rangoTxt: `${fmt(s.lunes)}–${fmt(dom)}`,
+          dias: s.dias.size,
+          horas_reales: horas,
+          horas_firmadas: Math.min(40, horas)
+        };
+      });
+
+    const horasReales = semanas.reduce((s, x) => s + x.horas_reales, 0);
+    const horasFirmadas = semanas.reduce((s, x) => s + x.horas_firmadas, 0);
+    const diasTrabajados = semanas.reduce((s, x) => s + x.dias, 0);
+    return { semanas, horasReales, horasFirmadas, diasTrabajados };
+  }
+  window.PSJornada = { calcularSemanasMes };
+
   // Firmar jornada real (usa el modal docViewModal + canvas + fichajes del mes hasta hoy)
   async function openJornadaSignReal({ codigo, motivo, tareaId }) {
     const empId = empleadoReal?.id;
@@ -1664,35 +1761,42 @@
     // Para "solicitud" el corte es HOY (horas hasta la fecha); para cierre de mes es fin de mes.
     const hastaCorte = motivo === 'solicitud' ? new Date().toISOString() : hastaFin;
 
-    let horasReales = 0, diasTrabajados = 0;
+    // Cargar fichajes y calcular horas REALES agrupadas por semana ISO (lunes-domingo)
+    // con cap de 40h/sem (las extras no se firman por el trabajador, quedan para admin).
+    let semanas = [], horasReales = 0, horasFirmadas = 0, diasTrabajados = 0;
     try {
       const { data: fichajes } = await window.sb.from('fichajes')
         .select('id, tipo, hora').eq('empleado_id', empId)
         .gte('hora', desde).lt('hora', hastaCorte).order('hora', { ascending: true });
-      let totalMins = 0, entrada = null;
-      (fichajes || []).forEach(f => {
-        if (f.tipo === 'entrada') entrada = new Date(f.hora);
-        else if (f.tipo === 'salida' && entrada) {
-          totalMins += Math.max(0, (new Date(f.hora) - entrada) / 60000);
-          entrada = null;
-        }
-      });
-      horasReales = Math.round(totalMins / 60);
-      diasTrabajados = new Set((fichajes || []).filter(f => f.tipo === 'entrada').map(f => new Date(f.hora).toDateString())).size;
+      const res = calcularSemanasMes(fichajes || [], anio, mes);
+      semanas = res.semanas;
+      horasReales = res.horasReales;
+      horasFirmadas = res.horasFirmadas;
+      diasTrabajados = res.diasTrabajados;
     } catch (_) {}
 
-    // Regla cliente: firmas 40h/sem (máx 160/mes); si trabajaste menos, firmas lo real.
-    const OBJ_MES = 160;
-    const horasFirmadas = Math.min(horasReales, OBJ_MES);
     const nombreMes = new Date(anio, mes, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    const filasSemanas = semanas.length === 0
+      ? '<div class="jornada-note small">Este mes aún no tienes ningún fichaje registrado.</div>'
+      : semanas.map(s => {
+          const cap = s.horas_reales > 40 ? ` <span class="small" style="color:#B45309;">(${s.horas_reales - 40}h extra no firmadas)</span>` : '';
+          return `<div class="jornada-row">
+            <span>Semana ${s.rangoTxt} · ${s.dias} día${s.dias===1?'':'s'}</span>
+            <b>${s.horas_firmadas}h</b>${cap}
+          </div>`;
+        }).join('');
 
     document.getElementById('docViewBody').innerHTML = `
       <div class="jornada-summary">
         <div class="jornada-row"><span>Mes</span><b>${nombreMes}</b></div>
         <div class="jornada-row"><span>Días trabajados</span><b>${diasTrabajados}</b></div>
-        <div class="jornada-row"><span>Horas trabajadas hasta hoy</span><b>${horasReales}h</b></div>
-        <div class="jornada-row total"><span>Firmas por</span><b>${horasFirmadas}h ordinarias</b></div>
-        ${horasReales > OBJ_MES ? '<div class="jornada-note small">El exceso sobre 160h queda registrado para tu coordinador (horas complementarias).</div>' : ''}
+        <div style="margin:8px 0;padding-top:8px;border-top:1px dashed #cbd5e1;"><b>Desglose semanal (cap 40h/sem)</b></div>
+        ${filasSemanas}
+        <div class="jornada-row total" style="border-top:1px solid #cbd5e1;padding-top:6px;margin-top:6px;">
+          <span>Total del mes que firmas</span>
+          <b>${horasFirmadas}h ordinarias</b>
+        </div>
+        ${horasReales > horasFirmadas ? `<div class="jornada-note small">Horas reales trabajadas: ${horasReales}h. Las ${horasReales - horasFirmadas}h de exceso son horas complementarias (solo visibles para tu coordinador en el informe oficial de inspección).</div>` : ''}
       </div>
       <div class="field mt-3">
         <label>Nombre completo</label>
@@ -1731,7 +1835,7 @@
           firma_imagen: firmaImagen,
           ubicacion_lat: ultimaPosicion?.lat || null,
           ubicacion_lng: ultimaPosicion?.lng || null,
-          campos_json: { horas_firmadas: horasFirmadas, horas_reales: horasReales, dias_trabajados: diasTrabajados, motivo }
+          campos_json: { horas_firmadas: horasFirmadas, horas_reales: horasReales, dias_trabajados: diasTrabajados, motivo, semanas }
         });
         if (error) throw error;
         // Cerrar tarea si venía de solicitud

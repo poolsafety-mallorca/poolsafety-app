@@ -223,7 +223,18 @@
 
       <div class="section-eyebrow">
         <span class="eyebrow">Tareas del día</span>
-        <span class="text-muted small" id="tareasProgress">1 de 4 completadas</span>
+        <span class="text-muted small" id="tareasProgress"></span>
+      </div>
+      <div class="chip-tabs" id="tareasFilterTabs" style="margin-bottom:8px;">
+        <button class="chip-tab active" data-filter="pendientes" onclick="setTareasFilter('pendientes')">
+          Pendientes <span class="tab-count" id="cnt-tar-pend">0</span>
+        </button>
+        <button class="chip-tab" data-filter="hechas" onclick="setTareasFilter('hechas')">
+          Realizadas <span class="tab-count" id="cnt-tar-hechas">0</span>
+        </button>
+        <button class="chip-tab" data-filter="todas" onclick="setTareasFilter('todas')">
+          Todas
+        </button>
       </div>
       <div class="list" id="tareasList"></div>
     </main>
