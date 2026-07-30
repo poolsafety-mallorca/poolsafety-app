@@ -426,6 +426,56 @@ window.PSPdf = (function () {
      Tabla mensual día a día con entrada, salida, horas ordinarias
      y complementarias, replicando el formato del Word del cliente.
      ========================================================================== */
+  // ---- Festivos ES + Baleares (Palma) ----
+  // Devuelve nombre corto del festivo (p.ej. "Navidad") o null si el día es laborable.
+  // Cubre festivos nacionales fijos + autonómicos Illes Balears + Semana Santa (Gauss).
+  function pascuaGregoriana(anio) {
+    const a = anio % 19;
+    const b = Math.floor(anio / 100);
+    const c = anio % 100;
+    const d = Math.floor(b / 4);
+    const e = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19*a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4);
+    const k = c % 4;
+    const l = (32 + 2*e + 2*i - h - k) % 7;
+    const m = Math.floor((a + 11*h + 22*l) / 451);
+    const mes = Math.floor((h + l - 7*m + 114) / 31); // 3=marzo, 4=abril
+    const dia = ((h + l - 7*m + 114) % 31) + 1;
+    return new Date(anio, mes - 1, dia);
+  }
+  function nombreFestivo(anio, mesIdx, dia) {
+    // Fijos nacionales + autonómicos Baleares
+    const key = `${mesIdx}-${dia}`;
+    const fijos = {
+      '0-1': 'Año Nuevo',
+      '0-6': 'Reyes',
+      '2-1': 'Día Illes Balears',
+      '4-1': 'Día del Trabajo',
+      '7-15': 'Asunción',
+      '9-12': 'Fiesta Nacional',
+      '10-1': 'Todos los Santos',
+      '11-6': 'Día Constitución',
+      '11-8': 'Inmaculada',
+      '11-25': 'Navidad',
+      '11-26': 'S. Esteban (2ª Pascua)'
+    };
+    if (fijos[key]) return fijos[key];
+    // Semana Santa: Jueves y Viernes Santo (viernes es nacional; jueves es autonómico)
+    const pascua = pascuaGregoriana(anio);
+    const jueves = new Date(pascua); jueves.setDate(pascua.getDate() - 3);
+    const viernes = new Date(pascua); viernes.setDate(pascua.getDate() - 2);
+    const lunesPascua = new Date(pascua); lunesPascua.setDate(pascua.getDate() + 1);
+    const target = new Date(anio, mesIdx, dia);
+    const eq = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    if (eq(target, jueves)) return 'Jueves Santo';
+    if (eq(target, viernes)) return 'Viernes Santo';
+    if (eq(target, lunesPascua)) return 'L. Pascua (Baleares)';
+    return null;
+  }
+
   async function generarJornadaOficial(empleado, firma, fichajesMes, mesAnio) {
     const doc = nuevoPdf();
 
@@ -471,14 +521,22 @@ window.PSPdf = (function () {
       else if (f.tipo === 'salida') porDia[dia].salida = d;
     });
 
-    // Tabla 31 días
+    // Detectar año y mes desde el código de la firma para saber cuántos días tiene el mes y festivos
+    const mm = (firma.documento_codigo || '').match(/jornada-(\d{4})-(\d{2})/);
+    const anioNum = mm ? parseInt(mm[1]) : new Date().getFullYear();
+    const mesNum  = mm ? parseInt(mm[2]) - 1 : new Date().getMonth();
+    const diasEnMes = new Date(anioNum, mesNum + 1, 0).getDate();
+    const nombresDia = ['Do','Lu','Ma','Mi','Ju','Vi','Sa'];
+
+    // Tabla — añadida columna "Día sem." + espacio para nombre festivo
     const cols = [
-      { titulo: 'Día',                  w: 12 },
-      { titulo: 'Hora entrada',         w: 25 },
-      { titulo: 'Hora salida',          w: 25 },
-      { titulo: 'Horas ord. pactadas',  w: 30 },
-      { titulo: 'Complem. voluntarias', w: 32 },
-      { titulo: 'Firma trabajador',     w: 56 }
+      { titulo: 'Día',                  w: 10 },
+      { titulo: 'Sem.',                 w: 10 },
+      { titulo: 'Hora entrada',         w: 22 },
+      { titulo: 'Hora salida',          w: 22 },
+      { titulo: 'Horas ord. pactadas',  w: 28 },
+      { titulo: 'Complem. voluntarias', w: 30 },
+      { titulo: 'Firma trabajador',     w: 58 }
     ];
     const totalAncho = cols.reduce((a,c) => a + c.w, 0);
     const xInicio = 15;
@@ -498,12 +556,23 @@ window.PSPdf = (function () {
     y += 8;
 
     // Filas
-    doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     let totalOrd = 0, totalCompl = 0;
-    for (let dia = 1; dia <= 31; dia++) {
-      y = checkPage(doc, y, 7);
-      doc.rect(xInicio, y, totalAncho, 6, 'D');
+    let totalOrdFest = 0, totalComplFest = 0; // horas trabajadas en festivo/finde
+    for (let dia = 1; dia <= diasEnMes; dia++) {
+      y = checkPage(doc, y, 8);
+      const fecha = new Date(anioNum, mesNum, dia);
+      const diaSemIdx = fecha.getDay(); // 0=Do..6=Sa
+      const esDomingo = diaSemIdx === 0;
+      const esSabado = diaSemIdx === 6;
+      const festivo = nombreFestivo(anioNum, mesNum, dia);
+      const especial = festivo || esDomingo; // domingo también es no laborable
+      // Fondo: festivo = amber; sábado/domingo = gris muy claro
+      if (festivo) doc.setFillColor(254, 243, 199);
+      else if (esSabado || esDomingo) doc.setFillColor(241, 245, 249);
+      else doc.setFillColor(255, 255, 255);
+      doc.rect(xInicio, y, totalAncho, 6, 'FD');
+
       const d = porDia[dia];
       const entrada = d && d.entrada ? d.entrada.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '';
       const salida  = d && d.salida  ? d.salida.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '';
@@ -516,23 +585,53 @@ window.PSPdf = (function () {
         horasCompl = comp > 0 ? comp.toFixed(1) : '';
         totalOrd += ord;
         totalCompl += comp;
+        if (especial) { totalOrdFest += ord; totalComplFest += comp; }
       }
-      const valores = [String(dia), entrada, salida, horasOrd, horasCompl, ''];
+
+      // Marca de festivo tras las horas si aplica y hay trabajo
+      let marcaFestivo = '';
+      if (festivo) marcaFestivo = `FESTIVO · ${festivo}`;
+
+      const valores = [String(dia), nombresDia[diaSemIdx], entrada, salida, horasOrd, horasCompl, marcaFestivo];
       xh = xInicio;
+      // Colores: festivo rojo, sabdo/dom gris más oscuro
       cols.forEach((c, i) => {
+        if (festivo && i === 6) { doc.setTextColor(155, 28, 28); doc.setFont('helvetica', 'bold'); }
+        else if (festivo && i <= 1) { doc.setTextColor(155, 28, 28); doc.setFont('helvetica', 'bold'); }
+        else if ((esSabado || esDomingo) && i <= 1) { doc.setTextColor(100, 116, 139); doc.setFont('helvetica', 'bold'); }
+        else { doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal'); }
         doc.text(valores[i], xh + c.w/2, y + 4, { align: 'center' });
         xh += c.w;
       });
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
       y += 6;
     }
 
-    // Totales
+    // Leyenda + Totales
     y += 3;
+    doc.setFontSize(7);
+    doc.setTextColor(120, 120, 120);
+    doc.text('Leyenda:', 15, y);
+    doc.setFillColor(254, 243, 199); doc.rect(30, y - 2.5, 4, 3, 'FD');
+    doc.text('festivo', 35, y);
+    doc.setFillColor(241, 245, 249); doc.rect(52, y - 2.5, 4, 3, 'FD');
+    doc.text('sábado/domingo', 57, y);
+    doc.setTextColor(0, 0, 0);
+    y += 6;
+
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.text(`Total horas ordinarias: ${totalOrd.toFixed(1)}h`, 15, y);
     doc.text(`Total horas complementarias: ${totalCompl.toFixed(1)}h`, 110, y);
-    y += 8;
+    y += 5;
+    if (totalOrdFest + totalComplFest > 0) {
+      doc.setTextColor(155, 28, 28);
+      doc.text(`De las cuales, en festivo/domingo: ${(totalOrdFest + totalComplFest).toFixed(1)}h`, 15, y);
+      doc.setTextColor(0, 0, 0);
+      y += 5;
+    }
+    y += 3;
 
     // Firma
     y = checkPage(doc, y, 50);
