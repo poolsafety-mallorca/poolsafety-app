@@ -233,47 +233,51 @@ window.PSPdf = (function () {
         y += 18;
       }
 
-      // Tabla EPIs si aplica
+      // Tablas EPIs / uniforme si aplica
       if (sub.esListaEpis) {
-        y += 4;
-        y = checkPage(doc, y, 40);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.text('EQUIPOS DE PROTECCIÓN INDIVIDUAL ENTREGADOS', 15, y); y += 5;
-
         const cantidades = (campos.epis) || {};
-        const filas = (sub.epis || []).map(e => [
-          limpiarTexto(e.nombre),
-          limpiarTexto(e.color),
-          limpiarTexto(e.modelo),
-          String((cantidades[e.id] != null) ? cantidades[e.id] : e.unidades)
-        ]);
-        // Tabla manual
         const anchoCols = [65, 40, 40, 25];
         const totalAncho = anchoCols.reduce((a,b)=>a+b, 0);
         const xInicio = 15;
-        // Header
-        doc.setFillColor(240, 240, 240);
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(xInicio, y, totalAncho, 6, 'FD');
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'bold');
-        ['Equipo','Color','Modelo','Unidades'].forEach((h,i) => {
-          const xh = xInicio + anchoCols.slice(0,i).reduce((a,b)=>a+b, 0) + 2;
-          doc.text(h, xh, y + 4);
-        });
-        y += 6;
-        // Filas
-        doc.setFont('helvetica', 'normal');
-        for (const fila of filas) {
-          y = checkPage(doc, y, 6);
-          doc.rect(xInicio, y, totalAncho, 5.5, 'D');
-          fila.forEach((v,i) => {
+        const dibujarTabla = (titulo, cabecera, items) => {
+          if (!items.length) return;
+          y += 4;
+          y = checkPage(doc, y, 20);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9);
+          doc.text(titulo, 15, y); y += 5;
+          // Header
+          doc.setFillColor(240, 240, 240);
+          doc.setDrawColor(200, 200, 200);
+          doc.rect(xInicio, y, totalAncho, 6, 'FD');
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          cabecera.forEach((h,i) => {
             const xh = xInicio + anchoCols.slice(0,i).reduce((a,b)=>a+b, 0) + 2;
-            doc.text(v, xh, y + 4);
+            doc.text(h, xh, y + 4);
           });
-          y += 5.5;
-        }
+          y += 6;
+          doc.setFont('helvetica', 'normal');
+          for (const e of items) {
+            y = checkPage(doc, y, 6);
+            doc.rect(xInicio, y, totalAncho, 5.5, 'D');
+            const fila = [
+              limpiarTexto(e.nombre),
+              limpiarTexto(e.color),
+              limpiarTexto(e.modelo),
+              String((cantidades[e.id] != null) ? cantidades[e.id] : e.unidades)
+            ];
+            fila.forEach((v,i) => {
+              const xh = xInicio + anchoCols.slice(0,i).reduce((a,b)=>a+b, 0) + 2;
+              doc.text(v, xh, y + 4);
+            });
+            y += 5.5;
+          }
+        };
+        const epis = (sub.epis || []).filter(e => (e.tipo || 'epi') === 'epi');
+        const uniforme = (sub.epis || []).filter(e => e.tipo === 'uniforme');
+        dibujarTabla('EQUIPOS DE PROTECCIÓN INDIVIDUAL (RD 773/1997)', ['Equipo','Color','Modelo','Unidades'], epis);
+        dibujarTabla('UNIFORME / ROPA DE TRABAJO', ['Prenda','Color','Modelo','Unidades'], uniforme);
       }
     });
 

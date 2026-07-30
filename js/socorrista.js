@@ -1895,24 +1895,40 @@
               return `<div class="wizard-doc-p">${t}</div>`;
             }).join('')}</div>
           ` : ''}
-          ${sub.esListaEpis ? `
-            <div class="wizard-doc-h" style="margin-top:14px;">EPIs entregados (ajusta las cantidades si te dieron distinto)</div>
-            <div class="wizard-epi-table-wrap">
-              <table class="wizard-epi-table">
-                <thead><tr><th>Equipo</th><th>Color</th><th>Modelo</th><th style="width:90px;">Unidades</th></tr></thead>
-                <tbody>
-                  ${(sub.epis || []).map(e => {
-                    const cantGuardada = (wizardData.campos.epis && wizardData.campos.epis[e.id] != null) ? wizardData.campos.epis[e.id] : e.unidades;
-                    return `<tr>
-                      <td><b>${e.nombre}</b></td>
-                      <td>${e.color}</td>
-                      <td>${e.modelo}</td>
-                      <td><input type="number" min="0" step="1" class="wiz-epi-input" data-epi="${e.id}" value="${cantGuardada}" style="width:70px;text-align:center;padding:4px 6px;border:1px solid var(--ink-300,#D1D5DB);border-radius:6px;" /></td>
-                    </tr>`;
-                  }).join('')}
-                </tbody>
-              </table>
-            </div>` : ''}
+          ${sub.esListaEpis ? (() => {
+            const epis = (sub.epis || []).filter(e => (e.tipo || 'epi') === 'epi');
+            const uniforme = (sub.epis || []).filter(e => e.tipo === 'uniforme');
+            const renderFila = e => {
+              const cantGuardada = (wizardData.campos.epis && wizardData.campos.epis[e.id] != null) ? wizardData.campos.epis[e.id] : e.unidades;
+              return `<tr>
+                <td><b>${e.nombre}</b></td>
+                <td>${e.color}</td>
+                <td>${e.modelo}</td>
+                <td><input type="number" min="0" step="1" class="wiz-epi-input" data-epi="${e.id}" value="${cantGuardada}" style="width:70px;text-align:center;padding:4px 6px;border:1px solid var(--ink-300,#D1D5DB);border-radius:6px;" /></td>
+              </tr>`;
+            };
+            return `
+              ${epis.length ? `
+                <div class="wizard-doc-h" style="margin-top:14px;color:#B91C1C;">EPIs · Equipos de Protección Individual (RD 773/1997)</div>
+                <div class="small text-muted" style="margin-bottom:6px;">Elementos de protección frente a la radiación solar. Uso obligatorio durante el servicio.</div>
+                <div class="wizard-epi-table-wrap">
+                  <table class="wizard-epi-table">
+                    <thead><tr><th>Equipo</th><th>Color</th><th>Modelo</th><th style="width:90px;">Unidades</th></tr></thead>
+                    <tbody>${epis.map(renderFila).join('')}</tbody>
+                  </table>
+                </div>` : ''}
+              ${uniforme.length ? `
+                <div class="wizard-doc-h" style="margin-top:16px;color:#0F172A;">Uniforme / ropa de trabajo</div>
+                <div class="small text-muted" style="margin-bottom:6px;">Ropa identificativa corporativa. Propiedad de la empresa, se devuelve al finalizar el contrato.</div>
+                <div class="wizard-epi-table-wrap">
+                  <table class="wizard-epi-table">
+                    <thead><tr><th>Prenda</th><th>Color</th><th>Modelo</th><th style="width:90px;">Unidades</th></tr></thead>
+                    <tbody>${uniforme.map(renderFila).join('')}</tbody>
+                  </table>
+                </div>` : ''}
+              <div class="small text-muted" style="margin-top:8px;">Puedes ajustar las cantidades si te han entregado más o menos unidades de las indicadas.</div>
+            `;
+          })() : ''}
           ${sub.requiereCampos ? `
             <div class="field mt-3">
               <label>Correo electrónico personal</label>

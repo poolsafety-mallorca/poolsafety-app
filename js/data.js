@@ -199,63 +199,102 @@ const PS = (function () {
      de aceptar. `epis` (solo en ka-epis) es editable por coordinador/socorrista. */
   const kitAltaSubdocs = [
     {
+      id: 'ka-marco',
+      titulo: 'Marco laboral aplicable',
+      resumen: 'Convenio colectivo, categoría profesional y datos de la empresa que rigen tu relación laboral.',
+      obligatorio: true,
+      norma: 'Convenio colectivo del sector de Vigilancia y Socorrismo de las Illes Balears · Estatuto de los Trabajadores',
+      textoCompleto: `MARCO LABORAL APLICABLE
+
+DATOS DE LA EMPRESA
+• Denominación social: Pool Safety Des Llevant, S.L.
+• NIF: B75828418
+• Código de Cuenta de Cotización: 07132352204
+• Domicilio: C/ Hernán Cortés, 8, 2º Dcha., 07670 Portocolom (Felanitx), Illes Balears
+• Correo corporativo: info@poolsafety.es
+• Actividad: prestación de servicios de socorrismo acuático en piscinas y zonas de baño de establecimientos turísticos y municipales.
+
+CONVENIO COLECTIVO APLICABLE
+A la presente relación laboral le resulta de aplicación el Convenio colectivo del sector de Vigilancia y Socorrismo de las Illes Balears, así como, con carácter supletorio, el Estatuto de los Trabajadores (RDL 2/2015) y la normativa laboral y de prevención de riesgos vigente.
+
+CATEGORÍA / GRUPO PROFESIONAL
+Categoría profesional del trabajador: SOCORRISTA ACUÁTICO.
+Grupo profesional según convenio: personal operativo de servicios de socorrismo.
+Puesto asignado y centro de trabajo: los indicados en el contrato individual y comunicados al inicio de la relación laboral.
+
+RECONOCIMIENTO DEL TRABAJADOR
+Con la firma del presente documento el trabajador reconoce haber sido informado del convenio colectivo de aplicación, de la categoría/grupo profesional asignados y de la actividad y datos identificativos de la empresa. Cualquier modificación posterior del puesto o categoría se comunicará por escrito.`
+    },
+    {
       id: 'ka-privacidad',
       titulo: 'Política de privacidad · RGPD',
-      resumen: 'Tratamiento de tus datos personales por Pool Safety Des Llevant, S.L. — cómo se recogen, con qué finalidad, con quién se comparten y qué derechos tienes.',
+      resumen: 'Tratamiento de tus datos personales por Pool Safety Des Llevant, S.L., con la base legal concreta para cada finalidad (contrato, obligación legal o consentimiento).',
       obligatorio: true,
       norma: 'Reglamento UE 2016/679 (RGPD) · Ley Orgánica 3/2018 (LOPDGDD)',
-      textoCompleto: `AVISOS LEGALES Y CLÁUSULAS CON TRABAJADORES DE LA EMPRESA
+      textoCompleto: `POLÍTICA DE PRIVACIDAD PARA EMPLEADOS
 
-Mediante el siguiente documento la empresa cumple con el deber de informar que ostenta en virtud de la normativa vigente en materia de protección de datos. La firma del presente documento será necesaria con el fin de poder acreditar que efectivamente la empresa ha cumplido con el deber de informar.
+Mediante el siguiente documento la empresa cumple con el deber de información previsto en los arts. 13 y 14 RGPD y arts. 11 y 12 LOPDGDD. La firma acredita el cumplimiento del deber de informar, no constituye por sí sola consentimiento para tratamientos que no lo requieran (ver bases jurídicas más abajo).
 
-POLÍTICA DE PRIVACIDAD PARA EMPLEADOS
-
-El objetivo de la presente Política de Privacidad es informarle de forma transparente sobre los tratamientos de datos personales que realiza Pool Safety Des Llevant, S.L.
-
-RESPONSABLE DE LOS DATOS PERSONALES DE EMPLEADOS
-• Nombre de la empresa: Pool Safety Des Llevant, S.L.
+RESPONSABLE DEL TRATAMIENTO
+• Denominación: Pool Safety Des Llevant, S.L.
 • NIF: B75828418
-• Domicilio: Hernán Cortés, 8, 2º Dcha., 07670, Portocolom, Baleares
+• Domicilio: C/ Hernán Cortés, 8, 2º Dcha., 07670 Portocolom (Felanitx), Illes Balears
+• Contacto en materia de protección de datos: info@poolsafety.es
 
-DEFINICIÓN DE DATO PERSONAL
-Un dato personal es toda información sobre una persona física identificada o identificable. El tratamiento implica cualquier operación (recogida, registro, organización, conservación, adaptación, extracción, consulta, utilización, comunicación, difusión, cotejo, limitación, supresión o destrucción).
-
-DATOS PERSONALES CAPTADOS POR LA EMPRESA
+DATOS PERSONALES QUE SE TRATAN
 Únicamente los necesarios para la gestión de la relación laboral:
-• Datos identificativos y de contacto (nombre, apellidos, firma, teléfono).
-• Copia del DNI/Pasaporte.
-• Nº de Seguridad Social, cuenta bancaria, información tributaria.
-• Copia del carnet de conducir.
-• Nómina.
-• Contacto de emergencia.
-• Información del proceso de selección (referencias, CV, permiso de trabajo).
-• Datos del control de presencia.
-• Historial de apercibimientos, sanciones y expedientes disciplinarios.
-• Bajas.
-• Afiliación sindical.
-• Datos de geolocalización.
-• Imagen.
+• Datos identificativos y de contacto (nombre, apellidos, firma, DNI/NIE, dirección, teléfono, correo).
+• Datos de Seguridad Social, cuenta bancaria e información tributaria.
+• Titulaciones profesionales (socorrismo, SVB, DEA, PRL) y permisos.
+• Contrato, categoría profesional, nómina y variables retributivas.
+• Contacto para emergencias.
+• Datos del proceso de selección (CV, referencias, permiso de trabajo).
+• Registro horario, fichajes y datos de geolocalización asociados al fichaje.
+• Historial de amonestaciones, sanciones o expedientes disciplinarios (si los hubiera).
+• Bajas médicas.
+• Afiliación sindical (solo si el trabajador la comunica).
+• Imagen (solo si otorga consentimiento — ver cláusula separada).
 
-Categorías especiales (salud, origen étnico, orientación sexual, religión, etc.) solo con consentimiento expreso, revocable en cualquier momento. El empleado puede decidir libremente si facilita esta información sin consecuencia alguna.
+Categorías especiales (salud, origen étnico, orientación sexual, religión, opinión política, biometría…) sólo se tratarán con base jurídica específica (obligación legal PRL, consentimiento expreso u otra base del art. 9 RGPD). El trabajador puede no facilitar esta información salvo obligación legal, sin consecuencias.
 
-FINALIDADES DEL TRATAMIENTO
-• Gestión de la relación laboral: decisión de contratación, pago de nómina, deducciones y retenciones, revisiones salariales, evaluación de infracciones y faltas disciplinarias, evaluaciones profesionales y promociones, procesos de formación.
-• Cumplimiento legal: gestión de incidentes y accidentes de trabajo, bajas o ausencias, salud y prevención de riesgos, control horario, gestiones administrativas y de geolocalización.
-• Captación y uso de imagen en web, redes sociales o intranet.
+FINALIDADES Y BASE JURÍDICA DE CADA TRATAMIENTO
+La empresa distingue cada tratamiento con su base legal específica (art. 6 RGPD):
 
-BASE DE LEGITIMACIÓN
-• Ejecución del contrato de trabajo.
-• Cumplimiento de una obligación legal.
-• Consentimiento expreso para tratamientos adicionales (p. ej. imagen).
+1) EJECUCIÓN DEL CONTRATO DE TRABAJO (art. 6.1.b RGPD):
+   • Gestión del contrato, alta y baja del trabajador.
+   • Pago de la nómina, deducciones, cotizaciones y variables retributivas.
+   • Asignación de puesto, turnos y horario.
+   • Gestión de titulaciones profesionales exigidas para el puesto.
+   • Comunicaciones internas necesarias para el servicio.
 
-TERCEROS CON ACCESO
-Bancos, proveedores con contrato de encargo, aseguradoras y mutuas, agencias de viaje/aerolíneas/hoteles cuando aplique. Sin transferencias internacionales. Se podrá facilitar información a la Administración Pública, autoridades competentes y Juzgados y Tribunales.
+2) OBLIGACIÓN LEGAL (art. 6.1.c RGPD):
+   • Alta y afiliación en la Seguridad Social (LGSS).
+   • Retenciones e ingresos a cuenta del IRPF (Ley 35/2006).
+   • Registro horario obligatorio (RD-ley 8/2019).
+   • Prevención de riesgos laborales y vigilancia de la salud (Ley 31/1995).
+   • Notificaciones a autoridades laborales o judiciales cuando proceda.
+   • Conservación documental por plazos legales (mínimo 4 años en materia laboral, 5 años SS).
+
+3) INTERÉS LEGÍTIMO DE LA EMPRESA (art. 6.1.f RGPD):
+   • Control del cumplimiento del horario y presencia efectiva en el puesto asignado (fichaje con GPS — véase cláusula específica).
+   • Ejercicio de la potestad disciplinaria en base a la información objetiva registrada por los sistemas informados previamente al trabajador.
+   • Prevención del fraude y garantía de la calidad del servicio.
+
+4) CONSENTIMIENTO EXPRESO DEL TRABAJADOR (art. 6.1.a RGPD) — SÓLO para:
+   • Captación y uso de imagen en web, redes sociales o material corporativo.
+   • Comunicaciones a través de aplicaciones de mensajería no corporativa (WhatsApp).
+   • Cualquier otro tratamiento accesorio que no esté cubierto por las bases anteriores.
+
+   Estos consentimientos son voluntarios, revocables en cualquier momento y su denegación NO tendrá consecuencias laborales.
+
+CESIONES / DESTINATARIOS
+Sólo cuando exista base jurídica: entidades bancarias (nómina), Seguridad Social, AEAT, Mutua colaboradora, Servicio de Prevención Ajeno, autoridades y Juzgados. Ningún dato se cede a terceros con fines comerciales. No hay transferencias internacionales fuera del Espacio Económico Europeo.
 
 CONSERVACIÓN
-Durante la vigencia de la relación laboral y, tras su finalización, un máximo de 4 años (excepciones legales aplicables).
+Durante la vigencia de la relación laboral y, tras su finalización, por los plazos legales exigidos (mínimo 4 años en materia laboral y 5 años en Seguridad Social). Los datos con base en consentimiento se suprimen si el trabajador lo revoca.
 
-DERECHOS DEL EMPLEADO
-Acceso, rectificación, oposición, supresión, portabilidad, limitación del tratamiento y minimización. Ejercicio mediante escrito acreditado al correo info@poolsafety.es. Reclamación ante la Agencia Española de Protección de Datos.`
+DERECHOS DEL TRABAJADOR
+El trabajador puede ejercer los derechos de acceso, rectificación, supresión, oposición, limitación del tratamiento y portabilidad mediante escrito a info@poolsafety.es o por correo postal a la dirección arriba indicada. En caso de no obtener respuesta satisfactoria, puede presentar reclamación ante la Agencia Española de Protección de Datos (www.aepd.es).`
     },
     {
       id: 'ka-geoloc',
@@ -264,22 +303,39 @@ Acceso, rectificación, oposición, supresión, portabilidad, limitación del tr
       obligatorio: true,
       norma: 'Art. 90 LOPDGDD · Art. 9 RGPD',
       resaltado: true,
-      textoCompleto: `TRATAMIENTO DE DATOS DE GEOLOCALIZACIÓN DE LOS EMPLEADOS
+      textoCompleto: `INFORMACIÓN SOBRE TRATAMIENTO DE DATOS DE GEOLOCALIZACIÓN
 
-De conformidad con lo dispuesto en el art. 9 del Reglamento (UE) 2016/679, de 27 de abril de 2016 (RGPD), y el art. 90 de la Ley Orgánica 3/2018 (LOPDGDD), Pool Safety Des Llevant, S.L. (B75828418), con domicilio en Hernán Cortés, 8, 2º Dcha., 07670 Portocolom, Baleares, le informa de que, en base a la relación laboral que nos vincula, tratará y recabará datos de geolocalización recogidos a través de:
+De conformidad con el art. 90 de la Ley Orgánica 3/2018 (LOPDGDD) y el Reglamento (UE) 2016/679 (RGPD), Pool Safety Des Llevant, S.L. (B75828418), con domicilio en C/ Hernán Cortés, 8, 2º Dcha., 07670 Portocolom, informa expresamente al trabajador de la existencia del siguiente sistema de geolocalización:
 
-☑ Sistema de geolocalización en el dispositivo electrónico propio del trabajador (aplicación PoolSafety instalada en su teléfono móvil personal).
+MEDIO UTILIZADO
+Aplicación PoolSafety instalada en el dispositivo móvil del trabajador (propio o corporativo). El dato de posición se obtiene a través del GPS del sistema operativo, previa autorización de permisos por parte del trabajador.
 
-FINALIDAD
-El tratamiento de sus datos de geolocalización tiene como finalidad exclusiva el registro digital del fichaje de jornada (entrada y salida del puesto de trabajo) y la verificación de la presencia efectiva del socorrista en el puesto asignado (geocerca según radio establecido para cada hotel).
+CÓMO FUNCIONA EN LA PRÁCTICA
+• La aplicación NO rastrea la posición del trabajador de forma continua ni fuera del horario de trabajo.
+• La geolocalización se captura únicamente en momentos concretos e informados:
+  1. Al pulsar "Fichar entrada" — para verificar que el trabajador se encuentra en el radio del centro de trabajo asignado (geocerca del hotel/piscina).
+  2. Al pulsar "Fichar salida" — mismo fin.
+  3. Al registrar una alerta desde el móvil (reporte de material, mensaje al coordinador) — para asociar la alerta al centro correspondiente.
+• Fuera de esos momentos, la aplicación no accede al GPS. Al cerrar la sesión, no se recoge dato alguno.
+• El trabajador puede en todo momento revocar el permiso de GPS desde los ajustes del sistema operativo. En tal caso, deberá utilizar los medios alternativos de fichaje que establezca la empresa.
 
-Los datos de geolocalización se capturan ÚNICAMENTE en el momento del fichaje (pulsar Fichar entrada / Fichar salida) o al registrar una alerta desde el móvil. La aplicación NO rastrea la posición del trabajador de forma continua fuera de esos momentos.
+FINALIDADES Y BASE JURÍDICA (art. 6 RGPD)
+Los datos se tratan con finalidad exclusiva de:
+1) Cumplimiento de la obligación legal de registro horario (RD-ley 8/2019) — art. 6.1.c RGPD.
+2) Verificación de la presencia efectiva en el puesto asignado en cumplimiento del contrato — art. 6.1.b RGPD.
+3) Ejercicio de la potestad disciplinaria empresarial en los términos legalmente previstos — art. 6.1.f RGPD.
 
-CESIÓN Y CONSERVACIÓN
-Sus datos de geolocalización no serán transmitidos a terceros sin su consentimiento, salvo obligación legal, y serán conservados durante un plazo máximo de dos meses, mientras usted no solicite su supresión.
+PROPORCIONALIDAD Y DERECHOS
+El sistema respeta los principios de necesidad, proporcionalidad y minimización: solo se registra la coordenada aproximada del momento del fichaje, no se realiza seguimiento continuo, y la información se limita al centro de trabajo y su entorno inmediato.
 
-DERECHOS
-Puede ejercer los derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad mediante escrito a Hernán Cortés, 8, 2º Dcha., 07670 Portocolom, Baleares, o por correo electrónico a info@poolsafety.es.`
+USO A EFECTOS DISCIPLINARIOS
+El trabajador queda expresamente informado de que los datos de geolocalización obtenidos mediante este sistema podrán ser tenidos en cuenta a efectos disciplinarios en caso de incumplimientos laborales (por ejemplo, fichaje fuera de la zona asignada, ausencia sin justificar del puesto, fichaje simulado), en los términos previstos en el Estatuto de los Trabajadores y en el Convenio colectivo aplicable, siempre que el sistema haya sido implantado e informado correctamente al trabajador — como se hace en el presente documento — y con respeto a los principios de proporcionalidad y a los derechos fundamentales del trabajador.
+
+CONSERVACIÓN
+Los registros de geolocalización asociados a un fichaje se conservarán durante un plazo máximo de 4 años, junto con el resto de la documentación del registro horario, en cumplimiento de las obligaciones laborales y de prescripción de infracciones.
+
+DERECHOS DEL TRABAJADOR
+Acceso, rectificación, oposición, supresión, limitación y portabilidad, mediante escrito a info@poolsafety.es o correo postal a la dirección de la empresa. Puede reclamar ante la Agencia Española de Protección de Datos (www.aepd.es).`
     },
     {
       id: 'ka-electronica',
@@ -287,34 +343,40 @@ Puede ejercer los derechos de acceso, rectificación, supresión, oposición, li
       resumen: 'Autorización para recibir nóminas, avisos y notificaciones por correo electrónico y teléfono móvil (SMS, WhatsApp).',
       obligatorio: true,
       requiereCampos: ['emailPersonal','telefonoPersonal'],
-      textoCompleto: `CONSENTIMIENTO EXPRESO PARA LA RECEPCIÓN DE DOCUMENTACIÓN LABORAL POR MEDIOS ELECTRÓNICOS
+      textoCompleto: `CONSENTIMIENTO PARA RECIBIR DOCUMENTACIÓN LABORAL POR MEDIOS ELECTRÓNICOS
 
-Datos de la Empresa
-• Denominación social: POOL SAFETY DES LLEVANT, S.L.
-• CIF: B75828418
-• Domicilio: Calle Hernán Cortés, nº 8, 2º Derecha, CP 07670 Portocolom-Felanitx
+Datos de la empresa
+• Denominación: Pool Safety Des Llevant, S.L.
+• NIF: B75828418
+• Domicilio: C/ Hernán Cortés, 8, 2º Dcha., 07670 Portocolom (Felanitx), Illes Balears
 
-Por medio del presente documento, la persona trabajadora arriba identificada autoriza expresamente a la empresa a remitirle toda la documentación relativa a su relación laboral, incluyendo, pero no limitándose a:
-• Contrato de trabajo y sus posibles modificaciones.
+DATOS DEL TRABAJADOR (a rellenar por el propio trabajador en el paso siguiente)
+El trabajador FACILITARÁ, para poder ejecutar esta autorización, un correo electrónico personal y un teléfono móvil personal, ambos de su titularidad y a los que tenga acceso habitual y privado. Estos datos figurarán expresamente en el ejemplar firmado del presente documento.
+
+OBJETO
+El trabajador autoriza a la empresa a remitirle por los medios electrónicos indicados la documentación relativa a su relación laboral, incluyendo:
+• Contrato de trabajo y modificaciones.
 • Recibos de salarios (nóminas).
 • Comunicaciones sobre prevención de riesgos laborales.
-• Notificaciones de carácter general o particular.
+• Notificaciones generales o individuales.
 • Cualquier otra documentación legalmente exigible.
 
 MEDIOS ELECTRÓNICOS AUTORIZADOS
-• Correo electrónico personal facilitado por el trabajador.
-• Teléfono móvil (llamadas, SMS o aplicaciones de mensajería instantánea, ej. WhatsApp).
+1) Correo electrónico personal facilitado por el trabajador.
+2) Teléfono móvil personal (llamadas, SMS o aplicaciones de mensajería instantánea, p. ej. WhatsApp).
 
-El trabajador declara que los medios indicados son de su titularidad y que tiene acceso habitual a los mismos.
+CONDICIONES DE ENVÍO Y ACREDITACIÓN DE RECEPCIÓN
+La empresa se compromete a utilizar los medios anteriores sólo para los fines aquí descritos. Para poder considerar realizada la notificación se seguirá el siguiente criterio:
+• En envíos que legalmente exijan constancia (nóminas, comunicaciones sancionadoras, extinción del contrato, etc.), la empresa procurará acuse de recibo o respuesta del trabajador (correo electrónico con confirmación, mensaje leído, respuesta expresa), o utilizará vías con acreditación reforzada (correo certificado, burofax) cuando la relevancia del documento así lo requiera.
+• En envíos ordinarios (nóminas periódicas, comunicaciones informativas, avisos operativos, cambios menores de calendario o turno) se entenderá razonablemente cumplida la comunicación cuando la empresa pueda acreditar el envío correcto al medio autorizado y no haya devolución o error técnico.
+• En ningún caso se presume la recepción de comunicaciones que no puedan siquiera acreditarse como enviadas o cuyo destino esté manifiestamente inactivo (buzón lleno, número dado de baja, etc.).
+• El trabajador se compromete a comunicar cualquier cambio de correo o teléfono.
 
 PROTECCIÓN DE DATOS
-En cumplimiento del RGPD y de la LOPDGDD, los datos personales serán tratados con la finalidad de gestionar la relación laboral y las comunicaciones. El trabajador puede ejercer sus derechos de acceso, rectificación, supresión, limitación, oposición y portabilidad mediante escrito a la empresa. Los datos no serán cedidos a terceros salvo obligación legal.
+Los datos se tratan conforme al RGPD y a la LOPDGDD, con la finalidad de gestionar las comunicaciones laborales, con base jurídica en la ejecución del contrato (art. 6.1.b RGPD), en las obligaciones legales aplicables (art. 6.1.c) y, cuando corresponda, en el consentimiento del trabajador (art. 6.1.a — típicamente para el uso de aplicaciones de mensajería no corporativa como WhatsApp).
 
 REVOCACIÓN
-El trabajador puede revocar en cualquier momento el presente consentimiento, mediante notificación escrita, sin que afecte a la licitud del tratamiento previo.
-
-REMISIÓN FEHACIENTE
-Se entenderá que cualquier documentación remitida por la Empresa a través de los medios autorizados ha sido recibida de forma fehaciente por el trabajador, siempre que la Empresa pueda acreditar el envío.`
+El trabajador puede revocar en cualquier momento este consentimiento mediante notificación escrita a info@poolsafety.es. La revocación no afecta a la licitud de las comunicaciones anteriores. Tras la revocación, la empresa utilizará medios alternativos legalmente válidos.`
     },
     {
       id: 'ka-imagen',
@@ -342,29 +404,31 @@ Responsable del tratamiento:
       resumen: 'Información sobre el derecho y deber de vigilancia de la salud (art. 22 Ley 31/1995 PRL). Reconocimientos médicos por PREVIS Gestión de Riesgos S.L.U.',
       obligatorio: true,
       norma: 'Ley 31/1995 Prevención de Riesgos Laborales',
-      textoCompleto: `ANEXO II · VIGILANCIA DE LA SALUD LABORAL
-Empresa: POOL SAFETY DES LLEVANT, S.L.
+      textoCompleto: `INFORMACIÓN SOBRE VIGILANCIA DE LA SALUD (art. 22 Ley 31/1995 PRL)
+Empresa: Pool Safety Des Llevant, S.L.
 
-Mediante el presente escrito, dando conformidad al artículo 22 de la Ley 31/1995 de Prevención de Riesgos Laborales, se le informa del derecho a la vigilancia de su estado de salud en función de los riesgos inherentes al trabajo.
+De conformidad con el artículo 22 de la Ley 31/1995 de Prevención de Riesgos Laborales, se informa al trabajador de que tiene derecho a la vigilancia periódica de su estado de salud en función de los riesgos inherentes al trabajo.
 
-Los exámenes de salud laboral serán realizados por personal sanitario de PREVIS GESTIÓN DE RIESGOS S.L.U., respetando siempre el derecho a su intimidad y a la confidencialidad de toda la información relacionada con su estado de salud. Las pruebas médicas y complementarias a realizar obedecen a los protocolos específicos según los factores de riesgo a los que esté expuesto en su puesto de trabajo.
+REGLA GENERAL: VOLUNTARIEDAD
+Los reconocimientos médicos laborales son, con carácter general, VOLUNTARIOS. El trabajador puede aceptarlos o renunciar a ellos sin que su decisión pueda tener consecuencias negativas ni ser motivo de discriminación laboral.
 
-Los resultados del reconocimiento médico le serán entregados a Usted (puede disponer de acceso privado a través de https://previsonline.previs.es).
+Los exámenes de salud, cuando se realicen, se llevarán a cabo por personal sanitario del Servicio de Prevención Ajeno concertado por la empresa (actualmente PREVIS GESTIÓN DE RIESGOS S.L.U.), respetando en todo momento el derecho a la intimidad, la dignidad y la confidencialidad de la información. Las pruebas médicas se ajustarán a los protocolos específicos según los riesgos del puesto. Los resultados individuales sólo se comunican al propio trabajador; a la empresa únicamente se le informa de la aptitud/no aptitud para el puesto.
 
-EXENTOS DE VOLUNTARIEDAD
-Tienen la consideración de exentos de voluntariedad los exámenes de salud laboral:
-• Iniciales.
-• Por asignación de tareas específicas con nuevos riesgos.
-• Por reincorporación tras ausencia prolongada por motivos de salud.
-• De personas especialmente sensibles.
-• De puestos de trabajo con riesgo de enfermedad profesional.
-• Para verificar si el estado de salud puede constituir un peligro para sí misma o para terceros.
-• Cuando así esté establecido en disposiciones legales.
+SUPUESTOS EN LOS QUE PUEDE NO REGIR LA VOLUNTARIEDAD
+Excepcionalmente, la Ley 31/1995 y las normas específicas de PRL exceptúan la regla de voluntariedad, PREVIO INFORME DE LOS REPRESENTANTES DE LOS TRABAJADORES y siempre que sea imprescindible, en los siguientes supuestos:
 
-PUESTO DE TRABAJO CON VIGILANCIA REQUERIDA
-Analizada la evaluación de riesgos y los posibles estudios higiénicos, ergonómicos y psicosociales realizados, el médico del trabajo encargado de la disciplina sanitaria en materia de PRL ha estimado necesaria e imprescindible la vigilancia de la salud de las personas trabajadoras que ocupen el puesto de: SOCORRISTA DE PISCINA.
+a) Cuando la realización del reconocimiento sea imprescindible para EVALUAR LOS EFECTOS DE LAS CONDICIONES DE TRABAJO sobre la salud del trabajador.
 
-La persona trabajadora identificada ha sido informada para proceder a su citación al examen de salud laboral.`
+b) Cuando sea necesario para VERIFICAR SI EL ESTADO DE SALUD DEL TRABAJADOR PUEDE CONSTITUIR UN PELIGRO para él mismo, para los demás trabajadores o para otras personas relacionadas con la empresa.
+
+c) Cuando así esté ESTABLECIDO EN UNA DISPOSICIÓN LEGAL específica en relación con la protección de riesgos concretos y actividades de especial peligrosidad.
+
+En cualquiera de estos supuestos, la obligatoriedad debe estar debidamente justificada por escrito por el Servicio de Prevención y no puede aplicarse de forma genérica o preventiva.
+
+DECISIÓN DEL TRABAJADOR (a firmar en la pantalla siguiente)
+Se solicita al trabajador que indique expresamente si acepta someterse al reconocimiento médico voluntario propuesto por la empresa. La respuesta negativa NO exime al trabajador de someterse, en su caso, a los reconocimientos que sean legalmente obligatorios conforme a los supuestos anteriores, si concurren los requisitos para ello.
+
+Puesto de trabajo evaluado: SOCORRISTA ACUÁTICO en piscinas y zonas de baño.`
     },
     {
       id: 'ka-desconexion',
@@ -372,51 +436,69 @@ La persona trabajadora identificada ha sido informada para proceder a su citaci�
       resumen: 'Reconocimiento del derecho a la desconexión digital fuera del horario laboral establecido.',
       obligatorio: true,
       norma: 'Art. 88 LOPDGDD',
-      textoCompleto: `COMUNICACIÓN DE DESCONEXIÓN DIGITAL
+      textoCompleto: `ACUSE DE RECIBO — DERECHO A LA DESCONEXIÓN DIGITAL
 
-Comunicación a la plantilla de la Implantación del Protocolo de Desconexión Digital.
 Empresa: Pool Safety Des Llevant, S.L.
+Norma aplicable: art. 88 LOPDGDD y, en su caso, política interna de desconexión digital vigente en la empresa.
 
-Toda la plantilla de Pool Safety Des Llevant, S.L. tiene derecho a la desconexión digital de acuerdo con todos los parámetros establecidos y desarrollados en este documento.
+OBJETO DE ESTE DOCUMENTO
+Este documento constituye un ACUSE DE RECIBO por parte del trabajador de la información básica sobre su derecho a la desconexión digital. No sustituye por sí solo la política interna completa de desconexión digital, que la empresa mantiene a disposición del personal y que desarrolla en detalle:
+• El horario en el que rige la desconexión (fuera de jornada, descansos, vacaciones, permisos, incapacidad temporal).
+• Los canales autorizados y no autorizados para comunicaciones profesionales.
+• Los supuestos excepcionales que puedan justificar comunicaciones fuera de jornada (emergencias sanitarias, evacuación, situaciones críticas del servicio).
+• Los responsables y procedimiento para incidencias.
 
-De acuerdo con estos principios, Pool Safety Des Llevant, S.L. manifiesta su compromiso total al cumplimiento íntegro de este protocolo. Con este propósito se intentará que la persona trabajadora cumpla de forma fiel y fidedigna con el horario y calendario laboral establecido por la empresa.
+DECLARACIÓN DEL TRABAJADOR
+El trabajador declara, con la firma del presente documento, que ha sido informado con carácter general de que:
+• Tiene derecho a la desconexión digital fuera de su horario de trabajo establecido, así como durante los períodos legales de descanso, vacaciones y permisos.
+• Puede no atender llamadas, correos electrónicos o mensajes profesionales fuera de su horario laboral, sin que dicha conducta pueda ser objeto de sanción ni de trato desfavorable.
+• La empresa se compromete, por su parte, a no dirigir al trabajador comunicaciones profesionales fuera de jornada, salvo situaciones de emergencia debidamente justificadas.
+• Puede consultar en cualquier momento la política interna completa de desconexión digital solicitándola al correo info@poolsafety.es o al responsable de coordinación.
 
-Mediante el presente documento el trabajador confirma que:
-• Ha sido informado sobre la implantación del protocolo de desconexión digital en la empresa.
-• Se le han comunicado las medidas y principios que deben cumplirse a la hora de realizar las diferentes modalidades de trabajo (presencial, a distancia, teletrabajo o parcial).
-• Tiene derecho a no atender comunicaciones profesionales fuera de su horario laboral.
-• Fuera del horario establecido, la empresa se compromete a no exigir respuesta a comunicaciones, salvo situaciones de emergencia debidamente justificadas.`
+Nada de lo previsto aquí puede interpretarse como una renuncia del trabajador al derecho a la desconexión digital reconocido por la ley.`
     },
     {
       id: 'ka-epis',
-      titulo: 'Entrega de EPIs (Equipos de Protección Individual)',
-      resumen: 'Recibí los equipos que se detallan a continuación. Uso exclusivo y personal según art. 29 Ley PRL y RD 773/1997. Las cantidades pueden ajustarse si te entregan más o menos unidades.',
+      titulo: 'Entrega de EPIs y uniforme de trabajo',
+      resumen: 'Recepción de Equipos de Protección Individual (EPIs) y de la ropa de trabajo/uniforme corporativo, con obligaciones diferenciadas según su naturaleza jurídica.',
       obligatorio: true,
-      norma: 'RD 773/1997 · Ley 31/1995 PRL',
+      norma: 'RD 773/1997 y Ley 31/1995 PRL (EPIs) · Estatuto de los Trabajadores y convenio colectivo (uniforme)',
       esListaEpis: true,
       epis: [
-        { id: 'sudadera',     nombre: 'Sudadera',           color: 'Roja',           modelo: 'Roly', unidades: 1 },
-        { id: 'camiseta',     nombre: 'Camiseta',           color: 'Blanca',         modelo: 'Roly', unidades: 3 },
-        { id: 'banador',      nombre: 'Bañador',            color: 'Rojo',           modelo: 'Roly', unidades: 2 },
-        { id: 'pantalon',     nombre: 'Pantalón largo',     color: 'Negro',          modelo: 'Roly', unidades: 1 },
-        { id: 'gafas',        nombre: 'Gafas de sol',       color: 'Negras',         modelo: 'Roly', unidades: 1 },
-        { id: 'gorra',        nombre: 'Gorra',              color: 'Roja y blanca',  modelo: 'Roly', unidades: 1 },
-        { id: 'crema-solar',  nombre: 'Crema solar',        color: '—',              modelo: '—',    unidades: 1 }
+        // EPIs — Equipos de Protección Individual (RD 773/1997)
+        { id: 'gafas',        tipo: 'epi',      nombre: 'Gafas de sol (protección UV)',       color: 'Negras',         modelo: 'Roly', unidades: 1 },
+        { id: 'gorra',        tipo: 'epi',      nombre: 'Gorra (protección solar cabeza)',    color: 'Roja y blanca',  modelo: 'Roly', unidades: 1 },
+        { id: 'crema-solar',  tipo: 'epi',      nombre: 'Crema solar (factor alto)',          color: '—',              modelo: '—',    unidades: 1 },
+        // Uniforme / ropa de trabajo (identificativa)
+        { id: 'sudadera',     tipo: 'uniforme', nombre: 'Sudadera corporativa',                color: 'Roja',           modelo: 'Roly', unidades: 1 },
+        { id: 'camiseta',     tipo: 'uniforme', nombre: 'Camiseta identificativa',             color: 'Blanca',         modelo: 'Roly', unidades: 3 },
+        { id: 'banador',      tipo: 'uniforme', nombre: 'Bañador identificativo',              color: 'Rojo',           modelo: 'Roly', unidades: 2 },
+        { id: 'pantalon',     tipo: 'uniforme', nombre: 'Pantalón largo',                      color: 'Negro',          modelo: 'Roly', unidades: 1 }
       ],
-      textoCompleto: `ENTREGA DE EQUIPOS DE PROTECCIÓN INDIVIDUAL
+      textoCompleto: `ENTREGA DE EQUIPOS DE PROTECCIÓN INDIVIDUAL Y UNIFORME
 
-El/la trabajador/a reconoce haber recibido de la empresa Pool Safety Des Llevant, S.L. los Equipos de Protección Individual detallados en la tabla superior.
+La empresa Pool Safety Des Llevant, S.L. hace entrega al trabajador de los elementos detallados en la tabla superior, distinguiendo dos categorías jurídicamente distintas:
 
-Los equipos de protección individual (en adelante EPI) son propiedad de la empresa y se ponen a disposición de la persona firmante para su uso exclusivo y personal, y en estricto cumplimiento de las obligaciones establecidas en el artículo 29 de la Ley de Prevención de Riesgos Laborales y el artículo 10 del R.D. 773/1997. En particular:
+1) EQUIPOS DE PROTECCIÓN INDIVIDUAL (EPIs) — RD 773/1997 y Ley 31/1995 PRL
+   Son elementos destinados a protegerle frente a riesgos concretos del puesto: en el caso del socorrista, principalmente radiación solar (UV) y sobreexposición al sol. Incluyen: gafas de sol homologadas, gorra de protección solar y crema solar de alto factor.
 
-• Utilizar correctamente los medios y EPI facilitados de acuerdo con las instrucciones recibidas. Se deben leer las instrucciones de uso y seguir sus indicaciones, utilizando estos equipos en todas aquellas zonas y trabajos en los que sea obligatorio o aconsejable su uso.
-• Utilizar los EPI única y exclusivamente para los fines para los que han sido diseñados.
-• Cuidar adecuadamente los EPI entregados, manteniéndolos en buenas condiciones de uso.
-• Informar de inmediato a su superior de cualquier defecto, anomalía o daño apreciado en el EPI utilizado que, a su juicio, pueda entrañar una pérdida de su eficacia, a fin de que se pueda proceder a su sustitución o reparación.
+   El trabajador está OBLIGADO a:
+   • Utilizarlos correctamente y siempre en las condiciones en las que sean necesarios (radiación solar directa, condiciones de exposición al sol propias del puesto).
+   • Emplearlos exclusivamente para los fines de protección para los que han sido diseñados.
+   • Cuidarlos y mantenerlos en buenas condiciones.
+   • Informar inmediatamente a su superior de cualquier defecto o pérdida de eficacia, para su sustitución.
+   • Participar en las formaciones e instrucciones impartidas por la empresa o el Servicio de Prevención sobre su uso.
 
-Asimismo, se deberá participar y atender a las instrucciones y formaciones impartidas por expertos de la empresa, empresa suministradora, o técnicos del servicio de prevención.
+   Incumplimientos: el uso indebido, no uso o negligencia respecto de los EPIs podrá ser objeto de la potestad disciplinaria empresarial en los términos del Estatuto de los Trabajadores y del convenio colectivo aplicable, por afectar directamente a la prevención de riesgos y a la salud del propio trabajador.
 
-Con la firma de este documento reconozco haber recibido el/los equipo/s de protección individual y acepto las condiciones de uso. He sido informado de las obligaciones que en cuanto a su utilización se refieren.`
+2) UNIFORME / ROPA DE TRABAJO
+   Incluye la sudadera, la camiseta identificativa, el bañador y el pantalón, con la función principal de identificación del trabajador como personal de socorrismo y de imagen corporativa. Aunque no son EPIs en sentido estricto, forman parte de las obligaciones derivadas de la relación laboral y del convenio colectivo, en cuanto a su uso durante la jornada, cuidado y devolución al finalizar la relación laboral.
+
+CONDICIONES COMUNES
+Tanto los EPIs como el uniforme son PROPIEDAD DE LA EMPRESA y se entregan al trabajador para su uso personal durante la vigencia de la relación laboral. A la finalización del contrato deberán ser devueltos en el estado normal de uso, salvo aquellos elementos consumibles (crema solar). Las reposiciones por desgaste normal serán proporcionadas por la empresa, previa comunicación del trabajador.
+
+DECLARACIÓN
+Con la firma de este documento el trabajador reconoce haber recibido los elementos detallados y haber sido informado de las obligaciones asociadas a cada categoría (EPI / uniforme). Las cantidades reflejadas en la tabla se ajustan a lo efectivamente entregado según el criterio del trabajador.`
     }
   ];
 
