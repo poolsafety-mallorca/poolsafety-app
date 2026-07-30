@@ -61,13 +61,51 @@ window.PSPdf = (function () {
 
   function checkPage(doc, y, needed = 20) {
     const h = doc.internal.pageSize.getHeight();
-    if (y + needed > h - 25) { doc.addPage(); return 20; }
+    // Reserva más espacio abajo (52mm) para firma+footer en cada página
+    if (y + needed > h - 55) { doc.addPage(); return 20; }
     return y;
   }
 
   function numerarPaginas(doc) {
     const total = doc.internal.getNumberOfPages();
     for (let i = 1; i <= total; i++) { doc.setPage(i); footer(doc, i, total); }
+  }
+
+  // Añade en cada página una firma reducida al pie (obligatorio legal: firma por hoja)
+  // Excluye la ÚLTIMA página si el flag skipUltima está activo — ahí ya va la firma grande.
+  function firmarCadaPagina(doc, firma, empleado, opts) {
+    const skipUltima = opts && opts.skipUltima;
+    const total = doc.internal.getNumberOfPages();
+    const h = doc.internal.pageSize.getHeight();
+    for (let i = 1; i <= total; i++) {
+      if (skipUltima && i === total) continue;
+      doc.setPage(i);
+      // Recuadro para la firma al pie
+      const yTop = h - 52;
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.2);
+      doc.line(15, yTop, 195, yTop);
+      doc.setFontSize(7);
+      doc.setTextColor(120, 120, 120);
+      doc.text('Firma del trabajador en esta hoja:', 15, yTop + 4);
+      // Firma manuscrita reducida
+      if (firma.firma_imagen) {
+        try { doc.addImage(firma.firma_imagen, 'PNG', 15, yTop + 6, 45, 18); } catch (e) {}
+      }
+      // Datos al lado
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text(limpiarTexto(firma.firma_nombre || empleado.nombre || '—'), 70, yTop + 12);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.text(`DNI ${firma.dni || empleado.dni || '—'}`, 70, yTop + 17);
+      doc.text(`Fecha: ${new Date(firma.fecha_firma).toLocaleDateString('es-ES')}`, 70, yTop + 22);
+      doc.setFontSize(6.5);
+      doc.setTextColor(140, 140, 140);
+      doc.text('Firmado electrónicamente. Copia legal, cada hoja rubricada.', 70, yTop + 27);
+      doc.setTextColor(0, 0, 0);
+    }
   }
 
   /* ==========================================================================
@@ -172,6 +210,29 @@ window.PSPdf = (function () {
         }
       }
 
+      // Decisión reconocimiento médico (solo en el subdoc de salud)
+      if (sub.id === 'ka-vigilancia-salud') {
+        y += 4;
+        y = checkPage(doc, y, 22);
+        const dec = campos.reconocimientoMedico;
+        const decLabel = dec === 'si' ? 'SÍ deseo realizarme el reconocimiento médico'
+                       : dec === 'no' ? 'NO deseo realizarme el reconocimiento médico (renuncia expresa)'
+                       : 'Sin decisión (pendiente)';
+        const decColor = dec === 'si' ? [5, 122, 85] : dec === 'no' ? [155, 28, 28] : [120, 120, 120];
+        doc.setFillColor(255, 251, 235);
+        doc.setDrawColor(245, 158, 11);
+        doc.rect(15, y, 180, 14, 'FD');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(120, 60, 0);
+        doc.text('DECISIÓN DEL TRABAJADOR SOBRE EL RECONOCIMIENTO MÉDICO:', 18, y + 5);
+        doc.setTextColor(decColor[0], decColor[1], decColor[2]);
+        doc.setFontSize(9.5);
+        doc.text(decLabel, 18, y + 11);
+        doc.setTextColor(0, 0, 0);
+        y += 18;
+      }
+
       // Tabla EPIs si aplica
       if (sub.esListaEpis) {
         y += 4;
@@ -236,6 +297,9 @@ window.PSPdf = (function () {
     doc.text('DNI: ' + (firma.dni || '—'), 15, y); y += 5;
     doc.text('Fecha y hora: ' + new Date(firma.fecha_firma).toLocaleString('es-ES'), 15, y);
 
+    // Firma reducida al pie de CADA hoja (obligación legal: cada hoja rubricada)
+    // Se omite la última página porque ya lleva la firma grande arriba.
+    firmarCadaPagina(doc, firma, empleado, { skipUltima: true });
     numerarPaginas(doc);
     return doc;
   }

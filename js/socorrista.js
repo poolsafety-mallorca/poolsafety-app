@@ -1818,6 +1818,26 @@
               <label>Teléfono móvil personal</label>
               <input type="tel" id="wiz-telefonoPersonal" placeholder="+34 6XX XXX XXX" value="${wizardData.campos.telefonoPersonal || ''}" />
             </div>` : ''}
+          ${sub.id === 'ka-vigilancia-salud' ? `
+            <div class="wizard-highlight" style="margin-top:14px;background:#FEF3C7;border-left:4px solid #F59E0B;padding:12px;border-radius:6px;">
+              <div style="font-weight:700;margin-bottom:10px;">Reconocimiento médico laboral (obligatorio elegir)</div>
+              <div class="small" style="margin-bottom:12px;color:#78350F;">Según art. 22 Ley 31/1995 el reconocimiento médico es <b>voluntario</b> salvo los casos exentos indicados en el texto. Indica si deseas o no realizártelo:</div>
+              <label style="display:flex;gap:10px;padding:10px;border:2px solid ${wizardData.campos.reconocimientoMedico==='si'?'#059669':'#e2e8f0'};border-radius:8px;background:${wizardData.campos.reconocimientoMedico==='si'?'#ecfdf5':'#fff'};cursor:pointer;margin-bottom:8px;">
+                <input type="radio" name="wiz-reconocimiento" value="si" ${wizardData.campos.reconocimientoMedico==='si'?'checked':''} style="margin-top:2px;" />
+                <div>
+                  <div style="font-weight:600;">SÍ deseo realizarme el reconocimiento médico</div>
+                  <div class="small text-muted">Autorizo a la empresa a citarme con PREVIS Gestión de Riesgos S.L.U. para el examen de salud laboral.</div>
+                </div>
+              </label>
+              <label style="display:flex;gap:10px;padding:10px;border:2px solid ${wizardData.campos.reconocimientoMedico==='no'?'#DC2626':'#e2e8f0'};border-radius:8px;background:${wizardData.campos.reconocimientoMedico==='no'?'#fef2f2':'#fff'};cursor:pointer;">
+                <input type="radio" name="wiz-reconocimiento" value="no" ${wizardData.campos.reconocimientoMedico==='no'?'checked':''} style="margin-top:2px;" />
+                <div>
+                  <div style="font-weight:600;">NO deseo realizarme el reconocimiento médico</div>
+                  <div class="small text-muted">Renuncio expresamente al reconocimiento voluntario. Esta decisión no exime los reconocimientos obligatorios legalmente establecidos.</div>
+                </div>
+              </label>
+            </div>
+          ` : ''}
           <label class="wizard-accept-line">
             <input type="checkbox" id="wiz-accept" ${wizardData.aceptados[sub.id] ? 'checked' : ''} />
             <span>${sub.obligatorio
@@ -1827,7 +1847,8 @@
         `,
         obligatorio: sub.obligatorio,
         requiereCampos: sub.requiereCampos,
-        esListaEpis: sub.esListaEpis
+        esListaEpis: sub.esListaEpis,
+        esSaludReconocimiento: sub.id === 'ka-vigilancia-salud'
       })),
       {
         titulo: 'Firma manuscrita',
@@ -1962,6 +1983,11 @@
         return;
       }
       wizardData.aceptados[step.subdocId] = accept;
+      if (step.esSaludReconocimiento) {
+        const radio = document.querySelector('input[name="wiz-reconocimiento"]:checked');
+        if (!radio) { toast('Elige SÍ o NO al reconocimiento médico para continuar'); return; }
+        wizardData.campos.reconocimientoMedico = radio.value;
+      }
       if (step.requiereCampos) {
         const email = document.getElementById('wiz-emailPersonal')?.value.trim();
         const tel = document.getElementById('wiz-telefonoPersonal')?.value.trim();
