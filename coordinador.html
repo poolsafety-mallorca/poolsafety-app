@@ -597,9 +597,13 @@
         </div>
         <div class="row gap-2">
           <select id="botiquinPuestoSelect" style="padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; background: #fff; color: var(--ink-700); font-weight: 500;"></select>
-          <button class="btn btn-primary" onclick="openAddItemModal()">
+          <button class="btn btn-primary" onclick="openAddItemModal(false)">
             <svg class="ic ic-16"><use href="#ic-plus"/></svg>
             Añadir producto
+          </button>
+          <button class="btn btn-outline" onclick="openAddItemModal(true)" title="Añadir el mismo producto al inventario de TODOS los hoteles activos" style="border-color:#0EA5E9;color:#0EA5E9;">
+            <svg class="ic ic-16"><use href="#ic-plus"/></svg>
+            Añadir a todos los hoteles
           </button>
         </div>
       </div>
@@ -846,12 +850,15 @@
   <div class="modal">
     <div class="modal-head">
       <div>
-        <h3>Añadir producto al inventario</h3>
-        <p class="small text-muted mt-1" style="margin:4px 0 0;">Se añadirá al puesto seleccionado. Podrás fijar el stock actual y el mínimo para generar alertas automáticas.</p>
+        <h3 id="addItemModalTitle">Añadir producto al inventario</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;" id="addItemModalSub">Se añadirá al puesto seleccionado. Podrás fijar el stock actual y el mínimo para generar alertas automáticas.</p>
       </div>
       <button class="modal-close" onclick="closeAddItemModal()">
         <svg class="ic ic-16"><use href="#ic-x"/></svg>
       </button>
+    </div>
+    <div id="addItemAllBanner" style="display:none;padding:12px;margin-bottom:12px;background:#e0f2fe;border:1px solid #0EA5E9;border-radius:8px;color:#0C4A6E;font-size:13px;">
+      <b>Modo: TODOS los hoteles</b> — este producto se añadirá al inventario de <b><span id="addItemHotelCount">?</span> hoteles</b> activos con el mismo stock y mínimo. Los que ya lo tengan no se duplican.
     </div>
     <div class="field">
       <label>Nombre del producto</label>

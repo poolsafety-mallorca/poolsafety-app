@@ -671,14 +671,40 @@
   renderBotiquinAdmin();
 
   /* ---------- Modal añadir producto ---------- */
-  window.openAddItemModal = function () {
+  let addItemModoTodos = false;
+
+  window.openAddItemModal = async function (modoTodos) {
+    addItemModoTodos = !!modoTodos;
     document.getElementById('newItemSeccion').value = currentBotSeccion;
+    document.getElementById('newItemName').value = '';
+    // Ajustar textos según modo
+    const title = document.getElementById('addItemModalTitle');
+    const sub = document.getElementById('addItemModalSub');
+    const banner = document.getElementById('addItemAllBanner');
+    if (addItemModoTodos) {
+      // Contar hoteles activos
+      let n = 0;
+      try {
+        const { count } = await window.sb.from('puestos')
+          .select('id', { count: 'exact', head: true }).eq('activo', true);
+        n = count || 0;
+      } catch (_) {}
+      const span = document.getElementById('addItemHotelCount');
+      if (span) span.textContent = String(n);
+      if (title) title.textContent = 'Añadir producto a TODOS los hoteles';
+      if (sub) sub.textContent = 'Se creará el producto y se añadirá al inventario de todos los hoteles activos con el mismo stock y mínimo.';
+      if (banner) banner.style.display = 'block';
+    } else {
+      if (title) title.textContent = 'Añadir producto al inventario';
+      if (sub) sub.textContent = 'Se añadirá al puesto seleccionado. Podrás fijar el stock actual y el mínimo para generar alertas automáticas.';
+      if (banner) banner.style.display = 'none';
+    }
     document.getElementById('addItemModal').classList.add('open');
   };
   window.closeAddItemModal = function () {
     document.getElementById('addItemModal').classList.remove('open');
   };
-  window.submitAddItem = function () {
+  window.submitAddItem = async function () {
     const nombre = document.getElementById('newItemName').value.trim();
     if (!nombre) { toast('Escribe un nombre para el producto'); return; }
     const seccion = document.getElementById('newItemSeccion').value;
@@ -687,23 +713,68 @@
     const minimo = parseInt(document.getElementById('newItemMin').value) || 0;
     const unidad = document.getElementById('newItemUnidad').value;
 
-    const nuevo = {
-      id: 'c' + Date.now(),
-      puestoId: currentBotPuesto,
-      seccion, nombre, categoria, stock, minimo, unidad,
-      obligatorio: false,
-      normativa: 'Añadido por coordinador',
-      ultimaRepo: 'nuevo',
-      revisadoHoy: false,
-      custom: true
-    };
-    PS.inventario.push(nuevo);
-    document.getElementById('newItemName').value = '';
-    closeAddItemModal();
-    currentBotSeccion = seccion;
-    renderBotiquinAdmin();
-    renderAlertas();
-    toast(`"${nombre}" añadido al inventario`);
+    const btn = document.querySelector('#addItemModal .btn-primary');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-signal"/></svg> Guardando…'; }
+
+    try {
+      // 1) Buscar si ya existe un item con ese nombre+seccion en el catálogo (evitar duplicar)
+      let itemId = null;
+      const { data: existentes } = await window.sb.from('inventario_items')
+        .select('id, nombre, seccion').eq('seccion', seccion).ilike('nombre', nombre).limit(1);
+      if (existentes && existentes.length > 0) {
+        itemId = existentes[0].id;
+      } else {
+        // Crear nuevo item en el catálogo maestro
+        const { data: nuevoItem, error: errItem } = await window.sb.from('inventario_items').insert({
+          nombre, seccion, categoria, unidad,
+          obligatorio: false,
+          normativa: 'Añadido por coordinador'
+        }).select('id').single();
+        if (errItem) throw errItem;
+        itemId = nuevoItem.id;
+      }
+
+      // 2) Insertar en inventario_puesto — uno o todos
+      if (addItemModoTodos) {
+        const { data: puestos } = await window.sb.from('puestos')
+          .select('id').eq('activo', true);
+        const ids = (puestos || []).map(p => p.id);
+        // Filtrar los que ya tienen el item
+        const { data: yaTienen } = await window.sb.from('inventario_puesto')
+          .select('puesto_id').eq('item_id', itemId).in('puesto_id', ids);
+        const setYaTienen = new Set((yaTienen || []).map(r => r.puesto_id));
+        const nuevos = ids.filter(pid => !setYaTienen.has(pid))
+          .map(pid => ({ puesto_id: pid, item_id: itemId, stock, minimo, revisado_hoy: false }));
+        if (nuevos.length > 0) {
+          const { error: errIns } = await window.sb.from('inventario_puesto').insert(nuevos);
+          if (errIns) throw errIns;
+        }
+        toast(`✓ "${nombre}" añadido a ${nuevos.length}/${ids.length} hoteles${setYaTienen.size > 0 ? ` (${setYaTienen.size} ya lo tenían)` : ''}`);
+      } else {
+        if (!currentBotPuesto) { toast('Selecciona antes un hotel'); return; }
+        // Comprobar duplicado en este puesto
+        const { data: dup } = await window.sb.from('inventario_puesto')
+          .select('id').eq('puesto_id', currentBotPuesto).eq('item_id', itemId).limit(1);
+        if (dup && dup.length > 0) {
+          toast(`"${nombre}" ya está en el inventario de este hotel`);
+          return;
+        }
+        const { error: errIns } = await window.sb.from('inventario_puesto').insert({
+          puesto_id: currentBotPuesto, item_id: itemId, stock, minimo, revisado_hoy: false
+        });
+        if (errIns) throw errIns;
+        toast(`✓ "${nombre}" añadido al inventario del hotel`);
+      }
+
+      closeAddItemModal();
+      currentBotSeccion = seccion;
+      if (typeof renderBotiquinAdmin === 'function') renderBotiquinAdmin();
+      if (typeof renderAlertas === 'function') renderAlertas();
+    } catch (err) {
+      toast('Error: ' + err.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-plus"/></svg> Añadir al inventario'; }
+    }
   };
 
   /* ---------- Horas mes (REAL desde BD: empleados + fichajes del mes) ---------- */
