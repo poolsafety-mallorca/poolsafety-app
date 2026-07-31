@@ -1,5 +1,5 @@
 /* PoolSafety · Service Worker (PWA offline básico) */
-const CACHE = 'poolsafety-v66';
+const CACHE = 'poolsafety-v67';
 const CORE = [
   '/',
   '/index.html',

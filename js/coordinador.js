@@ -2390,6 +2390,22 @@
           </div>
         </div>
 
+        <!-- Ver / editar / borrar fichajes existentes -->
+        <div class="ficha-action-row" style="flex-direction:column;align-items:stretch;background:#fefce8;border-left:4px solid #EAB308;">
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div class="icon" style="background:#FEF9C3;color:#854D0E;"><svg class="ic ic-18"><use href="#ic-file-text"/></svg></div>
+            <div class="ficha-action-body" style="flex:1;min-width:0;">
+              <div class="ficha-action-title">Ver, editar o borrar fichajes existentes</div>
+              <div class="ficha-action-sub">Corregir horas mal marcadas, borrar fichajes duplicados o erróneos. Queda auditado quién hace cada cambio.</div>
+            </div>
+          </div>
+          <div id="fichajesEdit_${e.id}" style="margin-top:12px;"></div>
+          <div class="row gap-2 mt-2" style="justify-content:flex-end;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="cargarFichajesEditables('${e.id}', 7)">Últimos 7 días</button>
+            <button class="btn btn-primary btn-sm" onclick="cargarFichajesEditables('${e.id}', 31)">Mes actual</button>
+          </div>
+        </div>
+
         ${!esAdmin ? `
           <div class="ficha-action-row" style="opacity:.7;">
             <div class="icon" style="background:var(--ink-100,#E5E7EB);color:var(--ink-500,#6B7280);"><svg class="ic ic-18"><use href="#ic-alert"/></svg></div>
@@ -2601,6 +2617,146 @@
     } catch (err) {
       toast('Error: ' + err.message);
     }
+  };
+
+  // Listar / editar / borrar fichajes existentes de un empleado.
+  window.cargarFichajesEditables = async function (empId, dias) {
+    const cont = document.getElementById(`fichajesEdit_${empId}`);
+    if (!cont) return;
+    cont.innerHTML = '<div class="text-muted small" style="padding:10px;text-align:center;">Cargando fichajes…</div>';
+    try {
+      const desde = new Date();
+      if (dias === 31) {
+        desde.setDate(1); desde.setHours(0,0,0,0);
+      } else {
+        desde.setDate(desde.getDate() - (dias - 1));
+        desde.setHours(0,0,0,0);
+      }
+      const { data, error } = await window.sb.from('fichajes')
+        .select('id, tipo, hora, gps_ok, fuera_de_zona, distancia_m, origen_manual, motivo_manual, puesto_id, puestos(nombre)')
+        .eq('empleado_id', empId)
+        .gte('hora', desde.toISOString())
+        .order('hora', { ascending: false });
+      if (error) throw error;
+      const rows = data || [];
+      if (rows.length === 0) {
+        cont.innerHTML = `<div class="text-muted small" style="padding:14px;text-align:center;">Sin fichajes en los últimos ${dias === 31 ? 'del mes' : dias + ' días'}.</div>`;
+        return;
+      }
+      // Agrupar por día para claridad
+      const porDia = {};
+      rows.forEach(f => {
+        const d = new Date(f.hora);
+        const key = d.toLocaleDateString('es-ES', { weekday:'short', day:'2-digit', month:'short' });
+        (porDia[key] = porDia[key] || []).push(f);
+      });
+      cont.innerHTML = Object.entries(porDia).map(([diaTxt, arr]) => `
+        <div style="margin-bottom:10px;">
+          <div style="font-weight:700;font-size:12px;color:#475569;padding:4px 0;text-transform:uppercase;">${diaTxt}</div>
+          ${arr.map(f => {
+            const hora = new Date(f.hora).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+            const puesto = f.puestos?.nombre || '—';
+            const badgeTipo = f.tipo === 'entrada'
+              ? '<span class="badge badge-ok"><span class="dot"></span>Entrada</span>'
+              : '<span class="badge badge-neutral"><span class="dot"></span>Salida</span>';
+            const badgeGps = f.fuera_de_zona
+              ? `<span class="badge badge-warn" style="margin-left:4px;">GPS fuera${f.distancia_m ? ' (' + f.distancia_m + 'm)' : ''}</span>`
+              : (f.gps_ok === true ? '<span class="badge badge-ok" style="margin-left:4px;">GPS OK</span>' : '');
+            const badgeManual = f.origen_manual
+              ? '<span class="badge badge-info" style="margin-left:4px;">📌 manual</span>'
+              : '';
+            return `
+              <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;margin:4px 0;">
+                <div style="min-width:60px;font-weight:700;font-family:monospace;">${hora}</div>
+                <div style="flex:1;min-width:0;">
+                  ${badgeTipo} ${badgeGps} ${badgeManual}
+                  <div class="small text-muted" style="margin-top:2px;">${puesto}${f.motivo_manual ? ' · ' + f.motivo_manual : ''}</div>
+                </div>
+                <button class="btn-icon" title="Editar hora" onclick="editarFichaje('${f.id}','${empId}',${dias})"
+                  style="width:30px;height:30px;background:#EFF6FF;color:#1D4ED8;border-radius:6px;border:none;cursor:pointer;">
+                  <svg class="ic ic-14"><use href="#ic-pen"/></svg>
+                </button>
+                <button class="btn-icon" title="Borrar" onclick="borrarFichaje('${f.id}','${empId}',${dias})"
+                  style="width:30px;height:30px;background:#FEF2F2;color:#DC2626;border-radius:6px;border:none;cursor:pointer;">
+                  <svg class="ic ic-14"><use href="#ic-x"/></svg>
+                </button>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `).join('');
+    } catch (err) {
+      cont.innerHTML = `<div class="alert-strip warn" style="margin:6px;">Error: ${err.message}</div>`;
+    }
+  };
+
+  window.editarFichaje = async function (fichajeId, empId, dias) {
+    try {
+      // Cargar el fichaje actual
+      const { data: f, error } = await window.sb.from('fichajes')
+        .select('id, tipo, hora').eq('id', fichajeId).single();
+      if (error) throw error;
+      const d = new Date(f.hora);
+      const horaAct = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const fechaAct = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+      // 1) Nueva fecha (dejar por defecto la actual)
+      const nuevaFecha = prompt(`Editar fichaje (${f.tipo.toUpperCase()})\n\nFecha (YYYY-MM-DD):`, fechaAct);
+      if (nuevaFecha === null) return;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(nuevaFecha)) { toast('Fecha inválida (YYYY-MM-DD)'); return; }
+
+      // 2) Nueva hora
+      const nuevaHora = prompt('Hora (HH:MM en formato 24h):', horaAct);
+      if (nuevaHora === null) return;
+      const m = nuevaHora.match(/^(\d{1,2}):(\d{2})$/);
+      if (!m) { toast('Hora inválida (HH:MM)'); return; }
+      const hh = parseInt(m[1]), mm = parseInt(m[2]);
+      if (hh < 0 || hh > 23 || mm < 0 || mm > 59) { toast('Hora fuera de rango'); return; }
+
+      // 3) Motivo del cambio
+      const motivo = prompt('Motivo del cambio (obligatorio):', '');
+      if (!motivo || !motivo.trim()) { toast('Debes indicar el motivo del cambio'); return; }
+
+      // 4) Construir ISO y confirmar
+      const [y, mo, dd] = nuevaFecha.split('-').map(Number);
+      const nueva = new Date(y, mo - 1, dd, hh, mm, 0, 0);
+      if (!confirm(`¿Confirmar cambio?\n\nDe: ${fechaAct} ${horaAct}\nA: ${nuevaFecha} ${nuevaHora}\n\nMotivo: ${motivo}`)) return;
+
+      // 5) UPDATE
+      const psSes = window.PS_SESSION || {};
+      const updateData = { hora: nueva.toISOString() };
+      // Intentar guardar motivo si la columna existe (misma columna que motivo_manual)
+      try {
+        const { error: errUp } = await window.sb.from('fichajes').update({
+          ...updateData,
+          motivo_manual: `[Editado ${new Date().toLocaleDateString('es-ES')}] ${motivo}`,
+          registrado_por: psSes.userId || null
+        }).eq('id', fichajeId);
+        if (errUp && String(errUp.message).includes('column')) {
+          // Sin columnas de auditoría: solo la hora
+          const { error: err2 } = await window.sb.from('fichajes').update(updateData).eq('id', fichajeId);
+          if (err2) throw err2;
+        } else if (errUp) throw errUp;
+      } catch (e) { throw e; }
+
+      toast(`✓ Fichaje actualizado a ${nuevaFecha} ${nuevaHora}`);
+      cargarFichajesEditables(empId, dias);
+      if (window.renderPosts) renderPosts();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  window.borrarFichaje = async function (fichajeId, empId, dias) {
+    try {
+      const { data: f } = await window.sb.from('fichajes')
+        .select('tipo, hora').eq('id', fichajeId).single();
+      const cuando = f ? new Date(f.hora).toLocaleString('es-ES', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+      if (!confirm(`¿Borrar este fichaje?\n\n${f?.tipo?.toUpperCase() || ''} ${cuando}\n\nEsta acción no se puede deshacer.`)) return;
+      const { error } = await window.sb.from('fichajes').delete().eq('id', fichajeId);
+      if (error) throw error;
+      toast('✓ Fichaje borrado');
+      cargarFichajesEditables(empId, dias);
+      if (window.renderPosts) renderPosts();
+    } catch (err) { toast('Error: ' + err.message); }
   };
 
   // Botón masivo: dar de alta a TODOS los que estén en alta-pendiente
