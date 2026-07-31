@@ -177,7 +177,9 @@
      FICHAJE REAL CON GPS + BD (Supabase)
      ========================================================================== */
 
-  const state = PS.getSocorristaState();
+  // Estado del fichaje: SIEMPRE se calcula a partir de los fichajes REALES de HOY en BD.
+  // localStorage era el bug que hacía ver el turno del día anterior al día siguiente.
+  const state = { fichado: false, horaEntrada: null, horaSalida: null };
   const punchActions = document.getElementById('punchActions');
   const punchBadge = document.getElementById('punchBadge');
   const punchWhen = document.getElementById('punchWhen');
@@ -206,6 +208,48 @@
       return null;
     }
   }
+
+  // Reconstruye el state del fichaje leyendo los fichajes REALES de HOY desde BD.
+  // Elimina el bug antiguo de localStorage que mostraba el turno del día anterior.
+  async function sincronizarEstadoFichajeDesdeBD() {
+    if (!empleadoReal || !window.sb) return;
+    try {
+      const hoy = new Date();
+      const desde = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString();
+      const hasta = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1).toISOString();
+      const { data } = await window.sb.from('fichajes')
+        .select('tipo, hora').eq('empleado_id', empleadoReal.id)
+        .gte('hora', desde).lt('hora', hasta)
+        .order('hora', { ascending: true });
+      const rows = data || [];
+      const fmt = (iso) => new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      // Reset y reconstruir
+      state.fichado = false; state.horaEntrada = null; state.horaSalida = null;
+      // Encontrar el último par entrada/salida sin cerrar
+      let ultimaEntrada = null, ultimaSalida = null;
+      for (const f of rows) {
+        if (f.tipo === 'entrada') { ultimaEntrada = f.hora; ultimaSalida = null; }
+        else if (f.tipo === 'salida') { ultimaSalida = f.hora; }
+      }
+      if (ultimaEntrada && !ultimaSalida) {
+        state.fichado = true;
+        state.horaEntrada = fmt(ultimaEntrada);
+      } else if (ultimaEntrada && ultimaSalida) {
+        state.horaEntrada = fmt(ultimaEntrada);
+        state.horaSalida = fmt(ultimaSalida);
+      }
+      if (typeof renderPunch === 'function') renderPunch();
+    } catch (err) {
+      console.warn('[sincronizarEstadoFichajeDesdeBD]', err.message);
+    }
+  }
+  window.sincronizarEstadoFichajeDesdeBD = sincronizarEstadoFichajeDesdeBD;
+  // Ejecutar al cargar la ficha, al recuperar foco y periódicamente
+  document.addEventListener('ps-session-updated', () => setTimeout(sincronizarEstadoFichajeDesdeBD, 1200));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') sincronizarEstadoFichajeDesdeBD();
+  });
+  setInterval(sincronizarEstadoFichajeDesdeBD, 60_000);
 
   function aplicarPuestoEnUI() {
     const mapName = document.getElementById('mapName');
