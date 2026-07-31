@@ -797,6 +797,50 @@
   setTimeout(renderPendientesYCampana, 1200);
   setInterval(renderPendientesYCampana, 60_000);
 
+  /* ---------- Métricas mes: días trabajados + horas trabajadas (real de BD) ---------- */
+  async function renderMetricasMes() {
+    if (!window.sb) return;
+    const empId = empleadoReal?.id;
+    const elDias = document.getElementById('mesDias');
+    const elDiasSub = document.getElementById('mesDiasSub');
+    const elHoras = document.getElementById('mesHoras');
+    const elHorasSub = document.getElementById('mesHorasSub');
+    if (!elDias || !elHoras) return;
+    if (!empId) return;
+    try {
+      const hoy = new Date();
+      const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
+      const hasta = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1).toISOString();
+      const { data: fichs } = await window.sb.from('fichajes')
+        .select('id, tipo, hora').eq('empleado_id', empId)
+        .gte('hora', desde).lt('hora', hasta).order('hora', { ascending: true });
+      const arr = fichs || [];
+      // Días distintos con al menos una entrada
+      const diasSet = new Set(arr.filter(f => f.tipo === 'entrada').map(f => new Date(f.hora).toDateString()));
+      // Horas: emparejar entrada+salida
+      let mins = 0, entrada = null;
+      arr.forEach(f => {
+        if (f.tipo === 'entrada') entrada = new Date(f.hora);
+        else if (f.tipo === 'salida' && entrada) {
+          mins += Math.max(0, (new Date(f.hora) - entrada) / 60000);
+          entrada = null;
+        }
+      });
+      const horas = Math.round(mins / 60);
+      const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long' });
+      if (elDias) elDias.textContent = String(diasSet.size);
+      if (elDiasSub) elDiasSub.textContent = `en ${nombreMes}`;
+      if (elHoras) elHoras.innerHTML = `${horas}<span class="unit">h</span>`;
+      if (elHorasSub) elHorasSub.textContent = `en ${nombreMes}`;
+    } catch (_) {
+      if (elDias) elDias.textContent = '0';
+      if (elHoras) elHoras.innerHTML = '0<span class="unit">h</span>';
+    }
+  }
+  document.addEventListener('ps-session-updated', () => setTimeout(renderMetricasMes, 900));
+  setTimeout(renderMetricasMes, 1400);
+  setInterval(renderMetricasMes, 60_000);
+
   /* ---------- Subir mi documentación (socorrista) ---------- */
   let misubidaBlob = null, misubidaTipo = null;
   window.onMisubidaFile = function (e) {
