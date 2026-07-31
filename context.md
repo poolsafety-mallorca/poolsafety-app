@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-07-29 (cierre segunda jornada · muchos fixes de flujos reales)
-**Cache SW actual: `poolsafety-v41`**
+Última actualización: 2026-07-31 (tercera jornada · piloto arrancando con socorristas reales)
+**Cache SW actual: `poolsafety-v67`**
 
 ---
 
@@ -196,19 +196,64 @@ Ver commits: SMTP Resend, auto-update PWA, PSHor horarios editables, Correturnos
 - ✅ **Panel Estado del equipo**: quién ha entrado app, quién firmó Kit Alta, fichajes del mes por socorrista.
 - ✅ **Cero mocks visibles**: María Fernández, Hotel Bellamar, Jaume Ferrer, KPIs falsos, "3 tareas coord", listados PS.socorristas — TODO eliminado o reemplazado por BD real.
 
+### Sesión 2026-07-30/31 (tercera jornada · piloto arrancando con socorristas reales · v42→v67)
+
+**Fixes críticos descubiertos con socorristas reales:**
+- ✅ **BUG BLOQUEANTE `miPuesto is not defined`** en socorrista.js:897 — crasheaba TODO el JS del socorrista → wizard Kit Alta no aparecía y muchos otros flujos rotos. Arreglado.
+- ✅ **BUG BLOQUEANTE schema tareas desincronizado**: código usaba `completada` y `fecha_limite`, BD real tiene `hecha` y `fecha`. Todas las queries daban 400. Todo el código actualizado a los nombres reales.
+- ✅ **BUG BLOQUEANTE window.PS no se exponía**: `const PS = (function(){})();` en data.js declara PS en scope léxico pero NO en window. Por eso el PDF del Kit Alta salía sin texto legal. Añadido `window.PS = PS;` al final de data.js.
+- ✅ **BUG CRÍTICO fichaje mostraba turno del día anterior**: el estado (fichado, horaEntrada, horaSalida) se guardaba en localStorage y no se reseteaba al cambiar de día. Ahora se reconstruye desde fichajes REALES de HOY en BD al arrancar, al recuperar foco y cada 60s.
+- ✅ **Wizard Kit Alta bug `nombreLogueado is not defined`**: al pulsar "Firmar ahora" no se abría el modal por error en paso final. Arreglado.
+- ✅ **Reenviar Kit Alta desde admin** no llegaba al socorrista (solo archivaba firma). Ahora crea tarea "Firmar Kit Alta pendiente" → Realtime dispara wizard al momento.
+
+**Nuevas features:**
+- ✅ **Botón "Fichar por el empleado"** en Ficha > Acciones — para cuando la app del socorrista no responde. Prompt hora + motivo + confirm. INSERT en fichajes con `origen_manual=true`, `registrado_por`, `motivo_manual`.
+- ✅ **Editor de fichajes existentes** (bloque amarillo en Ficha > Acciones): botón "Últimos 7 días" / "Mes actual", cada fichaje con hora, tipo, GPS, motivo, botones ✏️editar y ✕borrar. Auditoría con prefijo `[Editado <fecha>]` en motivo_manual.
+- ✅ **Botón Llamar directo** en cada tarjeta del panel general (icono teléfono redondo, rojo si fuera de zona / verde si OK). `href="tel:+34..."` — abre app de llamadas nativa. Normaliza teléfonos ES de 9 dígitos.
+- ✅ **Marca visible fichaje manual** 📌 junto al nombre + aviso azul en modal detalle con motivo.
+- ✅ **Botón "Añadir a todos los hoteles"** en Botiquín (admin/coord) — INSERT masivo evitando duplicados. Toast informa cuántos hoteles se actualizaron.
+- ✅ **Solicitar firma registro mensual** desde admin — botón "Mandar horas para firmar ahora" en Ficha > Docs. Calcula horas hasta hoy, crea tarea, socorrista lo ve al momento (Realtime).
+- ✅ **Registro mensual REAL por semanas** con cap 40h/sem (antes firmaba 160h siempre). Nueva función `calcularSemanasMes` agrupa fichajes por semana ISO (lunes-domingo). Modal firma + PDF muestran tabla con cada semana: rango dd/mm–dd/mm, días, horas reales, horas firmadas, extras no firmadas.
+- ✅ **Informe oficial inspección** con columna día semana (Lu/Ma/…/Do) + festivos amber + finde gris + total "en festivo/domingo". Cálculo festivos: fijos nacionales + Illes Balears (1 marzo, Lunes de Pascua) + Semana Santa con algoritmo de Gauss (funciona cualquier año).
+- ✅ **Filtro tareas socorrista**: chips Pendientes / Realizadas / Todas. Por defecto Pendientes. Hechas se tachan con fecha completado.
+- ✅ **Campana admin** con badge sobresaliente + panel dropdown de alertas reales (tipo, criticidad con color, puesto, empleado, "hace X min"). Botón Resolver por alerta + "Marcar todas resueltas".
+- ✅ **Multi-selección modal reportar falta** — checkbox + cantidad por cada producto, envía UN INSERT por producto.
+- ✅ **Stock editable en botiquín socorrista** con − / + / input + botón Guardar + "Marcar todo comprobado" al final.
+- ✅ **Métricas mes socorrista REALES** — antes "22/25 laborables" y "98% puntualidad" hardcodeados. Ahora Días trabajados + Horas trabajadas del mes desde fichajes reales.
+- ✅ **Notice "Revisar botiquín"** en Inicio socorrista solo aparece si quedan items sin revisar HOY. Muestra progreso "X/Y revisados".
+- ✅ **Cabecera Documentación** cuenta pendientes REALES (Kit Alta + tareas jornada), no mocks.
+- ✅ **Placeholders neutros en HTML** — antes si el JS tardaba se veía "María Fernández", "Jaume Ferrer", "62/80". Ahora "Cargando…" o "—" honestos.
+- ✅ **Realtime en firmas_documentos + tareas del empleado** — wizard Kit Alta aparece al momento cuando admin solicita firma. Polling reducido a 10s como fallback.
+- ✅ **Tarjetas de puesto ahora clickables** en panel general — antes tenían `data-post` pero nadie escuchaba clicks.
+
+**Kit Alta reescrito según feedback del despacho legal** (departamento protección datos + laboral):
+- ✅ **Nuevo subdoc "Marco laboral aplicable"** (paso 1 del wizard): cita expresa del Convenio colectivo del sector de Vigilancia y Socorrismo de las Illes Balears + categoría profesional (Socorrista acuático) + datos empresa.
+- ✅ **Política privacidad reescrita** con bases jurídicas separadas: ejecución contrato (6.1.b) / obligación legal (6.1.c) / interés legítimo (6.1.f) / consentimiento (6.1.a) SOLO para imagen y WhatsApp.
+- ✅ **Geolocalización** con bloque "Cómo funciona" (solo al fichar, no rastreo continuo) + uso a efectos disciplinarios con fórmula legal correcta.
+- ✅ **Documentación electrónica** — quitada la afirmación amplia "todo envío = recepción fehaciente". Ahora distingue sensibles (nómina/sanciones → acuse o vías reforzadas) vs ordinarios.
+- ✅ **Vigilancia salud** reescrita: VOLUNTARIEDAD como regla general, excepciones tasadas. Radio SÍ/NO obligatorio elegir (wizardNext bloquea si no eligió). Decisión aparece destacada en PDF.
+- ✅ **Desconexión digital** presentado como acuse de recibo (no sustituye política interna completa).
+- ✅ **EPIs vs uniforme separados** en 2 tablas distintas (RD 773/1997 vs convenio) tanto en wizard como en PDF.
+
+**Kit Alta PDF:**
+- ✅ **Firma reducida al pie de CADA hoja** (obligación legal — cada hoja rubricada). Se omite la última porque ya lleva la firma grande. `checkPage` reserva 55mm de margen inferior.
+- ✅ **Fallback robusto** si `window.PS.kitAltaSubdocs` no carga — reintenta hasta 2s + alert claro con instrucción Ctrl+Shift+R.
+- ✅ **Orden scripts** reorganizado: data.js antes de ps-pdf.js en socorrista.html y coordinador.html.
+
+**Otras mejoras:**
+- ✅ **22 productos reales cargados** en el botiquín de todos los hoteles vía SQL (Agua oxigenada, Alcohol 70º, Clorhexidina, Povidona, Steri-Strip, Diclofenaco, Tensoplast, Maletín, etc.). Se pobló con INSERT masivo idempotente.
+- ✅ **Botón "Horas del mes"** en Acciones rápidas admin — antes hacía scrollTo a sección oculta; ahora click en tab horas.
+- ✅ **Nombre y DNI autorellenados** en modales de firma (antes eran placeholders gris confundían).
+
 ---
 
 ## 10. Pendientes / próximos pasos
 
-### Para verificar mañana (pruebas)
-- ⏳ Verificar que **eliminar coordinador** funciona tras `usuarios_delete` policy.
-- ⏳ Ver que Carlos (o cualquier socorrista) recibe la **tarea "Firmar Kit Alta"** al pulsar "Solicitar firma" desde admin.
-- ⏳ Probar reportar falta material y ver alerta en admin.
-- ⏳ Probar mensaje socorrista→coordinador (aparece en alertas admin).
-- ⏳ Probar firmar Kit Alta en tablet desde coordinador.
-- ⏳ Probar finiquito completo (Iniciar desde admin → empleado firma → pasa a baja).
-- ⏳ Descargar parte diario CSV.
-- ⏳ Turnos partidos: crear un servicio con turno 10:00-14:30 + 16:00-20:30.
+### Para verificar en próxima jornada
+- ⏳ Firmas Kit Alta según nuevo formato legal + 8 pasos.
+- ⏳ Editor de fichajes: probar editar/borrar y ver que auditoría queda en motivo_manual.
+- ⏳ Botón Llamar en móvil real (Android/iOS) → debe abrir dialer directo.
+- ⏳ Piloto con 4 socorristas: Luis Cantón, Alejandro Hidalgo (=Sergio Hidalgo Capote en BD), Iván Carrillo Valdibia (con B), Manuel Pérez Guerrero — todos activos, esperando envío email de acceso individual.
 
 ### SQLs manuales pendientes (si los del día no se ejecutaron)
 ```sql
@@ -250,6 +295,15 @@ alter table puestos add column if not exists notas text;
 alter table puestos add column if not exists tiene_botiquin boolean default true;
 alter table puestos add column if not exists tiene_desa boolean default false;
 alter table puestos add column if not exists tiene_oxigeno boolean default false;
+
+-- SESIÓN 2026-07-30/31 · Columnas de auditoría de fichaje manual
+alter table fichajes add column if not exists origen_manual boolean default false;
+alter table fichajes add column if not exists registrado_por uuid references usuarios(id);
+alter table fichajes add column if not exists motivo_manual text;
+
+-- Realtime para wizard Kit Alta instantáneo (si aún no está)
+alter publication supabase_realtime add table tareas;
+alter publication supabase_realtime add table firmas_documentos;
 ```
 
 ### Features aún no implementadas
