@@ -190,7 +190,12 @@
                 <a class="btn-icon" href="tel:${telHref}" title="Llamar a ${soc.nombre}" onclick="event.stopPropagation();"
                    style="width:36px;height:36px;flex-shrink:0;background:${r.fichaje.fuera_de_zona?'#DC2626':'#059669'};color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;text-decoration:none;">
                   <svg class="ic ic-16"><use href="#ic-phone"/></svg>
-                </a>` : ''}
+                </a>` : `
+                <button class="btn-icon" title="${soc.nombre} no tiene teléfono en su ficha — añádelo desde Empleados › Datos" onclick="event.stopPropagation();" disabled
+                   style="width:36px;height:36px;flex-shrink:0;background:#e2e8f0;color:#94a3b8;border-radius:50%;display:flex;align-items:center;justify-content:center;border:none;cursor:not-allowed;position:relative;">
+                  <svg class="ic ic-16"><use href="#ic-phone"/></svg>
+                  <span style="position:absolute;top:0;right:0;width:12px;height:2px;background:#dc2626;transform:rotate(-45deg);transform-origin:center;"></span>
+                </button>`}
             </div>
             `;
           })() : `
