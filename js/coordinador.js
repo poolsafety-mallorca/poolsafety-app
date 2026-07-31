@@ -70,9 +70,10 @@
       // 2. Fichajes de hoy
       const hoy = new Date();
       const desde = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString();
+      // Enriquecemos con teléfono del empleado (para botón llamar) y marca de fichaje manual
       const { data: fichajes } = await window.sb
         .from('fichajes')
-        .select('id, empleado_id, puesto_id, tipo, hora, gps_ok, fuera_de_zona, empleados(id, nombre)')
+        .select('id, empleado_id, puesto_id, tipo, hora, gps_ok, fuera_de_zona, distancia_m, origen_manual, motivo_manual, registrado_por, empleados(id, nombre, telefono)')
         .gte('hora', desde)
         .order('hora', { ascending: false });
 
@@ -171,18 +172,28 @@
               ${info.label}
             </span>
           </div>
-          ${soc ? `
+          ${soc ? (() => {
+            const tel = (soc.telefono || '').replace(/\s+/g,'');
+            const telHref = tel ? (tel.startsWith('+') ? tel : (tel.length === 9 ? '+34' + tel : tel)) : '';
+            const esManual = !!r.fichaje.origen_manual;
+            return `
             <div class="post-worker">
               <div class="mini-av ${avatarClassFor(r.estado === 'ok' ? 'ok' : '')}">${iniciales}</div>
               <div style="min-width:0; flex:1;">
-                <div class="post-worker-name">${soc.nombre}</div>
+                <div class="post-worker-name">${soc.nombre}${esManual ? ' <span class="small" style="color:#0284C7;font-weight:500;" title="Fichaje registrado manualmente por administración">📌 manual</span>' : ''}</div>
                 <div class="post-time ${r.fichaje.fuera_de_zona ? 'danger' : ''}">
                   <svg class="ic ic-14"><use href="#ic-clock"/></svg>
-                  ${r.fichaje.tipo === 'entrada' ? 'Fichó entrada' : 'Salió'} a las ${horaTxt}${r.fichaje.fuera_de_zona ? ' · GPS fuera' : ''}
+                  ${r.fichaje.tipo === 'entrada' ? 'Fichó entrada' : 'Salió'} a las ${horaTxt}${r.fichaje.fuera_de_zona ? ' · GPS fuera' + (r.fichaje.distancia_m ? ' (' + r.fichaje.distancia_m + 'm)' : '') : ''}
                 </div>
               </div>
+              ${telHref ? `
+                <a class="btn-icon" href="tel:${telHref}" title="Llamar a ${soc.nombre}" onclick="event.stopPropagation();"
+                   style="width:36px;height:36px;flex-shrink:0;background:${r.fichaje.fuera_de_zona?'#DC2626':'#059669'};color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;text-decoration:none;">
+                  <svg class="ic ic-16"><use href="#ic-phone"/></svg>
+                </a>` : ''}
             </div>
-          ` : `
+            `;
+          })() : `
             <div class="post-worker">
               <div class="mini-av" style="background: var(--ink-200); color: var(--ink-500);">
                 <svg class="ic ic-14"><use href="#ic-user"/></svg>
@@ -237,9 +248,11 @@
       id: row.fichaje.empleados.id,
       nombre: row.fichaje.empleados.nombre,
       iniciales: (row.fichaje.empleados.nombre||'').split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase(),
-      telefono: '—',
+      telefono: row.fichaje.empleados.telefono || '',
       horasNormales: 0, horasExtra: 0
     } : null;
+    const esManual = row.fichaje && row.fichaje.origen_manual;
+    const motivoManual = row.fichaje && row.fichaje.motivo_manual;
     const f = row.fichaje ? {
       horaFichaje: new Date(row.fichaje.hora).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
       gpsOk: !row.fichaje.fuera_de_zona,
@@ -293,35 +306,40 @@
         </svg>
       </div>
 
-      ${soc ? `
+      ${soc ? (() => {
+        const tel = (soc.telefono || '').replace(/\s+/g,'');
+        const telHref = tel ? (tel.startsWith('+') ? tel : (tel.length === 9 ? '+34' + tel : tel)) : '';
+        const distancia = row.fichaje?.distancia_m;
+        return `
         <div class="li" style="margin-top: 14px;">
           <div class="mini-av" style="width:40px; height:40px; font-size:13px;">${soc.iniciales}</div>
           <div class="li-body">
             <div class="li-title">${soc.nombre}</div>
-            <div class="li-sub">${soc.telefono}</div>
+            <div class="li-sub">${soc.telefono || 'Sin teléfono'}${row.fichaje?.fuera_de_zona && distancia ? ' · a ' + distancia + 'm del puesto' : ''}</div>
           </div>
-          <button class="btn-icon" title="Llamar">
-            <svg class="ic ic-16"><use href="#ic-phone"/></svg>
-          </button>
+          ${telHref ? `
+            <a class="btn btn-primary btn-sm" href="tel:${telHref}" style="text-decoration:none;background:${row.fichaje?.fuera_de_zona ? '#DC2626' : '#059669'};border-color:transparent;">
+              <svg class="ic ic-16"><use href="#ic-phone"/></svg> Llamar
+            </a>` : `
+            <button class="btn btn-outline btn-sm" disabled title="El empleado no tiene teléfono en su ficha">
+              <svg class="ic ic-16"><use href="#ic-phone"/></svg> Sin tel.
+            </button>`}
         </div>
-
-        <div class="metrics-grid mt-3">
-          <div class="metric">
-            <div class="metric-label">Horas mes</div>
-            <div class="metric-value">${soc.horasNormales}<span class="unit">h</span></div>
-          </div>
-          <div class="metric">
-            <div class="metric-label">Extras</div>
-            <div class="metric-value">${soc.horasExtra}<span class="unit">h</span></div>
-          </div>
-        </div>
+        ${esManual ? `
+          <div class="alert-strip" style="background:#e0f2fe;border-left:4px solid #0EA5E9;color:#0C4A6E;padding:10px;border-radius:6px;margin-top:10px;font-size:13px;">
+            <svg class="ic ic-16"><use href="#ic-alert"/></svg>
+            <div>
+              <b>Fichaje registrado manualmente por administración.</b>
+              ${motivoManual ? '<br><span class="small">Motivo: ' + motivoManual + '</span>' : ''}
+            </div>
+          </div>` : ''}
 
         <div class="notice mt-3">
           <div class="notice-icon ${f.gpsOk === false ? 'amber' : 'sky'}" style="background: ${f.gpsOk === false ? 'var(--warning-bg)' : 'var(--info-bg)'}; color: ${f.gpsOk === false ? '#B45309' : 'var(--sky-700)'};">
             <svg class="ic ic-18"><use href="#ic-signal"/></svg>
           </div>
           <div class="notice-body">
-            <div class="notice-title">${f.horaFichaje ? `Fichaje ${f.horaFichaje}` : 'Aún no ha fichado hoy'}</div>
+            <div class="notice-title">${f.horaFichaje ? 'Fichaje ' + f.horaFichaje : 'Aún no ha fichado hoy'}</div>
             <div class="notice-sub">${f.horaFichaje ? (f.gpsOk ? 'GPS dentro del área del puesto' : 'GPS registrado fuera del área') : 'Turno ya debería haber comenzado'}</div>
           </div>
         </div>
@@ -333,7 +351,8 @@
             Enviar tarea
           </button>
         </div>
-      ` : `
+        `;
+      })() : `
         <p class="mt-3 text-muted" style="font-size: 14px;">Este puesto no tiene socorrista asignado hoy.</p>
         <div class="modal-actions">
           <button class="btn btn-outline" onclick="closePostModal()">Cerrar</button>
