@@ -46,10 +46,10 @@
           </div>
         </div>
         <button class="user-chip" title="Mi perfil" onclick="openMiPerfilModal()">
-          <span class="user-chip-avatar" id="userAvatar">JF</span>
+          <span class="user-chip-avatar" id="userAvatar">…</span>
           <span class="col">
-            <span class="user-chip-name" id="userName">Jaume Ferrer</span>
-            <span class="user-chip-role" id="userRoleLabel">Coordinador</span>
+            <span class="user-chip-name" id="userName">Cargando…</span>
+            <span class="user-chip-role" id="userRoleLabel">—</span>
           </span>
         </button>
         <button class="btn-icon" onclick="logout()" title="Salir">
@@ -83,7 +83,7 @@
             <svg class="ic ic-18"><use href="#ic-check-circle"/></svg>
           </div>
         </div>
-        <div class="kpi-value" id="kpiOk">62<span class="of">/ 80</span></div>
+        <div class="kpi-value" id="kpiOk">—<span class="of">/ —</span></div>
         <div class="kpi-trend up">
           <svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg>
           +4 vs ayer
@@ -102,7 +102,7 @@
             <svg class="ic ic-18"><use href="#ic-clock"/></svg>
           </div>
         </div>
-        <div class="kpi-value" id="kpiTarde">8</div>
+        <div class="kpi-value" id="kpiTarde">—</div>
         <div class="kpi-trend down">
           <svg class="ic ic-14"><use href="#ic-trending-up"/></svg>
           +2 vs ayer
@@ -119,7 +119,7 @@
             <svg class="ic ic-18"><use href="#ic-signal"/></svg>
           </div>
         </div>
-        <div class="kpi-value" id="kpiFuera">5</div>
+        <div class="kpi-value" id="kpiFuera">—</div>
         <div class="kpi-trend up">
           <svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg>
           -1 vs ayer
@@ -136,7 +136,7 @@
             <svg class="ic ic-18"><use href="#ic-alert-circle"/></svg>
           </div>
         </div>
-        <div class="kpi-value" id="kpiPend">5</div>
+        <div class="kpi-value" id="kpiPend">—</div>
         <div class="kpi-trend down">
           <svg class="ic ic-14"><use href="#ic-trending-up"/></svg>
           Requiere aviso
@@ -205,12 +205,12 @@
         </div>
         <div class="panel-body">
           <div class="filter-chips" id="filterChips">
-            <button class="chip active" data-filter="todos">Todos <span class="count">30</span></button>
-            <button class="chip ok" data-filter="ok">Fichado <span class="count">19</span></button>
-            <button class="chip warn" data-filter="tarde">Tarde <span class="count">4</span></button>
-            <button class="chip danger" data-filter="fuera">Fuera de zona <span class="count">2</span></button>
-            <button class="chip danger" data-filter="pendiente">Pendiente <span class="count">3</span></button>
-            <button class="chip" data-filter="vacante">Vacantes <span class="count">2</span></button>
+            <button class="chip active" data-filter="todos">Todos <span class="count">0</span></button>
+            <button class="chip ok" data-filter="ok">Fichado <span class="count">0</span></button>
+            <button class="chip warn" data-filter="tarde">Tarde <span class="count">0</span></button>
+            <button class="chip danger" data-filter="fuera">Fuera de zona <span class="count">0</span></button>
+            <button class="chip danger" data-filter="pendiente">Pendiente <span class="count">0</span></button>
+            <button class="chip" data-filter="vacante">Vacantes <span class="count">0</span></button>
           </div>
           <div class="posts" id="postsGrid"></div>
         </div>
@@ -593,7 +593,7 @@
             <svg class="ic ic-16"><use href="#ic-medkit"/></svg>
           </div>
           <h3 class="panel-title">Gestión de botiquín, DESA y oxigenoterapia</h3>
-          <span class="panel-count" id="botiquinPuestoLabel">— Hotel Bellamar</span>
+          <span class="panel-count" id="botiquinPuestoLabel">Selecciona un hotel</span>
         </div>
         <div class="row gap-2">
           <select id="botiquinPuestoSelect" style="padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; background: #fff; color: var(--ink-700); font-weight: 500;"></select>
@@ -640,7 +640,7 @@
       <div class="panel-head">
         <div class="panel-title-wrap">
           <h3 class="panel-title">Horas del mes por socorrista</h3>
-          <span class="panel-count">Julio · 20 mostrados de 150</span>
+          <span class="panel-count" id="hoursPanelCount">—</span>
         </div>
         <div class="row gap-2">
           <select id="hourFilter" style="padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; background: #fff; color: var(--ink-700); font-weight: 500;">

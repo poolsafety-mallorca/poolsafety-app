@@ -23,10 +23,10 @@
   <header class="mob-header">
     <div class="mob-topbar">
       <div class="mob-topbar-left">
-        <div class="mob-avatar" id="userInitials">MF</div>
+        <div class="mob-avatar" id="userInitials">…</div>
         <div>
           <div class="mob-hello" id="greetingText">Buenos días</div>
-          <div class="mob-name" id="userName">María Fernández</div>
+          <div class="mob-name" id="userName">Cargando…</div>
         </div>
       </div>
       <div class="mob-topbar-right">
@@ -43,15 +43,15 @@
     <div class="mob-chip-row">
       <span class="mob-chip">
         <svg class="ic ic-14"><use href="#ic-pin"/></svg>
-        <span id="puestoName">Hotel Bellamar</span>
+        <span id="puestoName">Cargando puesto…</span>
       </span>
       <span class="mob-chip">
         <svg class="ic ic-14"><use href="#ic-clock"/></svg>
-        <span id="turnoText">10:00 – 18:00</span>
+        <span id="turnoText">—</span>
       </span>
       <span class="mob-chip">
         <svg class="ic ic-14"><use href="#ic-sun"/></svg>
-        <span>28°C · Palma</span>
+        <span id="weatherText">Palma</span>
       </span>
     </div>
   </header>
@@ -81,8 +81,8 @@
             <svg class="ic ic-18"><use href="#ic-signal"/></svg>
           </div>
           <div style="flex:1">
-            <div class="gps-title" id="gpsText">Dentro del área del puesto</div>
-            <div class="gps-sub" id="gpsMeta">Precisión ±8 m · Hotel Bellamar</div>
+            <div class="gps-title" id="gpsText">Ubicación pendiente</div>
+            <div class="gps-sub" id="gpsMeta">Pulsa Fichar para comprobar el GPS</div>
           </div>
           <span class="pulse-dot"></span>
         </div>
@@ -357,14 +357,14 @@
     <main class="view hidden" data-view="perfil">
       <div class="profile">
         <div class="profile-avatar-wrap">
-          <div class="profile-avatar" id="profileAvatarPhoto">MF</div>
+          <div class="profile-avatar" id="profileAvatarPhoto">…</div>
           <label class="profile-avatar-upload" title="Cambiar foto">
             <svg class="ic ic-14"><use href="#ic-pen"/></svg>
             <input type="file" id="profilePhotoInput" accept="image/*" style="display:none;" />
           </label>
         </div>
-        <div class="profile-name" id="profileName">María Fernández</div>
-        <div class="profile-role">Socorrista · en plantilla desde 2022</div>
+        <div class="profile-name" id="profileName">Cargando…</div>
+        <div class="profile-role" id="profileRole">Socorrista</div>
         <div class="profile-badges">
           <span class="badge badge-ok">
             <svg class="ic ic-14"><use href="#ic-award"/></svg>
