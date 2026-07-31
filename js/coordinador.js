@@ -2347,6 +2347,25 @@
             <button class="btn btn-primary btn-sm" onclick="confirmarAlta()">Dar de alta</button>
           </div>` : ''}
 
+        <!-- Fichar por el empleado (para cuando no le funcione la app) -->
+        <div class="ficha-action-row" style="flex-direction:column;align-items:stretch;background:#eff6ff;border-left:4px solid #3B82F6;">
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div class="icon" style="background:#DBEAFE;color:#1D4ED8;"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
+            <div class="ficha-action-body" style="flex:1;min-width:0;">
+              <div class="ficha-action-title">Fichar por el empleado (manual)</div>
+              <div class="ficha-action-sub">Úsalo si al empleado no le funciona la app o el GPS. Queda registrado que el fichaje lo hizo administración.</div>
+            </div>
+          </div>
+          <div class="row gap-2 mt-3" style="justify-content:flex-end;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="ficharPorEmpleado('${e.id}','${(e.nombre||'').replace(/'/g,'\\\'')}','entrada')">
+              <svg class="ic ic-14"><use href="#ic-check"/></svg> Registrar entrada
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="ficharPorEmpleado('${e.id}','${(e.nombre||'').replace(/'/g,'\\\'')}','salida')">
+              <svg class="ic ic-14"><use href="#ic-check-circle"/></svg> Registrar salida
+            </button>
+          </div>
+        </div>
+
         ${!esAdmin ? `
           <div class="ficha-action-row" style="opacity:.7;">
             <div class="icon" style="background:var(--ink-100,#E5E7EB);color:var(--ink-500,#6B7280);"><svg class="ic ic-18"><use href="#ic-alert"/></svg></div>
@@ -2473,6 +2492,91 @@
       if (window.renderEstadoEquipo) window.renderEstadoEquipo();
       toast(`✓ ${e.nombre} dado de alta y activo`);
     } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  // Fichar por un empleado (cuando la app no le funciona, sin GPS, etc.)
+  // Registra entrada o salida en fichajes con marca clara de que lo hizo admin.
+  window.ficharPorEmpleado = async function (empId, nombre, tipo) {
+    // 1) Pedir hora — default = ahora
+    const ahora = new Date();
+    const horaAhora = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
+    const horaTxt = prompt(
+      `Fichar ${tipo.toUpperCase()} manual de ${nombre}\n\n` +
+      `Escribe la hora en formato HH:MM (24 h):`,
+      horaAhora
+    );
+    if (horaTxt === null) return; // cancelado
+    const m = horaTxt.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) { toast('Hora inválida. Formato: HH:MM'); return; }
+    const hh = parseInt(m[1]), mm = parseInt(m[2]);
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) { toast('Hora fuera de rango'); return; }
+
+    // 2) Motivo opcional
+    const motivo = prompt(`Motivo del fichaje manual (opcional):\n\np.ej. "Sin señal móvil", "App no responde", "GPS bloqueado"…`, '');
+    if (motivo === null) return; // cancelado explícito
+
+    // 3) Construir hora del día actual
+    const hora = new Date();
+    hora.setHours(hh, mm, 0, 0);
+
+    // 4) Buscar puesto del empleado (para asociar al fichaje)
+    let puestoId = null;
+    try {
+      const { data: emp } = await window.sb.from('empleados')
+        .select('puesto_id').eq('id', empId).single();
+      puestoId = emp?.puesto_id || null;
+    } catch (_) {}
+
+    // 5) Confirmar
+    if (!confirm(
+      `¿Confirmar fichaje MANUAL?\n\n` +
+      `Empleado: ${nombre}\n` +
+      `Tipo: ${tipo.toUpperCase()}\n` +
+      `Hora: ${horaTxt} (hoy)\n` +
+      `${motivo ? 'Motivo: ' + motivo + '\n' : ''}` +
+      `\nQuedará marcado como fichaje registrado por administración.`
+    )) return;
+
+    // 6) INSERT
+    try {
+      const psSes = window.PS_SESSION || {};
+      const { error } = await window.sb.from('fichajes').insert({
+        empleado_id: empId,
+        puesto_id: puestoId,
+        tipo,
+        hora: hora.toISOString(),
+        gps_lat: null, gps_lng: null,
+        gps_ok: null,
+        fuera_de_zona: null,
+        distancia_m: null,
+        origen_manual: true,
+        registrado_por: psSes.userId || null,
+        motivo_manual: motivo || null
+      });
+      if (error) {
+        // Si la BD no tiene las columnas nuevas (origen_manual…), reintentar sin ellas
+        // pero con marca en el motivo dentro del hueco disponible
+        if (String(error.message).includes('origen_manual') || String(error.message).includes('column')) {
+          const { error: err2 } = await window.sb.from('fichajes').insert({
+            empleado_id: empId,
+            puesto_id: puestoId,
+            tipo,
+            hora: hora.toISOString(),
+            gps_ok: false,
+            fuera_de_zona: false
+          });
+          if (err2) throw err2;
+        } else {
+          throw error;
+        }
+      }
+      toast(`✓ ${tipo === 'entrada' ? 'Entrada' : 'Salida'} de ${nombre} a las ${horaTxt} registrada manualmente`);
+      if (window.renderFicha) renderFicha();
+      if (window.renderPosts) renderPosts();
+      if (window.renderEstadoEquipo) window.renderEstadoEquipo();
+    } catch (err) {
+      toast('Error: ' + err.message);
+    }
   };
 
   // Botón masivo: dar de alta a TODOS los que estén en alta-pendiente
