@@ -901,6 +901,135 @@
   document.querySelectorAll('[data-section="horas"]').forEach(el => el.addEventListener('click', () => setTimeout(() => renderHours(document.getElementById('hourFilter')?.value || 'all'), 200)));
   document.getElementById('hourFilter')?.addEventListener('change', e => renderHours(e.target.value));
 
+  /* ---------- Panel Fichajes (selector de día) ---------- */
+  function fechaISOhoy() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  function fechaDesplazada(iso, deltaDias) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const dt = new Date(y, m - 1, d + deltaDias);
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  }
+  window.fichajesDiaHoy = () => {
+    const inp = document.getElementById('fichajesDia');
+    if (inp) { inp.value = fechaISOhoy(); renderFichajesDia(); }
+  };
+  window.fichajesDiaAyer = () => {
+    const inp = document.getElementById('fichajesDia');
+    if (inp) { inp.value = fechaDesplazada(inp.value || fechaISOhoy(), -1); renderFichajesDia(); }
+  };
+  window.fichajesDiaManana = () => {
+    const inp = document.getElementById('fichajesDia');
+    if (inp) { inp.value = fechaDesplazada(inp.value || fechaISOhoy(), +1); renderFichajesDia(); }
+  };
+
+  window.renderFichajesDia = async function () {
+    const cont = document.getElementById('fichajesDiaLista');
+    const label = document.getElementById('fichajesDiaLabel');
+    const count = document.getElementById('fichajesCount');
+    const inp = document.getElementById('fichajesDia');
+    if (!cont || !inp || !window.sb) return;
+    if (!inp.value) inp.value = fechaISOhoy();
+    const iso = inp.value;
+    const [y, m, d] = iso.split('-').map(Number);
+    const desde = new Date(y, m - 1, d, 0, 0, 0);
+    const hasta = new Date(y, m - 1, d + 1, 0, 0, 0);
+    const nombreDia = desde.toLocaleDateString('es-ES', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+    if (label) label.textContent = nombreDia.charAt(0).toUpperCase() + nombreDia.slice(1);
+    cont.innerHTML = '<div class="text-muted small" style="padding:20px;text-align:center;">Cargando fichajes…</div>';
+    try {
+      const { data, error } = await window.sb.from('fichajes')
+        .select('id, tipo, hora, gps_ok, fuera_de_zona, distancia_m, origen_manual, motivo_manual, empleado_id, puesto_id, empleados(id, nombre, telefono), puestos(nombre)')
+        .gte('hora', desde.toISOString()).lt('hora', hasta.toISOString())
+        .order('hora', { ascending: true });
+      if (error) throw error;
+      const rows = data || [];
+      if (count) count.textContent = `${rows.length} fichaje${rows.length===1?'':'s'}`;
+      if (rows.length === 0) {
+        cont.innerHTML = `<div class="text-muted small" style="padding:30px;text-align:center;">
+          <svg class="ic ic-22" style="opacity:0.4;display:block;margin:0 auto 8px;"><use href="#ic-clock"/></svg>
+          Sin fichajes registrados el ${nombreDia}.
+        </div>`;
+        return;
+      }
+      // Agrupar por empleado
+      const porEmp = {};
+      rows.forEach(f => {
+        const eid = f.empleado_id;
+        (porEmp[eid] = porEmp[eid] || { empleado: f.empleados, fichajes: [] }).fichajes.push(f);
+      });
+      cont.innerHTML = Object.entries(porEmp).map(([eid, g]) => {
+        const emp = g.empleado || { nombre: 'Desconocido', telefono: '' };
+        const iniciales = (emp.nombre||'').split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase();
+        const tel = (emp.telefono || '').replace(/\s+/g,'');
+        const telHref = tel ? (tel.startsWith('+') ? tel : (tel.length === 9 ? '+34' + tel : tel)) : '';
+        return `
+        <div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:12px;background:#fff;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <button class="mini-av" style="width:38px;height:38px;font-size:13px;border:none;cursor:pointer;background:linear-gradient(135deg,#0EA5E9,#6366F1);color:#fff;border-radius:50%;font-weight:700;"
+              onclick="verHorasDeEmpleado('${eid}')" title="Ver horas del mes de ${emp.nombre}">${iniciales}</button>
+            <div style="flex:1;min-width:0;">
+              <button onclick="verHorasDeEmpleado('${eid}')" title="Ver horas del mes"
+                style="background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left;font-weight:700;font-size:14px;text-decoration:none;">
+                ${emp.nombre}
+              </button>
+              <div class="small text-muted">${g.fichajes[0]?.puestos?.nombre || '—'}</div>
+            </div>
+            ${telHref ? `
+              <a class="btn-icon" href="tel:${telHref}" title="Llamar" style="width:34px;height:34px;background:#059669;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;text-decoration:none;">
+                <svg class="ic ic-14"><use href="#ic-phone"/></svg>
+              </a>` : ''}
+            <button class="btn-icon" title="Ver horas del mes" onclick="verHorasDeEmpleado('${eid}')"
+              style="width:34px;height:34px;background:#EFF6FF;color:#1D4ED8;border-radius:50%;border:none;cursor:pointer;">
+              <svg class="ic ic-14"><use href="#ic-bar-chart"/></svg>
+            </button>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${g.fichajes.map(f => {
+              const hora = new Date(f.hora).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+              const bg = f.tipo === 'entrada' ? '#DCFCE7' : '#F1F5F9';
+              const color = f.tipo === 'entrada' ? '#166534' : '#475569';
+              const gpsMark = f.fuera_de_zona ? ` <span style="color:#DC2626;">⚠ ${f.distancia_m ? f.distancia_m+'m' : 'GPS fuera'}</span>` : '';
+              const manualMark = f.origen_manual ? ' 📌' : '';
+              return `<div style="padding:5px 10px;border-radius:6px;background:${bg};color:${color};font-size:12px;font-weight:600;">
+                ${f.tipo === 'entrada' ? '▶' : '■'} ${hora}${gpsMark}${manualMark}
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+      }).join('');
+    } catch (err) {
+      cont.innerHTML = `<div class="alert-strip warn" style="margin:6px;">Error: ${err.message}</div>`;
+    }
+  };
+
+  // Click en empleado → abrir su ficha en pestaña Acciones (donde está el editor de fichajes)
+  window.verHorasDeEmpleado = function (empId) {
+    if (window.openEmpleadoModal) {
+      window.openEmpleadoModal(empId);
+      // Cambiar a pestaña Acciones tras abrir el modal y cargar los últimos 7 días
+      setTimeout(() => {
+        const tabAcc = document.querySelector('.ficha-tab[data-ftab="acciones"]');
+        if (tabAcc) tabAcc.click();
+        setTimeout(() => {
+          if (typeof window.cargarFichajesEditables === 'function') {
+            window.cargarFichajesEditables(empId, 31);
+          }
+        }, 300);
+      }, 250);
+    }
+  };
+
+  // Inicializar cuando se abre el tab
+  document.querySelectorAll('[data-section="fichajes"]').forEach(el => el.addEventListener('click', () => {
+    setTimeout(() => {
+      const inp = document.getElementById('fichajesDia');
+      if (inp && !inp.value) inp.value = fechaISOhoy();
+      renderFichajesDia();
+    }, 200);
+  }));
+
   // Exportar parte diario del día actual: fichajes por puesto + alertas
   window.exportarParteDiario = async function () {
     if (!window.sb) { toast('Sistema no disponible'); return; }

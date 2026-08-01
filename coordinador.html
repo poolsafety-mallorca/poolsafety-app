@@ -182,6 +182,10 @@
         <svg class="ic ic-16"><use href="#ic-bar-chart"/></svg>
         Horas del mes
       </button>
+      <button class="dash-menu-item" data-section="fichajes">
+        <svg class="ic ic-16"><use href="#ic-clock"/></svg>
+        Fichajes
+      </button>
     </nav>
 
     <!-- ============ PANEL: VISTA GENERAL ============ -->
@@ -671,6 +675,36 @@
     </section>
 
     </div><!-- /panel horas -->
+
+    <!-- ============ PANEL: FICHAJES ============ -->
+    <div class="tab-panel hidden" data-panel="fichajes">
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title-wrap">
+            <div class="kpi-icon" style="width:30px;height:30px;background:linear-gradient(135deg,#3B82F6,#8B5CF6);color:#fff;">
+              <svg class="ic ic-16"><use href="#ic-clock"/></svg>
+            </div>
+            <h3 class="panel-title">Fichajes por día</h3>
+            <span class="panel-count" id="fichajesDiaLabel">—</span>
+          </div>
+          <div class="row gap-2" style="align-items:center;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="fichajesDiaAyer()" title="Día anterior">
+              <svg class="ic ic-14"><use href="#ic-chevron-left"/></svg>
+            </button>
+            <input type="date" id="fichajesDia" onchange="renderFichajesDia()"
+              style="padding:8px 12px;border-radius:8px;border:1px solid var(--line);font-size:13px;background:#fff;color:var(--ink-700);font-weight:600;" />
+            <button class="btn btn-outline btn-sm" onclick="fichajesDiaHoy()" title="Hoy">Hoy</button>
+            <button class="btn btn-outline btn-sm" onclick="fichajesDiaManana()" title="Día siguiente">
+              <svg class="ic ic-14"><use href="#ic-chevron-right"/></svg>
+            </button>
+            <span style="margin-left:8px;color:var(--ink-500);font-size:13px;" id="fichajesCount">—</span>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="fichajesDiaLista" style="padding:6px;"></div>
+        </div>
+      </section>
+    </div><!-- /panel fichajes -->
 
   </div>
 </div>
