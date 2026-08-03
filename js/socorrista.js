@@ -3413,13 +3413,17 @@
         document.getElementById('inc_silueta_frontal').style.display  = front ? 'block' : 'none';
         document.getElementById('inc_silueta_posterior').style.display = front ? 'none' : 'block';
       }));
-      // Silueta editable
+      // Silueta editable — engancharSilueta usa delegación y protege duplicados
       ['inc_silueta_frontal', 'inc_silueta_posterior'].forEach(id => {
         window.PSInc.engancharSilueta(document.getElementById(id), incState.dolor_zonas, () => {
-          document.getElementById('inc_silueta_frontal').innerHTML = window.PSInc.siluetaSVG(incState.dolor_zonas, true, 'front');
-          document.getElementById('inc_silueta_posterior').innerHTML = window.PSInc.siluetaSVG(incState.dolor_zonas, true, 'back');
-          incBindPaso(); // re-enganchar
-          document.getElementById('inc_zonas_lista').innerHTML = incState.dolor_zonas.length === 0
+          // Solo re-pintar las siluetas y la lista, NO llamar a incBindPaso
+          // (evita re-adjuntar todos los listeners del paso)
+          const cf = document.getElementById('inc_silueta_frontal');
+          const cb = document.getElementById('inc_silueta_posterior');
+          if (cf) cf.innerHTML = window.PSInc.siluetaSVG(incState.dolor_zonas, true, 'front');
+          if (cb) cb.innerHTML = window.PSInc.siluetaSVG(incState.dolor_zonas, true, 'back');
+          const lista = document.getElementById('inc_zonas_lista');
+          if (lista) lista.innerHTML = incState.dolor_zonas.length === 0
             ? 'Sin zonas marcadas.'
             : '<b>Marcadas:</b> ' + incState.dolor_zonas.map(z => window.PSInc.zonaLabel(z)).join(', ');
         });

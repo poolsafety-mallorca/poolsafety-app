@@ -221,51 +221,65 @@
   }
 
   // Ruta a la imagen anatómica realista del cliente (ChatGPT-generated, 1536×1024)
-  // Contiene las 2 vistas (frontal a la izquierda, posterior a la derecha) con
-  // sombreado muscular. La usamos como fondo del SVG, cada vista recortada por
-  // CSS background-position, con los círculos cliqueables SVG encima.
+  // Contiene las 2 vistas con título "MAPA DE DOLOR" arriba y etiquetas "Vista
+  // Frontal/Posterior". Insertamos la imagen DENTRO del SVG con <image> y
+  // preserveAspectRatio="none" para poder recortar exactamente el cuerpo y
+  // dejarlo llenando el viewBox — así el título no aparece y las coordenadas
+  // de las zonas siguen calibradas contra viewBox 220×540.
   const IMG_MAPA_DOLOR = 'assets/mapa-dolor.png';
+
+  // Regiones de la imagen (en pixeles del PNG 1536×1024) que contienen SOLO el
+  // cuerpo. Estos valores están medidos sobre la imagen del cliente.
+  const CUERPO_FRONTAL = { x: 190, y: 205, w: 570, h: 810 };
+  const CUERPO_POSTERIOR = { x: 780, y: 205, w: 570, h: 810 };
 
   function siluetaSVG(seleccionadas, editable, side) {
     side = side || 'front';
     seleccionadas = seleccionadas || [];
     const zonas = Object.entries(ZONAS_CUERPO).filter(([, z]) => z.side === side);
-    const editableCls = editable ? 'cursor:pointer;' : '';
+    const editableCls = editable ? 'cursor:pointer;pointer-events:auto;' : 'pointer-events:none;';
+
     // Círculos cliqueables (fondo transparente cuando no está marcada)
     const circles = zonas.map(([id, z]) => {
       const activa = seleccionadas.includes(id);
-      const fill = activa ? '#DC2626' : 'transparent';
-      const stroke = activa ? '#FFFFFF' : (editable ? 'rgba(255,255,255,.7)' : 'transparent');
-      const strokeW = activa ? 2.2 : (editable ? 1.2 : 0);
-      const opacity = activa ? '.85' : (editable ? '.35' : '0');
-      const strokeDash = editable && !activa ? 'stroke-dasharray="3 3"' : '';
+      const fill = activa ? '#DC2626' : '#FFFFFF';
+      const stroke = activa ? '#FFFFFF' : (editable ? '#DC2626' : 'transparent');
+      const strokeW = activa ? 2.2 : (editable ? 1.5 : 0);
+      const opacity = activa ? '.88' : (editable ? '.001' : '0');
       return `<circle data-zona="${id}" cx="${z.cx}" cy="${z.cy}" r="${z.r}"
-        fill="${fill}" fill-opacity="${opacity}" stroke="${stroke}" stroke-width="${strokeW}" ${strokeDash}
+        fill="${fill}" fill-opacity="${opacity}" stroke="${stroke}" stroke-width="${strokeW}"
         style="transition:all .15s;${editableCls}"><title>${z.label}${activa ? ' · MARCADA' : ''}</title></circle>`;
     }).join('');
     // X blanca encima de las zonas marcadas para máximo contraste
     const marks = zonas.filter(([id]) => seleccionadas.includes(id)).map(([, z]) => `
-      <g stroke="#fff" stroke-width="2.6" stroke-linecap="round">
+      <g stroke="#fff" stroke-width="2.6" stroke-linecap="round" pointer-events="none">
         <line x1="${z.cx-5}" y1="${z.cy-5}" x2="${z.cx+5}" y2="${z.cy+5}"/>
         <line x1="${z.cx+5}" y1="${z.cy-5}" x2="${z.cx-5}" y2="${z.cy+5}"/>
       </g>`).join('');
 
-    // Posicionamiento de la imagen: la PNG mide 1536×1024 con la frontal en la
-    // mitad izquierda y la posterior en la mitad derecha, con título y etiquetas
-    // arriba. Con background-size:230% y background-position afinado dejamos
-    // visible solo el cuerpo entero de cada vista.
-    // - front: mostrar el trozo x≈180..760 y≈180..1024 → posición 0% 100%
-    // - back : mostrar el trozo x≈820..1400 y≈180..1024 → posición 100% 100%
-    const bgPos = side === 'front' ? '18% 100%' : '82% 100%';
+    // Insertar la imagen escalada+desplazada para que el CUERPO (frontal o
+    // posterior) llene exactamente el viewBox 220×540. Usamos
+    // preserveAspectRatio="none" para no dejar bandas — el ratio se ajusta
+    // (el cuerpo se estira un pelín vertical pero es aceptable).
+    const r = side === 'front' ? CUERPO_FRONTAL : CUERPO_POSTERIOR;
+    const scaleX = 220 / r.w;
+    const scaleY = 540 / r.h;
+    // Como preserveAspectRatio="none": image se escala x=scaleX, y=scaleY
+    // Posición: -r.x * scaleX (para que r.x mapee a 0) y -r.y * scaleY
+    const imgW = 1536 * scaleX;
+    const imgH = 1024 * scaleY;
+    const imgX = -r.x * scaleX;
+    const imgY = -r.y * scaleY;
 
     return `
-      <div style="position:relative;width:100%;max-width:240px;margin:0 auto;aspect-ratio:220 / 540;background:#F8FAFC;border-radius:12px;overflow:hidden;">
-        <div style="position:absolute;inset:0;background-image:url('${IMG_MAPA_DOLOR}');background-repeat:no-repeat;background-size:250% auto;background-position:${bgPos};"></div>
-        <svg viewBox="0 0 220 540" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;width:100%;height:100%;">
-          ${circles}
-          ${marks}
-        </svg>
-      </div>`;
+      <svg viewBox="0 0 220 540" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"
+           style="width:100%;max-width:240px;height:auto;display:block;margin:0 auto;background:#F8FAFC;border-radius:12px;touch-action:manipulation;">
+        <image href="${IMG_MAPA_DOLOR}" x="${imgX.toFixed(1)}" y="${imgY.toFixed(1)}"
+               width="${imgW.toFixed(1)}" height="${imgH.toFixed(1)}"
+               preserveAspectRatio="none" pointer-events="none"/>
+        ${circles}
+        ${marks}
+      </svg>`;
   }
 
   // Versión SVG puro (sin imagen de fondo PNG) para el PDF con jsPDF.
@@ -302,18 +316,39 @@
       </svg>`;
   }
 
-  // Engancha listeners para toggling en la silueta editable
+  // Engancha listener de click en la silueta editable. Usa delegación así el
+  // listener sigue funcionando aunque el contenido del contenedor cambie
+  // (por ejemplo tras re-render de innerHTML al marcar/desmarcar zonas).
+  //
+  // IMPORTANTE: si el contenedor ya tiene un listener nuestro NO añadimos otro
+  // — antes se acumulaban listeners y cada click hacía toggle N veces
+  // (net cambio = 0 después del 2º click, así no se podía deseleccionar).
   function engancharSilueta(container, seleccionadasRef, onChange) {
     if (!container) return;
+    if (container.__psSiluetaBound) return; // evita duplicados
+    container.__psSiluetaBound = true;
     container.addEventListener('click', (e) => {
       const c = e.target.closest('circle[data-zona]');
       if (!c) return;
+      e.preventDefault();
+      e.stopPropagation();
       const id = c.dataset.zona;
       const idx = seleccionadasRef.indexOf(id);
       if (idx >= 0) seleccionadasRef.splice(idx, 1);
       else seleccionadasRef.push(id);
       onChange && onChange(seleccionadasRef);
     });
+    // Además soporta tap en móvil sin delay
+    container.addEventListener('touchend', (e) => {
+      const c = e.target.closest && e.target.closest('circle[data-zona]');
+      if (!c) return;
+      e.preventDefault();
+      const id = c.dataset.zona;
+      const idx = seleccionadasRef.indexOf(id);
+      if (idx >= 0) seleccionadasRef.splice(idx, 1);
+      else seleccionadasRef.push(id);
+      onChange && onChange(seleccionadasRef);
+    }, { passive: false });
   }
 
   function formatTipo(tipo) {
