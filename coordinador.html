@@ -369,6 +369,10 @@
           <svg class="ic ic-14"><use href="#ic-users"/></svg>
           Crear varias cuentas
         </button>
+        <button class="btn btn-primary btn-sm" onclick="openAccesosModal()">
+          <svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg>
+          Enviar accesos a socorristas
+        </button>
       </div>
 
       <!-- ADMIN VIEW (Adam) -->
@@ -1091,6 +1095,61 @@
       <button class="btn btn-primary" onclick="crearNuevoEmpleado()" id="neSubmitBtn">
         <svg class="ic ic-16"><use href="#ic-plus"/></svg>
         Crear cuenta
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL ENVIAR ACCESOS A SOCORRISTAS ============ -->
+<div class="modal-backdrop" id="accesosModal">
+  <div class="modal" style="max-width:760px;">
+    <div class="modal-head">
+      <div>
+        <h3>Enviar accesos a socorristas</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;">
+          Cada socorrista recibirá un email con un enlace para <b>poner su contraseña</b> y entrar.
+          El enlace caduca en 1 hora.
+        </p>
+      </div>
+      <button class="modal-close" onclick="closeAccesosModal()">
+        <svg class="ic ic-16"><use href="#ic-x"/></svg>
+      </button>
+    </div>
+
+    <div class="alert-strip" style="background:#FEF3C7;border-left:4px solid #F59E0B;color:#78350F;padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px;">
+      <svg class="ic ic-16"><use href="#ic-alert"/></svg>
+      <div>
+        <b>Los que ya entraron no necesitan email.</b> Si les mandas uno nuevo, su contraseña actual
+        <u>sigue funcionando</u> (el enlace es opcional), pero pueden confundirse. Por defecto vienen
+        desmarcados.
+      </div>
+    </div>
+
+    <div class="row gap-2" style="margin-bottom:12px;flex-wrap:wrap;align-items:center;">
+      <button class="btn btn-outline btn-sm" onclick="accesosSeleccion('nunca')">
+        Marcar solo los que nunca han entrado
+      </button>
+      <button class="btn btn-outline btn-sm" onclick="accesosSeleccion('ninguno')">Desmarcar todos</button>
+      <span class="small text-muted" id="accesosResumen" style="margin-left:auto;">—</span>
+    </div>
+
+    <div id="accesosLista" style="max-height:380px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:6px;background:#fafafa;">
+      <div class="text-muted small" style="padding:20px;text-align:center;">Cargando socorristas…</div>
+    </div>
+
+    <div id="accesosProgreso" style="display:none;margin-top:12px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px;" id="accesosProgresoTexto">Enviando…</div>
+      <div style="height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;">
+        <div id="accesosProgresoBarra" style="height:100%;width:0%;background:#059669;transition:width .3s;"></div>
+      </div>
+      <div id="accesosLog" style="margin-top:10px;max-height:160px;overflow-y:auto;font-family:monospace;font-size:11px;line-height:1.6;"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeAccesosModal()">Cerrar</button>
+      <button class="btn btn-primary" id="btnEnviarAccesos" onclick="enviarAccesosSeleccionados()">
+        <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
+        Enviar a los seleccionados
       </button>
     </div>
   </div>

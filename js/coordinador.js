@@ -2722,6 +2722,150 @@
     }
   };
 
+  /* ==========================================================================
+     PANEL ENVIAR ACCESOS · envío controlado, uno a uno, con pausa
+     Evita el "desastre" de mandar a todos de golpe:
+     - Muestra quién YA entró (no necesita email) y quién NO
+     - Por defecto solo se preseleccionan los que nunca han entrado
+     - Envía secuencialmente con 1,2 s de pausa (rate limit del proveedor)
+     - Log en vivo de cada envío, con su error concreto si falla
+     ========================================================================== */
+  let accesosCache = [];
+
+  window.openAccesosModal = async function () {
+    document.getElementById('accesosModal').classList.add('open');
+    document.getElementById('accesosProgreso').style.display = 'none';
+    document.getElementById('accesosLog').innerHTML = '';
+    const cont = document.getElementById('accesosLista');
+    cont.innerHTML = '<div class="text-muted small" style="padding:20px;text-align:center;">Cargando socorristas…</div>';
+    try {
+      const { data, error } = await window.sb.from('empleados')
+        .select('id, nombre, email, estado, usuario_id, usuarios(activo, ultimo_login)')
+        .eq('estado', 'activo')
+        .order('nombre');
+      if (error) throw error;
+      accesosCache = (data || []).map(e => ({
+        id: e.id,
+        nombre: e.nombre,
+        email: e.email,
+        usuarioId: e.usuario_id,
+        tieneCuenta: !!e.usuario_id,
+        puedeEntrar: e.usuarios ? e.usuarios.activo === true : false,
+        ultimoLogin: e.usuarios ? e.usuarios.ultimo_login : null,
+        // Preseleccionado solo si: tiene cuenta, puede entrar, tiene email y NUNCA ha entrado
+        sel: !!e.usuario_id && (e.usuarios?.activo === true) && !!e.email && !e.usuarios?.ultimo_login
+      }));
+      renderAccesosLista();
+    } catch (err) {
+      cont.innerHTML = `<div class="alert-strip warn" style="margin:6px;">Error: ${err.message}</div>`;
+    }
+  };
+  window.closeAccesosModal = () => document.getElementById('accesosModal').classList.remove('open');
+
+  function renderAccesosLista() {
+    const cont = document.getElementById('accesosLista');
+    if (!cont) return;
+    if (accesosCache.length === 0) {
+      cont.innerHTML = '<div class="text-muted small" style="padding:20px;text-align:center;">No hay socorristas activos.</div>';
+      return;
+    }
+    cont.innerHTML = accesosCache.map((s, i) => {
+      let estadoTxt, estadoColor, puedeEnviar = true;
+      if (!s.email) {
+        estadoTxt = 'Sin email en su ficha'; estadoColor = '#DC2626'; puedeEnviar = false;
+      } else if (!s.tieneCuenta) {
+        estadoTxt = 'Sin cuenta creada — créala primero'; estadoColor = '#DC2626'; puedeEnviar = false;
+      } else if (!s.puedeEntrar) {
+        estadoTxt = 'Cuenta desactivada — restaura el acceso primero'; estadoColor = '#DC2626'; puedeEnviar = false;
+      } else if (s.ultimoLogin) {
+        estadoTxt = 'Ya entró el ' + new Date(s.ultimoLogin).toLocaleDateString('es-ES') + ' — no necesita email';
+        estadoColor = '#059669';
+      } else {
+        estadoTxt = 'Nunca ha entrado — necesita el email';
+        estadoColor = '#D97706';
+      }
+      return `
+        <label style="display:flex;align-items:center;gap:10px;padding:9px 12px;margin:3px 0;border:1px solid ${s.sel?'#B91C1C':'#e2e8f0'};border-radius:8px;background:${s.sel?'#fef2f2':'#fff'};cursor:${puedeEnviar?'pointer':'not-allowed'};opacity:${puedeEnviar?1:0.6};">
+          <input type="checkbox" ${s.sel?'checked':''} ${puedeEnviar?'':'disabled'}
+            onchange="accesosToggle(${i}, this.checked)" style="width:18px;height:18px;flex-shrink:0;" />
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:13px;">${s.nombre}</div>
+            <div class="small text-muted">${s.email || 'sin email'}</div>
+          </div>
+          <div style="font-size:11px;color:${estadoColor};text-align:right;flex-shrink:0;max-width:210px;">${estadoTxt}</div>
+        </label>`;
+    }).join('');
+    actualizarResumenAccesos();
+  }
+
+  window.accesosToggle = function (i, v) {
+    if (accesosCache[i]) accesosCache[i].sel = v;
+    actualizarResumenAccesos();
+    // Repintamos solo el borde sin recargar toda la lista
+    renderAccesosLista();
+  };
+
+  window.accesosSeleccion = function (modo) {
+    accesosCache.forEach(s => {
+      const puede = s.tieneCuenta && s.puedeEntrar && s.email;
+      if (modo === 'ninguno') s.sel = false;
+      else if (modo === 'nunca') s.sel = puede && !s.ultimoLogin;
+    });
+    renderAccesosLista();
+  };
+
+  function actualizarResumenAccesos() {
+    const el = document.getElementById('accesosResumen');
+    if (!el) return;
+    const n = accesosCache.filter(s => s.sel).length;
+    const yaEntraron = accesosCache.filter(s => s.ultimoLogin).length;
+    el.textContent = `${n} seleccionado${n===1?'':'s'} · ${yaEntraron} ya han entrado alguna vez`;
+  }
+
+  window.enviarAccesosSeleccionados = async function () {
+    const sel = accesosCache.filter(s => s.sel);
+    if (sel.length === 0) { toast('No has seleccionado a nadie'); return; }
+    const yaEntraron = sel.filter(s => s.ultimoLogin);
+    let msg = `Se enviará el email de acceso a ${sel.length} socorrista(s).`;
+    if (yaEntraron.length > 0) {
+      msg += `\n\n⚠️ ${yaEntraron.length} de ellos YA habían entrado antes (${yaEntraron.slice(0,3).map(s=>s.nombre).join(', ')}${yaEntraron.length>3?'…':''}).\nSu contraseña actual seguirá funcionando, pero pueden confundirse al recibir el email.`;
+    }
+    msg += `\n\nSe envían de uno en uno con pausa (tarda ~${Math.ceil(sel.length * 1.2)} segundos).\n\n¿Continuar?`;
+    if (!confirm(msg)) return;
+
+    const btn = document.getElementById('btnEnviarAccesos');
+    const prog = document.getElementById('accesosProgreso');
+    const barra = document.getElementById('accesosProgresoBarra');
+    const texto = document.getElementById('accesosProgresoTexto');
+    const log = document.getElementById('accesosLog');
+    btn.disabled = true;
+    prog.style.display = 'block';
+    log.innerHTML = '';
+
+    let ok = 0, fallos = 0;
+    for (let i = 0; i < sel.length; i++) {
+      const s = sel[i];
+      texto.textContent = `Enviando ${i+1} de ${sel.length}: ${s.nombre}…`;
+      barra.style.width = `${Math.round(((i) / sel.length) * 100)}%`;
+      const r = await window.enviarAccesoEmailRaw(s.email);
+      if (r.ok) {
+        ok++;
+        log.innerHTML += `<div style="color:#059669;">✓ ${s.email}</div>`;
+      } else {
+        fallos++;
+        log.innerHTML += `<div style="color:#DC2626;">✗ ${s.email} — ${r.err}</div>`;
+      }
+      log.scrollTop = log.scrollHeight;
+      // Pausa entre envíos para no chocar con el rate limit del proveedor de email
+      if (i < sel.length - 1) await new Promise(res => setTimeout(res, 1200));
+    }
+    barra.style.width = '100%';
+    barra.style.background = fallos === 0 ? '#059669' : '#F59E0B';
+    texto.textContent = `Terminado · ${ok} enviados${fallos ? ' · ' + fallos + ' fallaron' : ''}`;
+    btn.disabled = false;
+    toast(fallos === 0 ? `✓ ${ok} accesos enviados` : `${ok} enviados, ${fallos} fallaron (mira el detalle)`);
+  };
+
   window.enviarResetPassword = async function () {
     const e = empleadoData(fichaActualId);
     if (!e || !e.email) { toast('Este empleado no tiene email'); return; }
