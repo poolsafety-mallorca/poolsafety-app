@@ -3459,11 +3459,38 @@
     try {
       const psSes = window.PS_SESSION || {};
       const puestoId = puestoReal?.id || empleadoReal?.puesto_id || null;
+
+      // empresa_id: puede no estar en la sesión. Si no está, la buscamos de la BD.
+      // Es imprescindible: la policy de INSERT lo requiere.
+      let empresaId = psSes.empresaId || empleadoReal?.empresa_id || null;
+      if (!empresaId && psSes.userId) {
+        try {
+          const { data: u } = await window.sb.from('usuarios').select('empresa_id').eq('id', psSes.userId).single();
+          empresaId = u?.empresa_id || null;
+        } catch (_) {}
+      }
+      if (!empresaId && empleadoReal?.id) {
+        try {
+          const { data: e } = await window.sb.from('empleados').select('empresa_id').eq('id', empleadoReal.id).single();
+          empresaId = e?.empresa_id || null;
+        } catch (_) {}
+      }
+      if (!empresaId) {
+        alert('No se ha podido determinar tu empresa. Cierra sesión y vuelve a entrar. Si sigue fallando avisa al coordinador.');
+        btn.disabled = false; btn.textContent = '✓ Enviar parte';
+        return;
+      }
+      if (!empleadoReal?.id) {
+        alert('Tu ficha de empleado no está cargada. Espera unos segundos y vuelve a intentarlo.');
+        btn.disabled = false; btn.textContent = '✓ Enviar parte';
+        return;
+      }
+
       const payload = {
-        empresa_id: psSes.empresaId || empleadoReal?.empresa_id || null,
+        empresa_id: empresaId,
         empleado_id: empleadoReal?.id || null,
         puesto_id: puestoId,
-        fecha_incidente: incState.fecha_incidente,
+        fecha_incidente: incState.fecha_incidente || new Date().toISOString(),
         victima_nombre: incState.victima_nombre,
         victima_edad: incState.victima_edad,
         victima_sexo: incState.victima_sexo || null,
@@ -3535,7 +3562,17 @@
       toast(`✓ Parte ${ins.numero_parte || ''} enviado al coordinador`);
       cerrarNuevaIncidencia();
     } catch (err) {
-      toast('Error al enviar el parte: ' + err.message);
+      console.error('[incidencia] Error al enviar:', err);
+      // Mensajes comunes traducidos a algo entendible por el socorrista
+      let msg = err.message || String(err);
+      if (/relation.*incidencias.*does not exist/i.test(msg)) {
+        msg = 'La tabla de incidencias no existe en la BD.\n\nEl coordinador debe ejecutar el SQL sql/06-incidencias.sql en Supabase antes de que puedas enviar partes.';
+      } else if (/row-level security|violates.*policy/i.test(msg)) {
+        msg = 'No tienes permisos para guardar este parte.\n\nAvisa al coordinador para que revise las políticas RLS de la tabla incidencias.';
+      } else if (/column.*does not exist/i.test(msg)) {
+        msg = 'La tabla de incidencias está incompleta:\n\n' + err.message + '\n\nEl coordinador debe volver a ejecutar sql/06-incidencias.sql.';
+      }
+      alert('No se pudo enviar el parte.\n\n' + msg + '\n\nTus datos siguen escritos: vuelve a intentarlo o cierra y avisa.');
       btn.disabled = false; btn.textContent = '✓ Enviar parte';
     }
   }
