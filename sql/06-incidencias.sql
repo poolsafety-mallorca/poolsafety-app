@@ -3,6 +3,39 @@
 -- Ejecutar en Supabase SQL Editor. Idempotente (usa IF NOT EXISTS).
 -- ============================================================
 
+-- 0) Helper funcs de auth (crea las que falten si no se ejecutó 04-auditoria-fixes).
+--    Todas devuelven un valor incluso sin sesión de usuario (para no romper policies).
+create or replace function auth_empresa()
+returns uuid language sql stable security definer as $$
+  select (u.empresa_id)::uuid
+    from usuarios u
+    where u.id = auth.uid()
+    limit 1
+$$;
+
+create or replace function auth_rol()
+returns text language sql stable security definer as $$
+  select coalesce((select rol from usuarios where id = auth.uid() limit 1), 'anonimo')
+$$;
+
+create or replace function auth_es_admin()
+returns boolean language sql stable security definer as $$
+  select coalesce((select rol in ('dueno','coordinador') from usuarios where id = auth.uid() limit 1), false)
+$$;
+
+create or replace function auth_es_dueno()
+returns boolean language sql stable security definer as $$
+  select coalesce((select rol = 'dueno' from usuarios where id = auth.uid() limit 1), false)
+$$;
+
+create or replace function auth_empleado_id()
+returns uuid language sql stable security definer as $$
+  select (e.id)::uuid
+    from empleados e
+    where e.usuario_id = auth.uid()
+    limit 1
+$$;
+
 -- 1) Tabla incidencias
 create table if not exists incidencias (
   id uuid primary key default gen_random_uuid(),
