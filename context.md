@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-07-31 (tercera jornada · piloto arrancando con socorristas reales)
-**Cache SW actual: `poolsafety-v67`**
+Última actualización: 2026-08-03 (cuarta jornada · auditoría de seguridad + arranque con plantilla real)
+**Cache SW actual: `poolsafety-v77`**
 
 ---
 
@@ -254,6 +254,78 @@ Ver commits: SMTP Resend, auto-update PWA, PSHor horarios editables, Correturnos
 - ⏳ Editor de fichajes: probar editar/borrar y ver que auditoría queda en motivo_manual.
 - ⏳ Botón Llamar en móvil real (Android/iOS) → debe abrir dialer directo.
 - ⏳ Piloto con 4 socorristas: Luis Cantón, Alejandro Hidalgo (=Sergio Hidalgo Capote en BD), Iván Carrillo Valdibia (con B), Manuel Pérez Guerrero — todos activos, esperando envío email de acceso individual.
+
+---
+
+### Sesión 2026-08-02/03 · cuarta jornada · v68→v77 · AUDITORÍA + arranque real
+
+**AUDITORÍA de seguridad y funcionalidad (`sql/04-auditoria-fixes.sql` en 9 bloques):**
+- 🔴 **BUGS EN SILENCIO por RLS incompleto**: faltaban políticas UPDATE/DELETE en `fichajes` (editor no funcionaba), UPDATE en `firmas_documentos` (reenviar Kit Alta no archivaba, PDFs no guardaban su URL), INSERT self en `documentos_subidos` (socorrista no podía subir docs). Postgres devolvía 0 filas sin error → todo aparentaba funcionar.
+- 🟠 **Coordinador tenía permisos de dueño en BD**: `auth_es_admin()` daba true para ambos. Nueva función `auth_es_dueno()` + policy `usuarios_delete` restringida al dueño. Trigger `usuarios_proteger_rol` impide que un coord se auto-promocione a dueño o se auto-reactive por consola.
+- 🟠 **Socorrista podía reactivarse solo**: trigger `empleados_proteger_campos` que impide cambiar estado, puesto, empresa, contrato, activo desde su cuenta.
+- 🟠 **`alertas_insert` abierto**: cualquiera podía crear alertas en nombre de otro. Cerrado a `empleado_id = auth_empleado_id() or auth_es_admin()`.
+- 🟠 **Sin aislamiento entre empresas**: horarios, tareas, notas, docs, fichajes, firmas → añadido filtro por `empresa_id` en todas las políticas (necesario ANTES del segundo cliente).
+- 🟠 **`titulaciones_empleado` y `visitas_hoteles` sin RLS**: añadidas.
+- 🟢 **Índices que faltaban**: `fichajes(hora)`, `fichajes(puesto_id, hora)`, `alertas(fecha_creacion) where not resuelto`, `tareas(empleado_id) where not hecha`, `firmas_documentos(empleado_id, documento_codigo)`, `inventario_puesto(item_id)`.
+- 🟢 **Schema sincronizado**: `usuarios` +nombre/telefono/disponible/ultimo_login, `fichajes` +origen_manual/registrado_por/motivo_manual, tablas nuevas `titulaciones_empleado` y `visitas_hoteles` documentadas.
+
+**Descubierto por la auditoría (y arreglado en app):**
+- ✅ **Campana rota desde v50**: usaba `created_at` y `resuelto_el` cuando las columnas reales son `fecha_creacion` y `fecha_resolucion`. El panel NUNCA mostró alertas y Resolver fallaba en silencio. Fix + muestra el error si algo peta en vez de tragárselo.
+- ✅ **Bug de acceso invisible (caso Francisco Sierra Vaca + 19 más)**: `empleados.estado='activo'` y `usuarios.activo=false` son campos independientes. Se ven 20 empleados en verde mientras auth-guard les expulsa. Ahora `cargarEmpleadosDB` trae también `usuarios.activo` y `ultimo_login`, badge rojo "Sin acceso" en la tarjeta, banner ámbar "N figuran activos pero no pueden entrar · Reparar todos" y tarjeta roja en la ficha con botón "Restaurar acceso".
+
+**Nuevas funciones para el arranque real con plantilla:**
+- ✅ **Panel "Enviar accesos a socorristas"** (botón rojo en Coordinación): lista con estado real por socorrista (verde=ya entró/no necesita email, ámbar=nunca entró/lo necesita, rojo=sin cuenta/sin email deshabilitado). Preselección solo de los que nunca han entrado. Envío secuencial con 1,2 s de pausa entre emails para no chocar con rate limit de Resend. Barra de progreso + log en vivo con éxito o error por cada envío.
+- ✅ **Manual del socorrista** `docs-clientes/manual-socorrista.html` con 9 secciones + FAQ. Botón "Descargar en PDF" con jsPDF (texto real seleccionable, portada roja, salto de página respetando bloques) y botón "Compartir por WhatsApp" (navigator.share en móvil, wa.me en desktop) + copiar enlace.
+- ✅ **Alerta de titulaciones caducadas** (nuevo tab "Titulaciones" en menú): 4 bloques (caducadas / caducan este mes / caducan en 3 meses / obligatoria sin subir), badge rojo en menú con nº crítico, botón de llamada por fila, exportar CSV, click abre ficha directo en pestaña titulaciones. En socorrista: aviso rojo/ámbar en Inicio si tiene algo caducado o próximo.
+
+**Fixes de flujos:**
+- ✅ **Turno partido reactivado**: tras fichar salida seguía apareciendo "Turno finalizado" sin botón. Ahora se lee el día como LISTA de tramos, aparece "Fichar nueva entrada" y chips visuales con todos los tramos del día ("10:00–14:30 · 16:00–20:30") + total acumulado. Soporta N tramos, no solo 2.
+- ✅ **Cálculo horas con turnos partidos**: dos bugs graves. En `generarJornadaOficial` (PDF inspección) se tomaba solo la primera entrada y la última salida → contaba 10:00–20:30=10,5h en vez de 4,5+4,5=9h (metía la hora y media de descanso dentro de la jornada). Ahora empareja tramos. Y el tope de 8h ordinarias se aplicaba POR TRAMO en vez de POR DÍA en "Horas del mes" y en el CSV → un turno partido de 4,5+4,5 contaba 9h ordinarias. Ahora se acumula el día y luego se reparte.
+- ✅ **Alertas mostraban solo el producto** (no la nota del socorrista): `itemNombre = producto || mensaje` → siempre ganaba el producto. Nueva `extraerNotaDeAlerta` que entiende los dos formatos ("Falta 3× X — nota (Hotel)" y "[Mensaje de X] texto"). Nota destacada en ámbar en widget y campana. Alertas ahora clicables → modal detalle con producto, puesto, criticidad, nota, quién y cuándo lo reportó, botón llamada, mensaje íntegro, botón resolver.
+- ✅ **Subida de documentos forzaba cámara**: `capture="environment"` en los inputs → el móvil abría directo la cámara. Quitado + accept ampliado a Word y HEIC → ahora sale el selector nativo con Archivos/Galería/Cámara.
+- ✅ **KPIs de la cabecera clicables**: los 4 KPIs (Operativos/Tarde/Fuera/Sin fichar) ahora filtran la lista de puestos y hacen scroll a ella. El badge "N abiertas" de Alertas de botiquín lleva a la sección Botiquín.
+- ✅ **Panel Fichajes por día** (nuevo tab en menú): selector de fecha (default hoy), navegación anterior/hoy/siguiente, agrupa por empleado con avatar clicable, botón llamar y botón "ver horas del mes" que abre ficha en pestaña Acciones con editor de fichajes cargado.
+- ✅ **Editor de fichajes existentes** en Ficha > Acciones (bloque amarillo): "Últimos 7 días" / "Mes actual", cada fichaje con hora, tipo, GPS, chip 📌 manual, botones ✏️editar y ✕borrar con auditoría en `motivo_manual`.
+- ✅ **Fichar por empleado desde admin** (bloque azul en Ficha > Acciones): prompt hora + motivo + confirm. INSERT con `origen_manual=true`, `registrado_por`, `motivo_manual`. Chip 📌 visible en el panel general para saber que fue manual.
+- ✅ **Botón Llamar directo** en cada tarjeta del panel (redondo, rojo si fuera de zona, verde si OK) con `tel:+34…` normalizado. Badge gris tachado si el empleado no tiene teléfono en su ficha.
+
+**Botiquín:**
+- ✅ **Carga real de los 22 productos** que usa la empresa (`sql/05-limpiar-inventario-antiguo.sql` para quitar los antiguos de plantilla). Ahora cada hotel tiene exactamente esos 22.
+- ✅ **Botón "Añadir producto a TODOS los hoteles"** en Botiquín + DESA, con banner azul indicando modo masivo y contador de hoteles afectados.
+
+**Kit Alta:**
+- ✅ **Marca visible de fichaje manual** 📌 en el panel + aviso azul en modal de detalle con el motivo.
+- (De la sesión anterior sigue vigente): 8 pasos con textos revisados por el despacho legal, radio SI/NO reconocimiento médico obligatorio, EPIs separados de uniforme, firma en cada hoja del PDF.
+
+**SQLs de esta sesión (ver `sql/04-auditoria-fixes.sql` y `sql/05-limpiar-inventario-antiguo.sql`):**
+```sql
+-- Auditoría (04) — ejecutar bloque por bloque, en Supabase SQL Editor.
+-- Bloques 1-4 = críticos, 5 antes de segundo cliente, 6-8 esta semana, 9 verificación.
+
+-- Limpieza inventario antiguo (05) — 3 pasos:
+-- 1) SELECT para revisar qué se va a borrar
+-- 2) DELETE en inventario_puesto
+-- 3) DELETE en inventario_items
+-- Con verificación final: cada hotel debe quedar con 22 items de botiquín.
+```
+
+---
+
+### Aprendizajes clave de esta sesión (para no volver a caer)
+
+1. **RLS falla en silencio**: sin política Postgres devuelve 0 filas afectadas SIN error. Si algo "no guarda" pero no da error → probablemente falta policy. Añadir `.select()` tras el `.delete()`/`.update()` para detectarlo.
+
+2. **Dos campos "activo" pueden desincronizarse**: `empleados.estado` y `usuarios.activo`. Auth-guard usa el segundo. Mantener siempre coherentes o mostrar la desincronía.
+
+3. **`auth_es_admin() = dueno OR coordinador`**: no vale como policy de operaciones peligrosas. Usar `auth_es_dueno()` para borrar cuentas, cambiar roles, activar/desactivar. Restricciones en JS no cuentan (F12 las salta).
+
+4. **Turnos partidos rompen todo cálculo naive**: emparejar tramos. Cap por día, no por tramo. Test siempre con un caso 10:00-14:30 + 16:00-20:30.
+
+5. **`capture="environment"` fuerza la cámara**: si quieres archivos también, quítalo.
+
+6. **Cambios de nombre de columna son bombas**: `completada`→`hecha`, `created_at`→`fecha_creacion`. Cada rename necesita SEARCH exhaustivo en JS. Los tests reales lo pillan.
+
+7. **`window.PS` no se expone con `const PS = ...`**: hay que hacer `window.PS = PS` explícito. Const en top-level no crea propiedad de window.
 
 ### SQLs manuales pendientes (si los del día no se ejecutaron)
 ```sql
