@@ -846,10 +846,13 @@
         .gte('hora', desde).lt('hora', hasta)
         .order('hora', { ascending: true });
       // 3. Agrupar por empleado → días trabajados + horas ordinarias + extras
+      //    El tope de 8 h ordinarias se aplica al TOTAL DEL DÍA, no a cada tramo.
+      //    Si no, un turno partido de 4,5 h + 4,5 h (9 h) contaría las 9 como
+      //    ordinarias, porque ningún tramo suelto llega a 8.
       const OBJ_DIA = 8;
       const stats = {};
-      empleados.forEach(e => { stats[e.id] = { dias: new Set(), ord: 0, extra: 0 }; });
-      let entradaTmp = {};
+      empleados.forEach(e => { stats[e.id] = { dias: new Set(), ord: 0, extra: 0, porDia: {} }; });
+      const entradaTmp = {};
       (fichs || []).forEach(f => {
         const s = stats[f.empleado_id];
         if (!s) return;
@@ -858,11 +861,19 @@
           entradaTmp[f.empleado_id] = d;
           s.dias.add(d.toDateString());
         } else if (f.tipo === 'salida' && entradaTmp[f.empleado_id]) {
-          const h = Math.max(0, (d - entradaTmp[f.empleado_id]) / 3600000);
-          s.ord += Math.min(OBJ_DIA, h);
-          if (h > OBJ_DIA) s.extra += h - OBJ_DIA;
+          const ini = entradaTmp[f.empleado_id];
+          const h = Math.max(0, (d - ini) / 3600000);
+          const clave = ini.toDateString();               // acumulamos por día natural
+          s.porDia[clave] = (s.porDia[clave] || 0) + h;
           delete entradaTmp[f.empleado_id];
         }
+      });
+      // Con el total de cada día ya cerrado, repartimos entre ordinarias y extras
+      Object.values(stats).forEach(s => {
+        Object.values(s.porDia).forEach(hDia => {
+          s.ord   += Math.min(OBJ_DIA, hDia);
+          s.extra += Math.max(0, hDia - OBJ_DIA);
+        });
       });
       // 4. Construir filas
       let list = empleados.map(e => {
@@ -1382,20 +1393,29 @@
         .select('empleado_id, tipo, hora, fuera_de_zona')
         .gte('hora', desde).lt('hora', hasta).order('hora');
 
+      // Igual que en el panel: el tope de 8 h ordinarias es POR DÍA, no por
+      // tramo, para que los turnos partidos se repartan bien.
       const OBJ_DIA = 8;
       const stats = {};
-      (emps || []).forEach(e => { stats[e.id] = { dias: new Set(), ord: 0, extra: 0, fueraZona: 0 }; });
+      (emps || []).forEach(e => { stats[e.id] = { dias: new Set(), ord: 0, extra: 0, fueraZona: 0, porDia: {} }; });
       const entradaTmp = {};
       (fichs || []).forEach(f => {
         const s = stats[f.empleado_id]; if (!s) return;
         const d = new Date(f.hora);
         if (f.tipo === 'entrada') { entradaTmp[f.empleado_id] = d; s.dias.add(d.toDateString()); if (f.fuera_de_zona) s.fueraZona++; }
         else if (f.tipo === 'salida' && entradaTmp[f.empleado_id]) {
-          const h = Math.max(0, (d - entradaTmp[f.empleado_id]) / 3600000);
-          s.ord += Math.min(OBJ_DIA, h);
-          if (h > OBJ_DIA) s.extra += h - OBJ_DIA;
+          const ini = entradaTmp[f.empleado_id];
+          const h = Math.max(0, (d - ini) / 3600000);
+          const clave = ini.toDateString();
+          s.porDia[clave] = (s.porDia[clave] || 0) + h;
           delete entradaTmp[f.empleado_id];
         }
+      });
+      Object.values(stats).forEach(s => {
+        Object.values(s.porDia).forEach(hDia => {
+          s.ord   += Math.min(OBJ_DIA, hDia);
+          s.extra += Math.max(0, hDia - OBJ_DIA);
+        });
       });
 
       const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });

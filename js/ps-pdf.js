@@ -511,15 +511,38 @@ window.PSPdf = (function () {
     }
     y += 8;
 
-    // Agrupar fichajes por día → { dia: {entrada, salida} }
-    const porDia = {};
-    (fichajesMes || []).forEach(f => {
-      const d = new Date(f.hora);
-      const dia = d.getDate();
-      porDia[dia] = porDia[dia] || {};
-      if (f.tipo === 'entrada' && !porDia[dia].entrada) porDia[dia].entrada = d;
-      else if (f.tipo === 'salida') porDia[dia].salida = d;
-    });
+    // Agrupar fichajes por día EMPAREJANDO CADA ENTRADA CON SU SALIDA.
+    // Importante para turnos partidos: si alguien ficha 10:00-14:30 y
+    // 16:00-20:30, hay que contar 9 h, no 10,5 h (que es lo que salía antes
+    // al tomar solo la primera entrada y la última salida, metiendo dentro
+    // la hora y media de descanso).
+    const porDia = {};   // { 15: { tramos: [{entrada, salida}], horas: 9 } }
+    (function emparejarTramos() {
+      const ordenados = (fichajesMes || [])
+        .slice()
+        .sort((a, b) => new Date(a.hora) - new Date(b.hora));
+      let abierta = null;
+      ordenados.forEach(f => {
+        const d = new Date(f.hora);
+        const dia = d.getDate();
+        if (!porDia[dia]) porDia[dia] = { tramos: [], horas: 0 };
+        if (f.tipo === 'entrada') {
+          abierta = d;
+        } else if (f.tipo === 'salida' && abierta) {
+          const diaEntrada = abierta.getDate();
+          if (!porDia[diaEntrada]) porDia[diaEntrada] = { tramos: [], horas: 0 };
+          porDia[diaEntrada].tramos.push({ entrada: abierta, salida: d });
+          porDia[diaEntrada].horas += Math.max(0, (d - abierta) / 3600000);
+          abierta = null;
+        }
+      });
+      // Entrada sin salida (se olvidó de fichar): la dejamos visible sin horas
+      if (abierta) {
+        const dia = abierta.getDate();
+        if (!porDia[dia]) porDia[dia] = { tramos: [], horas: 0 };
+        porDia[dia].tramos.push({ entrada: abierta, salida: null });
+      }
+    })();
 
     // Detectar año y mes desde el código de la firma para saber cuántos días tiene el mes y festivos
     const mm = (firma.documento_codigo || '').match(/jornada-(\d{4})-(\d{2})/);
@@ -574,23 +597,30 @@ window.PSPdf = (function () {
       doc.rect(xInicio, y, totalAncho, 6, 'FD');
 
       const d = porDia[dia];
-      const entrada = d && d.entrada ? d.entrada.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '';
-      const salida  = d && d.salida  ? d.salida.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '';
-      let horasOrd = '', horasCompl = '';
-      if (d && d.entrada && d.salida) {
-        const h = Math.max(0, (d.salida - d.entrada) / 3600000);
-        const ord = Math.min(8, h);
-        const comp = Math.max(0, h - 8);
-        horasOrd = ord.toFixed(1);
-        horasCompl = comp > 0 ? comp.toFixed(1) : '';
-        totalOrd += ord;
-        totalCompl += comp;
-        if (especial) { totalOrdFest += ord; totalComplFest += comp; }
+      const hhmm = (x) => x ? x.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '';
+      let entrada = '', salida = '', horasOrd = '', horasCompl = '';
+
+      if (d && d.tramos.length) {
+        // Turno partido: se listan todas las entradas y todas las salidas
+        entrada = d.tramos.map(t => hhmm(t.entrada)).join(' / ');
+        salida  = d.tramos.map(t => t.salida ? hhmm(t.salida) : '—').join(' / ');
+        // El tope de 8 h ordinarias se aplica al TOTAL DEL DÍA, no a cada tramo
+        const ord  = Math.min(8, d.horas);
+        const comp = Math.max(0, d.horas - 8);
+        if (d.horas > 0) {
+          horasOrd = ord.toFixed(1);
+          horasCompl = comp > 0 ? comp.toFixed(1) : '';
+          totalOrd += ord;
+          totalCompl += comp;
+          if (especial) { totalOrdFest += ord; totalComplFest += comp; }
+        }
       }
 
-      // Marca de festivo tras las horas si aplica y hay trabajo
+      // Marca de festivo o aviso de turno partido / fichaje incompleto
       let marcaFestivo = '';
       if (festivo) marcaFestivo = `FESTIVO · ${festivo}`;
+      else if (d && d.tramos.length > 1) marcaFestivo = 'Turno partido';
+      else if (d && d.tramos.some(t => !t.salida)) marcaFestivo = 'Sin fichar salida';
 
       const valores = [String(dia), nombresDia[diaSemIdx], entrada, salida, horasOrd, horasCompl, marcaFestivo];
       xh = xInicio;
