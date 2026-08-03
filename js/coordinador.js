@@ -2143,7 +2143,7 @@
   const docsAdminList = document.getElementById('docsAdminList');
   const docsStats = document.getElementById('docsStats');
   const docsFilter = document.getElementById('docsFilter');
-  let docsCurrentFilter = 'pendientes';
+  let docsCurrentFilter = 'kit_pendiente';
 
   function estadoDocsSocorrista(socId) {
     const firmas = PS.firmasDeSocorrista(socId);
@@ -2169,11 +2169,19 @@
         return;
       }
 
-      // Firmas kit-alta reales por empleado
+      // Firmas kit-alta reales por empleado (guardamos también la fecha para mostrarla)
       const ids = empleados.map(e => e.id);
       const { data: kitFirmas } = await window.sb.from('firmas_documentos')
-        .select('empleado_id, fecha_firma').eq('documento_codigo','kit-alta').in('empleado_id', ids);
-      const kitPorEmp = new Set((kitFirmas || []).map(f => f.empleado_id));
+        .select('empleado_id, fecha_firma').eq('documento_codigo','kit-alta').in('empleado_id', ids)
+        .order('fecha_firma', { ascending: false });
+      const kitPorEmp = new Set();
+      const kitFechaPorEmp = new Map();
+      (kitFirmas || []).forEach(f => {
+        if (!kitPorEmp.has(f.empleado_id)) {
+          kitPorEmp.add(f.empleado_id);
+          kitFechaPorEmp.set(f.empleado_id, f.fecha_firma);
+        }
+      });
 
       // Jornadas firmadas reales (para futuro badge)
       const { data: jornFirmas } = await window.sb.from('firmas_documentos')
@@ -2209,6 +2217,7 @@
           estado: e.estado,
           enSalida,
           kitOk: kitPorEmp.has(e.id),
+          kitFecha: kitFechaPorEmp.get(e.id) || null,
           jornadaMesFirmada,
           jornadaToca
         };
@@ -2223,20 +2232,28 @@
       if (docsStats) docsStats.innerHTML = `${alDia}/${rows.length} al día · ${pendTotal} pendientes${cabeceraExtra}`;
 
       let visibles = rows;
-      if (docsCurrentFilter === 'pendientes') visibles = rows.filter(r => !r.kitOk || r.jornadaToca);
-      else if (docsCurrentFilter === 'firmados') visibles = rows.filter(r => r.kitOk && !r.jornadaToca);
+      if (docsCurrentFilter === 'kit_pendiente')      visibles = rows.filter(r => !r.kitOk);
+      else if (docsCurrentFilter === 'pendientes')    visibles = rows.filter(r => !r.kitOk || r.jornadaToca);
+      else if (docsCurrentFilter === 'firmados')      visibles = rows.filter(r => r.kitOk && !r.jornadaToca);
+      // 'todos' → sin filtro
 
       if (visibles.length === 0) {
+        const msg = docsCurrentFilter === 'kit_pendiente'
+          ? '¡Todos los socorristas tienen el Kit Alta firmado! 🎉'
+          : docsCurrentFilter === 'pendientes'
+            ? '¡Todos los socorristas al día!'
+            : 'Sin resultados';
         docsAdminList.innerHTML = `<div style="padding: 30px; text-align:center; color: var(--ink-500); font-size: 13.5px;">
           <svg class="ic ic-24" style="opacity:.5; margin: 0 auto 8px;"><use href="#ic-check-circle"/></svg>
-          <div>${docsCurrentFilter === 'pendientes' ? '¡Todos los socorristas al día!' : 'Sin resultados'}</div>
+          <div>${msg}</div>
         </div>`;
         return;
       }
 
       docsAdminList.innerHTML = visibles.map(s => {
+        const kitFechaCorta = s.kitFecha ? new Date(s.kitFecha).toLocaleDateString('es-ES', { day:'2-digit', month:'short' }) : '';
         const kitBadge = s.kitOk
-          ? `<span class="badge badge-ok"><span class="dot"></span>Kit Alta ✓</span>`
+          ? `<span class="badge badge-ok" title="Firmado el ${s.kitFecha ? new Date(s.kitFecha).toLocaleString('es-ES') : ''}"><span class="dot"></span>Kit Alta ✓${kitFechaCorta ? ' · '+kitFechaCorta : ''}</span>`
           : `<span class="badge badge-danger"><span class="dot"></span>Kit Alta pendiente</span>`;
         // Badge jornada: solo naranja si toca, verde si firmada, gris si aún no toca
         const jornBadge = s.jornadaMesFirmada
