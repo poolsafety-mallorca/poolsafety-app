@@ -694,12 +694,165 @@ window.PSPdf = (function () {
   }
 
   /* ==========================================================================
+     FINIQUITO · recibo saldo y finiquito (art. 49.2 ET)
+     El detalle económico (indemnización, prorratas, vacaciones no disfrutadas)
+     lo cumplimenta la gestoría manualmente sobre el PDF o desde su ERP; aquí
+     dejamos un cuadro con líneas listas para el cálculo, para que el papel valga
+     como acuse de recibo firmado por el trabajador — que es lo que exige la ley.
+     Si en el futuro se guardan importes en firma.campos_json.importes, se pintan
+     automáticamente en lugar de las líneas en blanco.
+     ========================================================================== */
+  async function generarFiniquito(empleado, firma) {
+    const doc = nuevoPdf();
+    header(doc, 'Recibo de saldo y finiquito', 'Art. 49.2 Estatuto de los Trabajadores');
+
+    const fechaFirma = firma.fecha_firma ? new Date(firma.fecha_firma) : new Date();
+    const fechaBaja  = empleado.fecha_baja ? new Date(empleado.fecha_baja) : fechaFirma;
+    const fechaAlta  = empleado.fecha_alta ? new Date(empleado.fecha_alta) : null;
+    const importes   = (firma.campos_json && firma.campos_json.importes) || {};
+
+    let y = 58;
+
+    // Bloque partes
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('REUNIDOS', 15, y); y += 6;
+    doc.setFont('helvetica', 'normal');
+    const lineas = [
+      `De una parte, ${EMPRESA.razonSocial}, con CIF ${EMPRESA.cif}, domicilio en`,
+      `${EMPRESA.domicilio}, en calidad de EMPRESA.`,
+      '',
+      `De otra parte, ${limpiarTexto(empleado.nombre || firma.firma_nombre || '')}, con DNI/NIE`,
+      `${empleado.dni || firma.dni || '—'}, en calidad de TRABAJADOR/A.`
+    ];
+    lineas.forEach(t => { doc.text(t, 15, y); y += 4.6; });
+    y += 4;
+
+    // Datos contrato
+    doc.setFont('helvetica', 'bold');
+    doc.text('DATOS DE LA RELACIÓN LABORAL', 15, y); y += 6;
+    doc.setFont('helvetica', 'normal');
+    const puesto = empleado.puestos?.nombre || empleado.puesto_nombre || '—';
+    const tipo   = empleado.tipo_contrato || '—';
+    doc.text(`Puesto:                ${puesto}`, 15, y); y += 4.6;
+    doc.text(`Categoría:             Socorrista acuático`, 15, y); y += 4.6;
+    doc.text(`Tipo de contrato:      ${tipo}`, 15, y); y += 4.6;
+    doc.text(`Fecha de alta:         ${fechaAlta ? fechaAlta.toLocaleDateString('es-ES') : '—'}`, 15, y); y += 4.6;
+    doc.text(`Fecha de baja:         ${fechaBaja.toLocaleDateString('es-ES')}`, 15, y); y += 4.6;
+    y += 4;
+
+    // Bloque económico
+    doc.setFont('helvetica', 'bold');
+    doc.text('LIQUIDACIÓN ECONÓMICA', 15, y); y += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(80, 80, 80);
+    doc.text('El detalle de cantidades lo cumplimenta la administración de la empresa. El trabajador recibe copia sellada con el desglose definitivo.', 15, y, { maxWidth: 180 });
+    y += 10;
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+
+    const conceptos = [
+      ['Salario base pendiente', importes.salario_base],
+      ['Prorrata paga extra verano', importes.prorrata_verano],
+      ['Prorrata paga extra Navidad', importes.prorrata_navidad],
+      ['Vacaciones no disfrutadas', importes.vacaciones],
+      ['Horas extra pendientes', importes.horas_extra],
+      ['Indemnización (si procede)', importes.indemnizacion],
+      ['Otros conceptos', importes.otros]
+    ];
+
+    const anchoLbl = 110, anchoImp = 40, altoFila = 6.5;
+    doc.setDrawColor(200, 200, 200);
+    conceptos.forEach(([lbl, val]) => {
+      doc.rect(15, y, anchoLbl, altoFila, 'D');
+      doc.rect(15 + anchoLbl, y, anchoImp, altoFila, 'D');
+      doc.text(lbl, 17, y + 4.5);
+      if (val !== undefined && val !== null && val !== '') {
+        doc.text(`${val} €`, 15 + anchoLbl + anchoImp - 2, y + 4.5, { align: 'right' });
+      }
+      y += altoFila;
+    });
+    // Total
+    doc.setFillColor(254, 226, 226);
+    doc.setDrawColor(185, 28, 28);
+    doc.rect(15, y, anchoLbl, altoFila + 1, 'FD');
+    doc.rect(15 + anchoLbl, y, anchoImp, altoFila + 1, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.text('TOTAL LÍQUIDO A PERCIBIR', 17, y + 5);
+    if (importes.total !== undefined && importes.total !== null && importes.total !== '') {
+      doc.text(`${importes.total} €`, 15 + anchoLbl + anchoImp - 2, y + 5, { align: 'right' });
+    }
+    y += altoFila + 5;
+    doc.setFont('helvetica', 'normal');
+
+    // Cláusula de saldo y finiquito
+    y = checkPage(doc, y, 60);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DECLARACIÓN', 15, y); y += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    const clausula = 'El trabajador declara recibida la cantidad total consignada, quedando totalmente saldado y finiquitado por todos los conceptos derivados de la relación laboral, sin que tenga nada más que reclamar a la empresa. La firma del presente documento produce efectos liberatorios en los términos del art. 49.2 del Estatuto de los Trabajadores, sin perjuicio del derecho del trabajador a solicitar la presencia de un representante legal en el acto de la firma. La empresa comunicará a la Tesorería General de la Seguridad Social la baja del trabajador dentro del plazo reglamentario.';
+    const wrapped = doc.splitTextToSize(clausula, 180);
+    doc.text(wrapped, 15, y);
+    y += wrapped.length * 4.6 + 6;
+
+    // Firma manuscrita
+    y = checkPage(doc, y, 60);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text('FIRMA DEL TRABAJADOR', 15, y); y += 6;
+    if (firma.firma_imagen) {
+      try { doc.addImage(firma.firma_imagen, 'PNG', 15, y, 90, 34); } catch (e) {}
+    } else {
+      doc.setDrawColor(180, 180, 180);
+      doc.rect(15, y, 90, 34, 'D');
+    }
+    // Bloque firma empresa a la derecha
+    doc.setDrawColor(180, 180, 180);
+    doc.rect(115, y, 80, 34, 'D');
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    doc.text('Sello y firma de la empresa', 118, y + 30);
+    doc.setTextColor(0, 0, 0);
+    y += 40;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.text('Fdo: ' + limpiarTexto(firma.firma_nombre || empleado.nombre || ''), 15, y); y += 4.5;
+    doc.text('DNI: ' + (empleado.dni || firma.dni || '—'), 15, y); y += 4.5;
+    doc.text('En Portocolom (Felanitx), a ' + fechaFirma.toLocaleDateString('es-ES', { day:'numeric', month:'long', year:'numeric' }), 15, y);
+
+    // Evidencia técnica
+    y += 8;
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Evidencia: firma capturada el ${fechaFirma.toLocaleString('es-ES')} · dispositivo: ${firma.dispositivo || 'móvil empleado'}`, 15, y);
+    if (firma.ubicacion_lat) {
+      y += 4;
+      doc.text(`GPS al firmar: ${(+firma.ubicacion_lat).toFixed(5)}, ${(+firma.ubicacion_lng).toFixed(5)}`, 15, y);
+    }
+    doc.setTextColor(0, 0, 0);
+
+    numerarPaginas(doc);
+    return doc;
+  }
+
+  /* ==========================================================================
      Storage + descarga
      ========================================================================== */
+  function esFiniquito(firma) {
+    return typeof firma.documento_codigo === 'string' && firma.documento_codigo.startsWith('finiquito-');
+  }
+
+  async function generarDocSegunTipo(empleado, firma, subdocs) {
+    if (firma.documento_codigo === 'kit-alta') return generarKitAlta(empleado, firma, subdocs);
+    if (esFiniquito(firma))                    return generarFiniquito(empleado, firma);
+    return generarJornadaResumen(empleado, firma);
+  }
+
   async function generarYSubir(empleado, firma, subdocs) {
-    let doc;
-    if (firma.documento_codigo === 'kit-alta') doc = await generarKitAlta(empleado, firma, subdocs);
-    else doc = await generarJornadaResumen(empleado, firma);
+    const doc = await generarDocSegunTipo(empleado, firma, subdocs);
     const blob = doc.output('blob');
     const path = `firmas/${firma.id || Date.now()}.pdf`;
     const url = await window.PSStorage.subir(path, blob, 'application/pdf');
@@ -710,9 +863,7 @@ window.PSPdf = (function () {
   }
 
   async function descargar(empleado, firma, subdocs, nombreArchivo) {
-    let doc;
-    if (firma.documento_codigo === 'kit-alta') doc = await generarKitAlta(empleado, firma, subdocs);
-    else doc = await generarJornadaResumen(empleado, firma);
+    const doc = await generarDocSegunTipo(empleado, firma, subdocs);
     doc.save(nombreArchivo || `${firma.documento_codigo}-${empleado.nombre || 'empleado'}.pdf`);
   }
 
@@ -721,5 +872,10 @@ window.PSPdf = (function () {
     doc.save(nombreArchivo || `jornada-oficial-${empleado.nombre || 'empleado'}-${(mesAnio||'').replace(/[^\w]/g,'-')}.pdf`);
   }
 
-  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarYSubir, descargar, descargarJornadaOficial };
+  async function descargarFiniquito(empleado, firma, nombreArchivo) {
+    const doc = await generarFiniquito(empleado, firma);
+    doc.save(nombreArchivo || `finiquito-${(empleado.nombre || 'empleado').replace(/\s+/g,'_')}.pdf`);
+  }
+
+  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito };
 })();

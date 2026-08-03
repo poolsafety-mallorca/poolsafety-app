@@ -42,6 +42,12 @@
               <strong style="font-size:14px;">Notificaciones</strong>
               <button onclick="marcarTodasResueltas()" class="btn btn-outline btn-sm" style="font-size:11px;padding:4px 10px;">Marcar todas resueltas</button>
             </div>
+            <div id="notifPushBanner" style="display:none;padding:10px 14px;background:#EFF6FF;border-bottom:1px solid #DBEAFE;font-size:12px;color:#1E40AF;">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                <span id="notifPushBannerText">🔕 Avisos desactivados. Actívalos para que el móvil te avise cuando entre una alerta.</span>
+                <button id="notifPushBannerBtn" onclick="activarAvisosPush()" class="btn btn-sm" style="background:#2563EB;color:#fff;border:0;padding:4px 10px;font-size:11px;flex-shrink:0;">Activar</button>
+              </div>
+            </div>
             <div id="notifPanelList" style="padding:6px;"></div>
           </div>
         </div>
@@ -468,7 +474,7 @@
       <div class="panel-body">
         <div class="norma-banner" style="margin-bottom: 14px;">
           <svg class="ic ic-14"><use href="#ic-shield"/></svg>
-          <span>Kit Alta obligatorio (RGPD, geolocalización, EPIs, salud). Registro mensual firmado el último día trabajado. Puedes firmar en tu tablet en nombre del empleado si su móvil no funciona.</span>
+          <span><b>Kit Alta</b>: una sola vez al entrar (RGPD, geolocalización, EPIs, salud). <b>Jornada del mes</b>: se firma solo el último día del mes o cuando el empleado es dado de baja/finiquito. Fuera de esos días aparece en gris como "pendiente natural" y no requiere acción.</span>
         </div>
         <div id="docsAdminList" class="docs-admin-list"></div>
 
@@ -529,10 +535,18 @@
           </div>
           <div class="upload-drop-title">Arrastra aquí el cuadrante mensual</div>
           <div class="upload-drop-sub">o haz click para seleccionar · admite PDF, Excel (.xlsx, .xls) y CSV</div>
-          <div class="upload-drop-cta">
+          <div class="upload-drop-cta" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
             <button class="btn btn-primary" onclick="document.getElementById('uploadInput').click()">
               <svg class="ic ic-16"><use href="#ic-download"/></svg>
               Seleccionar archivo
+            </button>
+            <button class="btn btn-outline" onclick="descargarPlantillaHorarios()" title="Baja una plantilla Excel con columnas exactas y ejemplos">
+              <svg class="ic ic-16"><use href="#ic-file-text"/></svg>
+              Plantilla Excel
+            </button>
+            <button class="btn btn-outline" onclick="mostrarAyudaFormatoHorarios()">
+              <svg class="ic ic-16"><use href="#ic-alert-circle"/></svg>
+              Ayuda de formato
             </button>
           </div>
         </div>
@@ -678,6 +692,7 @@
               <th class="num">Normales</th>
               <th class="num">Extras</th>
               <th class="num">Total</th>
+              <th class="num" id="hoursTableActionsTh" style="display:none;">Editar</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -1452,6 +1467,7 @@ socorrista,Ana López,ana@ejemplo.com"></textarea>
 <script src="js/ps-pdf.js"></script>
 <script src="js/titulaciones.js"></script>
 <script src="js/ps-horarios.js"></script>
+<script src="js/ps-notifications.js"></script>
 <script src="js/coordinador.js"></script>
 </body>
 </html>

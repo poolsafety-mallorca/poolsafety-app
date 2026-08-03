@@ -751,6 +751,67 @@
   refrescarCampana();
   setInterval(refrescarCampana, 30_000);
 
+  /* ---------- Push local (Notification API + Realtime) ---------- */
+  function refrescarPushBanner() {
+    const banner = document.getElementById('notifPushBanner');
+    const text   = document.getElementById('notifPushBannerText');
+    const btn    = document.getElementById('notifPushBannerBtn');
+    if (!banner || !window.PSNotif) return;
+    if (!PSNotif.soporta()) {
+      banner.style.display = 'block';
+      text.textContent = 'ℹ️ Este navegador no soporta avisos. En iPhone: instala la app en pantalla de inicio.';
+      btn.style.display = 'none';
+      return;
+    }
+    if (PSNotif.enabled()) {
+      banner.style.display = 'block';
+      banner.style.background = '#F0FDF4';
+      banner.style.borderBottomColor = '#BBF7D0';
+      text.style.color = '#166534';
+      text.textContent = '🔔 Avisos activados. Suenan cuando entra una alerta.';
+      btn.textContent = 'Silenciar';
+      btn.style.background = '#DC2626';
+      btn.onclick = () => { PSNotif.silenciar(); refrescarPushBanner(); toast('Avisos silenciados'); };
+    } else if (PSNotif.permiso() === 'denied') {
+      banner.style.display = 'block';
+      text.textContent = '🔕 Avisos bloqueados. Actívalos en los ajustes del navegador (candado junto a la URL).';
+      btn.style.display = 'none';
+    } else {
+      banner.style.display = 'block';
+      banner.style.background = '#EFF6FF';
+      banner.style.borderBottomColor = '#DBEAFE';
+      text.style.color = '#1E40AF';
+      text.textContent = '🔕 Avisos desactivados. Actívalos para que el móvil te avise cuando entre una alerta.';
+      btn.textContent = 'Activar';
+      btn.style.background = '#2563EB';
+      btn.style.display = '';
+      btn.onclick = () => window.activarAvisosPush();
+    }
+  }
+  window.activarAvisosPush = async function () {
+    if (!window.PSNotif) return;
+    const ok = await PSNotif.pedirPermiso();
+    refrescarPushBanner();
+    if (ok) toast('✓ Avisos activados');
+  };
+  // Al abrir el panel también refrescamos el banner (usuario pudo cambiar permisos)
+  const _toggleAntes = window.toggleNotifPanel;
+  window.toggleNotifPanel = function () {
+    _toggleAntes && _toggleAntes();
+    refrescarPushBanner();
+  };
+  refrescarPushBanner();
+  // Enganche Realtime al SDK de PSNotif (una sola vez cuando sb esté listo)
+  (function esperarSb(intentos) {
+    if (window.sb && window.PSNotif) {
+      try { PSNotif.suscribirCoordinador({ empresaId: (window.PS_SESSION || {}).empresaId }); }
+      catch (e) { console.warn('[PSNotif] suscribir falló', e); }
+      return;
+    }
+    if (intentos > 20) return;
+    setTimeout(() => esperarSb(intentos + 1), 300);
+  })(0);
+
   /* ---------- Gestión de botiquines (selector de puesto + inventario) ---------- */
   const botiquinPuestoSelect = document.getElementById('botiquinPuestoSelect');
   const botiquinAdminList = document.getElementById('botiquinAdminList');
@@ -1062,9 +1123,13 @@
       const cnt = document.querySelector('#hoursSection .panel-count');
       const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long' });
       if (cnt) cnt.textContent = `${nombreMes} · ${list.length} de ${empleados.length}`;
-      // 7. Pintar
+      // 7. Pintar (columna Editar solo visible para admin=dueno)
+      const esAdmin = ((window.PS_SESSION || {}).rol || rol) === 'dueno';
+      const thAcc = document.getElementById('hoursTableActionsTh');
+      if (thAcc) thAcc.style.display = esAdmin ? '' : 'none';
+      const colspan = esAdmin ? 7 : 6;
       if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:var(--ink-500,#6B7280);">Sin resultados con este filtro.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="${colspan}" style="padding:30px;text-align:center;color:var(--ink-500,#6B7280);">Sin resultados con este filtro.</td></tr>`;
         return;
       }
       tbody.innerHTML = list.map(s => `
@@ -1082,6 +1147,12 @@
             <span class="hours-extras ${s.extras > 0 ? '' : 'zero'}">${s.extras}</span>
           </td>
           <td class="num"><span class="hours-total">${s.total}h</span></td>
+          ${esAdmin ? `<td class="num">
+            <button class="btn-icon" title="Editar fichajes del mes" onclick="abrirEditorHorasMes('${s.id}','${s.nombre.replace(/'/g,"\\'")}')"
+              style="width:32px;height:32px;background:#FEF3C7;color:#92400E;border-radius:8px;border:none;cursor:pointer;">
+              <svg class="ic ic-14"><use href="#ic-pen"/></svg>
+            </button>
+          </td>` : ''}
         </tr>
       `).join('');
     } catch (err) {
@@ -1722,7 +1793,7 @@
     docsAdminList.innerHTML = '<div style="padding:30px;text-align:center;color:var(--ink-500);">Cargando documentación real…</div>';
     try {
       const { data: emps } = await window.sb.from('empleados')
-        .select('id, nombre, puesto_id, puestos(nombre)')
+        .select('id, nombre, puesto_id, estado, fecha_baja, puestos(nombre)')
         .neq('estado', 'eliminado').is('fecha_baja', null)
         .order('nombre');
       const empleados = emps || [];
@@ -1748,23 +1819,46 @@
         jornPorEmp.set(f.empleado_id, arr);
       });
 
-      const hoyMes = 'jornada-' + new Date().toISOString().slice(0,7);
-      const rows = empleados.map(e => ({
-        id: e.id,
-        nombre: e.nombre,
-        iniciales: (e.nombre || '?').split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase(),
-        puesto: (e.puestos && e.puestos.nombre) || '—',
-        kitOk: kitPorEmp.has(e.id),
-        jornadaMesFirmada: (jornPorEmp.get(e.id) || []).includes(hoyMes)
-      }));
+      // ------ ¿Toca firmar la jornada del mes? ------
+      // La jornada solo se firma:
+      //   a) En los últimos 4 días del mes (día 27→fin), o
+      //   b) Cuando el empleado está en baja/finiquito-pendiente (su último día).
+      // Fuera de esa ventana, no toca — mostrar el estado como "Se firma a fin de mes" (gris).
+      const hoy = new Date();
+      const finDeMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+      const diasParaFinMes = Math.max(0, Math.ceil((finDeMes - hoy) / (1000 * 60 * 60 * 24)));
+      const esEpocaFirma = diasParaFinMes <= 4; // 4 últimos días del mes
 
-      const alDia = rows.filter(r => r.kitOk && r.jornadaMesFirmada).length;
-      const pendTotal = rows.length - alDia;
-      if (docsStats) docsStats.textContent = `${alDia}/${rows.length} al día · ${pendTotal} pendientes`;
+      const hoyMes = 'jornada-' + new Date().toISOString().slice(0,7);
+      const rows = empleados.map(e => {
+        const enSalida = e.estado === 'finiquito-pendiente' || e.estado === 'baja';
+        const jornadaMesFirmada = (jornPorEmp.get(e.id) || []).includes(hoyMes);
+        // "Toca firmar la jornada" solo si es fin de mes o el empleado sale, y no está firmada aún
+        const jornadaToca = !jornadaMesFirmada && (esEpocaFirma || enSalida);
+        return {
+          id: e.id,
+          nombre: e.nombre,
+          iniciales: (e.nombre || '?').split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase(),
+          puesto: (e.puestos && e.puestos.nombre) || '—',
+          estado: e.estado,
+          enSalida,
+          kitOk: kitPorEmp.has(e.id),
+          jornadaMesFirmada,
+          jornadaToca
+        };
+      });
+
+      // Contadores: solo cuenta como "pendiente" lo accionable (kit sin firmar o jornada que toca)
+      const alDia = rows.filter(r => r.kitOk && !r.jornadaToca).length;
+      const pendTotal = rows.filter(r => !r.kitOk || r.jornadaToca).length;
+      const cabeceraExtra = esEpocaFirma
+        ? ` · <span style="color:#B45309;">últimos ${diasParaFinMes||1} días del mes: toca firmar jornadas</span>`
+        : ` · <span style="color:#64748b;">jornadas se firman al final del mes</span>`;
+      if (docsStats) docsStats.innerHTML = `${alDia}/${rows.length} al día · ${pendTotal} pendientes${cabeceraExtra}`;
 
       let visibles = rows;
-      if (docsCurrentFilter === 'pendientes') visibles = rows.filter(r => !r.kitOk || !r.jornadaMesFirmada);
-      else if (docsCurrentFilter === 'firmados') visibles = rows.filter(r => r.kitOk && r.jornadaMesFirmada);
+      if (docsCurrentFilter === 'pendientes') visibles = rows.filter(r => !r.kitOk || r.jornadaToca);
+      else if (docsCurrentFilter === 'firmados') visibles = rows.filter(r => r.kitOk && !r.jornadaToca);
 
       if (visibles.length === 0) {
         docsAdminList.innerHTML = `<div style="padding: 30px; text-align:center; color: var(--ink-500); font-size: 13.5px;">
@@ -1778,9 +1872,12 @@
         const kitBadge = s.kitOk
           ? `<span class="badge badge-ok"><span class="dot"></span>Kit Alta ✓</span>`
           : `<span class="badge badge-danger"><span class="dot"></span>Kit Alta pendiente</span>`;
+        // Badge jornada: solo naranja si toca, verde si firmada, gris si aún no toca
         const jornBadge = s.jornadaMesFirmada
           ? `<span class="badge badge-ok"><span class="dot"></span>Jornada del mes ✓</span>`
-          : `<span class="badge badge-warn"><span class="dot"></span>Jornada del mes pendiente</span>`;
+          : s.jornadaToca
+            ? `<span class="badge badge-warn"><span class="dot"></span>${s.enSalida ? 'Firmar jornada de baja' : 'Firmar jornada del mes'}</span>`
+            : `<span class="badge badge-neutral" style="opacity:.7;"><span class="dot"></span>Jornada · fin de mes</span>`;
         return `
           <div class="doc-admin-row">
             <div class="doc-admin-main">
@@ -1799,6 +1896,10 @@
                 <svg class="ic ic-14"><use href="#ic-pen"/></svg>
                 Firmar en tablet
               </button>` : ''}
+              ${s.kitOk && s.jornadaToca ? `<button class="btn btn-primary btn-sm" data-solicitar-jorn="${s.id}" data-solicitar-nombre="${s.nombre.replace(/"/g,'&quot;')}" style="background:#B45309;">
+                <svg class="ic ic-14"><use href="#ic-bell"/></svg>
+                Solicitar firma
+              </button>` : ''}
               <button class="btn btn-outline btn-sm" data-view="${s.id}">
                 <svg class="ic ic-14"><use href="#ic-file-text"/></svg>
                 Ver ficha
@@ -1810,6 +1911,13 @@
 
       docsAdminList.querySelectorAll('[data-tablet-kit]').forEach(btn => {
         btn.addEventListener('click', () => firmarKitEnTablet(btn.dataset.tabletKit, btn.dataset.tabletNombre));
+      });
+      docsAdminList.querySelectorAll('[data-solicitar-jorn]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (typeof window.solicitarRegistroMensual === 'function') {
+            window.solicitarRegistroMensual(btn.dataset.solicitarJorn, btn.dataset.solicitarNombre);
+          }
+        });
       });
       docsAdminList.querySelectorAll('[data-view]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -2217,6 +2325,24 @@
     }
   }
 
+  /* --------- Parser mejorado con detección de columnas + turno partido ---------
+     Columnas reconocidas (case-insensitive, admite tildes/acentos):
+       nombre / socorrista / empleado   → nombre del trabajador
+       dni / nif                        → DNI (más fiable que el nombre)
+       hotel / puesto / lugar / centro  → puesto
+       hora_inicio / entrada / hora ini → 1er tramo inicio
+       hora_fin    / salida  / hora fin → 1er tramo fin
+       hora_inicio_2 / entrada 2        → 2º tramo inicio (turno partido)
+       hora_fin_2    / salida 2         → 2º tramo fin (turno partido)
+       horario / turno                  → texto "10:00-18:00" (fallback si no hay
+                                          columnas separadas)
+       dias / días                      → "Lun-Vie" o "L,M,X,J,V"
+     Cada fila devuelve {socId, socMatch, nombre, dni, puestoId, puesto,
+                         hora, hora_fin, es_partido, hora_ini_2, hora_fin_2,
+                         dur, dias, motivos: [errores]}
+     Filas con errores NO se filtran — se muestran en el preview para que el
+     usuario vea por qué se descartan. Solo se aplican las OK.
+  ------------------------------------------------------------------------- */
   async function parseArchivoHorarios(file) {
     const nombre = file.name.toLowerCase();
     let filas = [];
@@ -2236,79 +2362,154 @@
       throw new Error('Formato no soportado. Usa .xlsx, .xls o .csv');
     }
 
-    // Detectar columnas en las primeras filas
-    let idxNombre = -1, idxHotel = -1, idxHorario = -1, idxDias = -1;
+    // Detectar columnas — buscar en las primeras 5 filas
+    const idx = { nombre: -1, dni: -1, hotel: -1, horario: -1, ini: -1, fin: -1, ini2: -1, fin2: -1, dias: -1 };
     let filaCabecera = -1;
     for (let r = 0; r < Math.min(filas.length, 5); r++) {
-      const row = filas[r].map(c => String(c || '').toLowerCase());
+      const row = filas[r].map(c => normaliza(String(c || '')));
       for (let c = 0; c < row.length; c++) {
         const cell = row[c];
-        if (cell.includes('nombre') || cell.includes('socorrista') || cell.includes('empleado') || cell.includes('establec')) idxNombre = c;
-        if (cell.includes('hotel') || cell.includes('puesto') || cell.includes('establec') || cell.includes('lugar')) idxHotel = c;
-        if (cell.includes('horario') || cell.includes('turno') || cell.includes('hora')) idxHorario = c;
-        if (cell.includes('dia')) idxDias = c;
+        // Orden importante: las columnas más específicas primero para no pisarlas con "hora"
+        if (idx.dni  === -1 && (cell === 'dni' || cell === 'nif' || cell.includes('dninif'))) idx.dni = c;
+        if (idx.nombre === -1 && (cell.includes('nombre') || cell.includes('socorrista') || cell.includes('empleado') || cell === 'trabajador')) idx.nombre = c;
+        if (idx.hotel === -1 && (cell.includes('hotel') || cell.includes('puesto') || cell.includes('centro') || cell.includes('lugar'))) idx.hotel = c;
+        if (idx.ini2 === -1 && (cell.includes('inicio2') || cell.includes('entrada2') || cell.includes('inicio 2') || cell === 'ini2')) idx.ini2 = c;
+        if (idx.fin2 === -1 && (cell.includes('fin2') || cell.includes('salida2') || cell.includes('fin 2'))) idx.fin2 = c;
+        if (idx.ini  === -1 && (cell === 'horainicio' || cell.includes('inicio') || cell === 'entrada' || cell === 'horaini')) idx.ini = c;
+        if (idx.fin  === -1 && (cell === 'horafin' || cell === 'salida' || cell.includes('finhora') || cell === 'horafin1' || cell === 'fin')) idx.fin = c;
+        if (idx.dias === -1 && cell.startsWith('dia')) idx.dias = c;
+        if (idx.horario === -1 && (cell === 'horario' || cell === 'turno')) idx.horario = c;
       }
-      if (idxNombre >= 0 || idxHotel >= 0) { filaCabecera = r; break; }
+      if (idx.nombre >= 0 || idx.hotel >= 0 || idx.dni >= 0 || idx.ini >= 0) { filaCabecera = r; break; }
     }
     if (filaCabecera === -1) filaCabecera = 0;
+    // Fallbacks minimalistas cuando el usuario no puso cabeceras
+    if (idx.hotel === -1 && idx.horario === -1 && idx.ini === -1) {
+      // Estilo antiguo: col0=hotel, col1=horario
+      idx.hotel = 0;
+      idx.horario = 1;
+    }
 
-    // Fallback razonable: 1ª col = hotel, 2ª col = horario si no reconoce
-    if (idxHotel === -1) idxHotel = 0;
-    if (idxHorario === -1) idxHorario = 1;
-    if (idxNombre === -1) idxNombre = -1; // puede no venir
+    const parseHora = (v) => {
+      if (v === null || v === undefined || v === '') return null;
+      // Excel guarda horas como fracción de día — si es número entre 0 y 1
+      if (typeof v === 'number' && v >= 0 && v <= 1) {
+        const totalMin = Math.round(v * 24 * 60);
+        return `${String(Math.floor(totalMin/60)).padStart(2,'0')}:${String(totalMin%60).padStart(2,'0')}`;
+      }
+      const s = String(v).trim().replace('.', ':').replace('h', ':').replace(/\s/g,'');
+      const m = s.match(/^(\d{1,2})[:.]?(\d{2})?$/);
+      if (m) {
+        const hh = parseInt(m[1]); const mm = m[2] ? parseInt(m[2]) : 0;
+        if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+        return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+      }
+      return null;
+    };
+    const diffH = (a, b) => {
+      if (!a || !b) return 0;
+      const [ah, am] = a.split(':').map(Number);
+      const [bh, bm] = b.split(':').map(Number);
+      return Math.max(0, (bh + bm/60) - (ah + am/60));
+    };
 
     const extraidos = [];
     for (let r = filaCabecera + 1; r < filas.length; r++) {
       const row = filas[r];
       if (!row || row.every(c => !c || !String(c).trim())) continue;
-      const hotelRaw = String(row[idxHotel] || '').trim();
-      const horarioRaw = String(row[idxHorario] || '').trim();
-      if (!hotelRaw || hotelRaw.toLowerCase().includes('semana') || hotelRaw.toLowerCase() === 'hoteles') continue;
-      if (!horarioRaw) continue;
+      const motivos = [];
 
-      // Match hotel con puestos existentes
-      let puesto = PS.puestos.find(p => normaliza(p.nombre).includes(normaliza(hotelRaw))
-        || normaliza(hotelRaw).includes(normaliza(p.nombre.split(' ')[0])));
-      if (!puesto) {
-        // Buscar por grupo hotel
-        puesto = PS.puestos.find(p => p._raw?.grupo_hotel && normaliza(p._raw.grupo_hotel) === normaliza(hotelRaw));
-      }
-      if (!puesto && PS.puestos.length > 0) {
-        // Si no encuentra, usar el primer puesto sin match como fallback
-        continue;
-      }
-
-      // Parse horario "10:00-18:00" o "10:00 - 18:00"
-      const m = horarioRaw.match(/(\d{1,2}[:.]\d{2})\s*[-–—]\s*(\d{1,2}[:.]\d{2})/);
-      let hIni = '10:00', hFin = '18:00', dur = 8;
-      if (m) {
-        hIni = m[1].replace('.', ':');
-        hFin = m[2].replace('.', ':');
-        dur = parseInt(hFin.split(':')[0]) - parseInt(hIni.split(':')[0]);
-        if (dur <= 0) dur = 8;
+      // --- Puesto ---
+      let puesto = null;
+      let hotelRaw = idx.hotel >= 0 ? String(row[idx.hotel] || '').trim() : '';
+      if (hotelRaw) {
+        // Descartar títulos/cabeceras espurios
+        if (/^(semana|hoteles?|puestos?|cuadrante)$/i.test(hotelRaw)) continue;
+        puesto = PS.puestos.find(p => normaliza(p.nombre) === normaliza(hotelRaw));
+        if (!puesto) puesto = PS.puestos.find(p => normaliza(p.nombre).includes(normaliza(hotelRaw))
+          || normaliza(hotelRaw).includes(normaliza(p.nombre.split(' ')[0])));
+        if (!puesto) puesto = PS.puestos.find(p => p._raw?.grupo_hotel && normaliza(p._raw.grupo_hotel) === normaliza(hotelRaw));
+        if (!puesto) motivos.push(`Puesto no encontrado: "${hotelRaw}"`);
+      } else {
+        motivos.push('Sin puesto');
       }
 
-      // Match socorrista si viene columna nombre
-      let socId = null, nombreSoc = '';
-      if (idxNombre >= 0 && row[idxNombre]) {
-        nombreSoc = String(row[idxNombre]).trim();
-        const s = empleadosDB.find(e => normaliza(e.nombre).includes(normaliza(nombreSoc.split(' ')[0]))
-          || normaliza(nombreSoc).includes(normaliza(e.nombre.split(' ')[0])));
-        if (s) socId = s.id;
+      // --- Empleado (match por DNI si hay; si no, por nombre) ---
+      let socId = null, nombreSoc = '', dniSoc = '';
+      if (idx.dni >= 0 && row[idx.dni]) {
+        dniSoc = String(row[idx.dni]).trim().toUpperCase().replace(/[^0-9A-Z]/g,'');
+        if (dniSoc) {
+          const s = empleadosDB.find(e => (e.dni || '').toUpperCase().replace(/[^0-9A-Z]/g,'') === dniSoc);
+          if (s) socId = s.id;
+        }
       }
-      // Si no hay nombre, dejamos vacío (turno sin asignar)
+      if (idx.nombre >= 0 && row[idx.nombre]) {
+        nombreSoc = String(row[idx.nombre]).trim();
+        if (!socId) {
+          const nSoc = normaliza(nombreSoc);
+          // Match exacto → aprox por primer nombre + primer apellido
+          let s = empleadosDB.find(e => normaliza(e.nombre) === nSoc);
+          if (!s) {
+            const partesBusca = nSoc.split(/\s+/).filter(Boolean);
+            s = empleadosDB.find(e => {
+              const partesEmp = normaliza(e.nombre).split(/\s+/).filter(Boolean);
+              return partesBusca.length && partesEmp.length &&
+                partesBusca.every(p => partesEmp.some(pe => pe.includes(p) || p.includes(pe)));
+            });
+          }
+          if (s) socId = s.id;
+        }
+      }
+      if (!socId && (nombreSoc || dniSoc)) {
+        motivos.push(`Empleado no encontrado: ${nombreSoc || dniSoc}. Debe estar dado de alta antes.`);
+      }
+      if (!socId && !nombreSoc && !dniSoc) motivos.push('Sin socorrista');
+
+      // --- Horas ---
+      let hIni = null, hFin = null, hIni2 = null, hFin2 = null;
+      if (idx.ini >= 0) hIni = parseHora(row[idx.ini]);
+      if (idx.fin >= 0) hFin = parseHora(row[idx.fin]);
+      if (idx.ini2 >= 0) hIni2 = parseHora(row[idx.ini2]);
+      if (idx.fin2 >= 0) hFin2 = parseHora(row[idx.fin2]);
+
+      // Fallback formato "10:00-18:00" en columna horario/turno o si no vino separado
+      if (!hIni && idx.horario >= 0) {
+        const txt = String(row[idx.horario] || '').trim();
+        const m = txt.match(/(\d{1,2}[:.]\d{2})\s*[-–—]\s*(\d{1,2}[:.]\d{2})/);
+        if (m) { hIni = parseHora(m[1]); hFin = parseHora(m[2]); }
+        // Segundo tramo en el mismo texto: "10:00-14:30 / 16:00-20:30"
+        const m2 = txt.match(/(\d{1,2}[:.]\d{2})\s*[-–—]\s*(\d{1,2}[:.]\d{2}).*?(\d{1,2}[:.]\d{2})\s*[-–—]\s*(\d{1,2}[:.]\d{2})/);
+        if (m2) { hIni2 = parseHora(m2[3]); hFin2 = parseHora(m2[4]); }
+      }
+      if (!hIni || !hFin) motivos.push('Horas de entrada/salida no válidas');
+      // Turno partido si vienen 2 tramos completos
+      const esPartido = !!(hIni2 && hFin2);
+
+      // --- Duración total ---
+      const dur = Math.round((diffH(hIni, hFin) + (esPartido ? diffH(hIni2, hFin2) : 0)) * 10) / 10;
+
+      // --- Días ---
+      const dias = idx.dias >= 0 ? (String(row[idx.dias] || '').trim() || 'Lun-Vie') : 'Lun-Vie';
+
       extraidos.push({
         socId,
         nombre: nombreSoc || '(sin asignar)',
-        puestoId: puesto.id,
-        puesto: puesto.nombre,
-        hora: hIni,
-        dur,
-        dias: idxDias >= 0 ? String(row[idxDias] || 'Lun-Vie') : 'Lun-Vie'
+        dni: dniSoc,
+        puestoId: puesto ? puesto.id : null,
+        puesto: puesto ? puesto.nombre : (hotelRaw || '—'),
+        hora: hIni || '',
+        hora_fin: hFin || '',
+        es_partido: esPartido,
+        hora_ini_2: hIni2 || '',
+        hora_fin_2: hFin2 || '',
+        dur: dur || 8,
+        dias,
+        ok: motivos.length === 0 && socId && puesto,
+        motivos
       });
     }
 
-    if (extraidos.length === 0) throw new Error('No se detectaron horarios válidos en el archivo. Revisa que tenga columnas de hotel y horario tipo "10:00-18:00".');
+    if (extraidos.length === 0) throw new Error('No se detectaron filas en el archivo. Revisa que tenga cabeceras con nombre/hotel/hora_inicio/hora_fin o descarga la plantilla.');
     return extraidos;
   }
 
@@ -2317,51 +2518,71 @@
   }
 
   function mostrarPreviewExtraido(file, extraidos) {
+    const ok  = extraidos.filter(e => e.ok);
+    const err = extraidos.filter(e => !e.ok);
+    // Guardamos las filas OK en window para no meter un JSON.stringify enorme como atributo HTML
+    window.__horariosParaAplicar = ok;
+
+    const filaTxt = (e) => {
+      const turno = e.es_partido
+        ? `${e.hora}–${e.hora_fin} · ${e.hora_ini_2}–${e.hora_fin_2}`
+        : `${e.hora}–${e.hora_fin}`;
+      const cls = e.ok ? '' : 'style="background:#FEF2F2;"';
+      const motivos = e.motivos && e.motivos.length ? `<div class="small" style="color:#B91C1C;margin-top:2px;">✗ ${e.motivos.join(' · ')}</div>` : '';
+      return `
+        <tr ${cls}>
+          <td><b>${e.nombre}</b>${e.dni ? ' <span class="small text-muted">('+e.dni+')</span>' : ''}${motivos}</td>
+          <td>${e.puesto}</td>
+          <td class="num"><b>${turno}</b>${e.es_partido ? ' <span class="badge badge-info" style="font-size:9px;">Partido</span>' : ''}</td>
+          <td class="num">${e.dur} h</td>
+          <td>${e.dias}</td>
+        </tr>`;
+    };
 
     horarioPreview.innerHTML = `
       <div class="horario-preview-box">
         <div class="horario-preview-head">
-          <svg class="ic ic-22" style="color: #10B981;"><use href="#ic-check-circle"/></svg>
+          <svg class="ic ic-22" style="color: ${err.length ? '#F59E0B' : '#10B981'};"><use href="#ic-check-circle"/></svg>
           <div style="flex:1;">
-            <div class="horario-preview-title">Archivo procesado correctamente</div>
-            <div class="horario-preview-sub">${file.name} · ${extraidos.length} asignaciones detectadas</div>
+            <div class="horario-preview-title">Archivo procesado</div>
+            <div class="horario-preview-sub">${file.name} · <b style="color:#059669;">${ok.length} listas para aplicar</b>${err.length ? ` · <b style="color:#B91C1C;">${err.length} con errores</b>` : ''}</div>
           </div>
-          <span class="badge badge-ok"><span class="dot"></span>Listo para revisar</span>
         </div>
-        <div style="overflow-x:auto;">
-          <table class="hours-table">
-            <thead>
-              <tr>
-                <th>Socorrista detectado</th>
-                <th>Hotel / puesto</th>
-                <th class="num">Turno</th>
-                <th class="num">Duración</th>
-                <th>Días</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${extraidos.slice(0, 15).map(e => `
-                <tr>
-                  <td><b>${e.nombre}</b></td>
-                  <td>${e.puesto}</td>
-                  <td class="num"><b>${e.hora}</b></td>
-                  <td class="num">${e.dur} h</td>
-                  <td>${e.dias}</td>
-                </tr>
-              `).join('')}
-              ${extraidos.length > 15 ? `<tr><td colspan="5" class="text-muted" style="text-align:center; padding:12px;">…y ${extraidos.length-15} filas más</td></tr>` : ''}
-            </tbody>
-          </table>
-        </div>
+
+        ${ok.length > 0 ? `
+          <div style="margin-top:12px;font-weight:700;font-size:12px;color:#059669;text-transform:uppercase;letter-spacing:.3px;">✓ Listas para aplicar (${ok.length})</div>
+          <div style="overflow-x:auto;">
+            <table class="hours-table">
+              <thead><tr><th>Socorrista</th><th>Hotel / puesto</th><th class="num">Turno</th><th class="num">Duración</th><th>Días</th></tr></thead>
+              <tbody>
+                ${ok.slice(0, 20).map(filaTxt).join('')}
+                ${ok.length > 20 ? `<tr><td colspan="5" class="text-muted" style="text-align:center;padding:8px;">…y ${ok.length-20} filas más</td></tr>` : ''}
+              </tbody>
+            </table>
+          </div>` : ''}
+
+        ${err.length > 0 ? `
+          <div style="margin-top:14px;font-weight:700;font-size:12px;color:#B91C1C;text-transform:uppercase;letter-spacing:.3px;">✗ NO se aplicarán (${err.length}) — arréglalas y vuelve a subir</div>
+          <div style="overflow-x:auto;">
+            <table class="hours-table">
+              <thead><tr><th>Socorrista</th><th>Hotel / puesto</th><th class="num">Turno</th><th class="num">Duración</th><th>Días</th></tr></thead>
+              <tbody>
+                ${err.slice(0, 20).map(filaTxt).join('')}
+                ${err.length > 20 ? `<tr><td colspan="5" class="text-muted" style="text-align:center;padding:8px;">…y ${err.length-20} errores más</td></tr>` : ''}
+              </tbody>
+            </table>
+          </div>` : ''}
+
         <div class="modal-actions" style="margin-top: 14px; padding: 0;">
           <button class="btn btn-outline" onclick="cancelarImportHorario()">Descartar</button>
-          <button class="btn btn-primary" onclick='aplicarImportHorario(${JSON.stringify(extraidos).replace(/'/g,"&#39;")})'>
+          <button class="btn btn-primary" onclick="aplicarImportHorarioReal()" ${ok.length === 0 ? 'disabled style="opacity:.5;cursor:not-allowed;"' : ''}>
             <svg class="ic ic-16"><use href="#ic-check"/></svg>
-            Aplicar a los ${extraidos.length} socorristas
+            Aplicar ${ok.length} horarios
           </button>
         </div>
       </div>`;
   }
+  window.aplicarImportHorarioReal = function () { aplicarImportHorario(window.__horariosParaAplicar || []); };
 
   window.cancelarImportHorario = function () {
     horarioPreview.style.display = 'none';
@@ -2371,38 +2592,142 @@
   };
 
   window.aplicarImportHorario = async function (rows) {
-    let creados = 0, actualizados = 0, saltados = 0;
+    if (!rows || !rows.length) { toast('Nada que aplicar'); return; }
+    if (!confirm(`¿Aplicar ${rows.length} horarios?\n\nSe archivan los horarios activos previos de cada socorrista y se crean los nuevos. Los turnos partidos se guardan como un solo horario con los dos tramos.`)) return;
+    toast(`Aplicando ${rows.length} horarios…`);
+    let creados = 0, saltados = 0;
+    const errores = [];
     for (const r of rows) {
-      if (!r.socId) { saltados++; continue; } // sin socorrista asignado
+      if (!r.socId || !r.puestoId) { saltados++; continue; }
       try {
         // Desactivar horarios activos anteriores del empleado
         await window.sb.from('horarios').update({ activo: false })
           .eq('empleado_id', r.socId).eq('activo', true);
-        // Crear nuevo horario activo
-        const { error } = await window.sb.from('horarios').insert({
+        // Nuevo horario. Intentamos guardar todas las columnas nuevas.
+        // Si la BD no tiene alguna (schema antiguo), reintentamos sin ellas.
+        const payloadFull = {
           empleado_id: r.socId,
           puesto_id: r.puestoId,
           hora_inicio: r.hora + ':00',
+          hora_fin: r.hora_fin ? r.hora_fin + ':00' : null,
           duracion: r.dur,
+          es_partido: !!r.es_partido,
+          hora_inicio_2: r.es_partido && r.hora_ini_2 ? r.hora_ini_2 + ':00' : null,
+          hora_fin_2:    r.es_partido && r.hora_fin_2 ? r.hora_fin_2 + ':00' : null,
           dias: r.dias,
           activo: true
-        });
-        if (error) throw error;
-        // Actualizar puesto_id en empleados (asignación actual)
+        };
+        let { error } = await window.sb.from('horarios').insert(payloadFull);
+        if (error && /column|does not exist/i.test(error.message)) {
+          const { error: e2 } = await window.sb.from('horarios').insert({
+            empleado_id: r.socId, puesto_id: r.puestoId,
+            hora_inicio: r.hora + ':00', duracion: r.dur, dias: r.dias, activo: true
+          });
+          if (e2) throw e2;
+        } else if (error) throw error;
+        // Reflejar en empleados el puesto principal
         await window.sb.from('empleados').update({ puesto_id: r.puestoId }).eq('id', r.socId);
         creados++;
       } catch (err) {
-        console.warn('horario:', err.message);
+        errores.push(`${r.nombre}: ${err.message}`);
         saltados++;
       }
     }
     horarioPreview.style.display = 'none';
     horarioPreview.innerHTML = '';
     uploadInput.value = '';
+    window.__horariosParaAplicar = null;
     await cargarEmpleadosDB();
     renderHorariosTable();
     renderPosts();
-    toast(`✓ ${creados} horarios aplicados${saltados ? ' · ' + saltados + ' saltados (sin match)' : ''}`);
+    toast(`✓ ${creados} horarios aplicados${saltados ? ' · ' + saltados + ' saltados' : ''}`);
+    if (errores.length) {
+      alert('Algunos horarios no se pudieron guardar:\n\n' + errores.slice(0, 8).join('\n') + (errores.length > 8 ? `\n\n(+${errores.length-8} más)` : ''));
+    }
+  };
+
+  /* --- Descargar plantilla Excel con formato exacto + ejemplos --- */
+  window.descargarPlantillaHorarios = function () {
+    if (!window.XLSX) { toast('Librería XLSX no cargada, refresca la página'); return; }
+    const cabecera = ['nombre','dni','hotel','hora_inicio','hora_fin','hora_inicio_2','hora_fin_2','dias'];
+    // 2 ejemplos: turno normal + turno partido, cogidos de empleados reales si hay
+    const ej1 = empleadosDB[0];
+    const ej2 = empleadosDB[1] || empleadosDB[0];
+    const puestoEj = (PS.puestos && PS.puestos[0]?.nombre) || 'Hotel Ejemplo';
+    const puestoEj2 = (PS.puestos && PS.puestos[1]?.nombre) || puestoEj;
+    const filas = [
+      cabecera,
+      [ej1?.nombre || 'Juan Pérez García', ej1?.dni || '12345678A', puestoEj, '10:00', '18:00', '', '', 'Lun-Dom'],
+      [ej2?.nombre || 'Ana Martín Ruiz', ej2?.dni || '87654321B', puestoEj2, '10:00', '14:30', '16:00', '20:30', 'Lun-Vie'],
+      ['','','','','','','',''],
+      ['# NOTAS','','','','','','',''],
+      ['# hora_inicio_2 y hora_fin_2 solo si es turno partido (deja en blanco si no).','','','','','','',''],
+      ['# El sistema empareja por DNI si existe, si no por nombre completo.','','','','','','',''],
+      ['# El hotel/puesto debe existir ya en el sistema (sección Puestos).','','','','','','',''],
+      ['# Formato horas: HH:MM (24h). Días: "Lun-Vie", "Lun-Dom", "L,M,X,J,V", etc.','','','','','','','']
+    ];
+    const wb = window.XLSX.utils.book_new();
+    const ws = window.XLSX.utils.aoa_to_sheet(filas);
+    // Anchuras cómodas
+    ws['!cols'] = [{wch:24},{wch:12},{wch:26},{wch:12},{wch:12},{wch:14},{wch:14},{wch:14}];
+    window.XLSX.utils.book_append_sheet(wb, ws, 'Horarios');
+    window.XLSX.writeFile(wb, 'PoolSafety-plantilla-horarios.xlsx');
+    toast('✓ Plantilla descargada');
+  };
+
+  /* --- Modal de ayuda para el formato --- */
+  window.mostrarAyudaFormatoHorarios = function () {
+    let modal = document.getElementById('ayudaFormatoHorariosModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'ayudaFormatoHorariosModal';
+      modal.className = 'modal-overlay';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;';
+      modal.innerHTML = `
+        <div style="background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+          <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <div style="font-size:11px;color:#059669;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Ayuda</div>
+              <div style="font-size:17px;font-weight:700;color:#111827;margin-top:2px;">Formato de la plantilla de horarios</div>
+            </div>
+            <button onclick="document.getElementById('ayudaFormatoHorariosModal').remove()" class="btn-icon" style="width:34px;height:34px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;">
+              <svg class="ic ic-16"><use href="#ic-x"/></svg>
+            </button>
+          </div>
+          <div style="padding:18px 22px;font-size:13.5px;line-height:1.55;color:#111827;">
+            <p><b>Columnas reconocidas</b> (en cualquier orden, cabecera en fila 1):</p>
+            <table style="width:100%;border-collapse:collapse;margin:10px 0;">
+              <thead><tr style="background:#F8FAFC;"><th style="text-align:left;padding:6px 8px;border:1px solid #e2e8f0;">Columna</th><th style="text-align:left;padding:6px 8px;border:1px solid #e2e8f0;">Qué debe contener</th></tr></thead>
+              <tbody>
+                <tr><td style="padding:6px 8px;border:1px solid #e2e8f0;"><code>nombre</code></td><td style="padding:6px 8px;border:1px solid #e2e8f0;">Nombre y apellidos del socorrista.</td></tr>
+                <tr><td style="padding:6px 8px;border:1px solid #e2e8f0;"><code>dni</code></td><td style="padding:6px 8px;border:1px solid #e2e8f0;">Opcional pero recomendado — permite emparejar aunque el nombre esté distinto.</td></tr>
+                <tr><td style="padding:6px 8px;border:1px solid #e2e8f0;"><code>hotel</code></td><td style="padding:6px 8px;border:1px solid #e2e8f0;">Nombre del hotel/puesto. Debe existir ya en el sistema.</td></tr>
+                <tr><td style="padding:6px 8px;border:1px solid #e2e8f0;"><code>hora_inicio</code></td><td style="padding:6px 8px;border:1px solid #e2e8f0;">HH:MM (24h) — inicio del turno.</td></tr>
+                <tr><td style="padding:6px 8px;border:1px solid #e2e8f0;"><code>hora_fin</code></td><td style="padding:6px 8px;border:1px solid #e2e8f0;">HH:MM (24h) — fin del turno.</td></tr>
+                <tr><td style="padding:6px 8px;border:1px solid #e2e8f0;"><code>hora_inicio_2</code></td><td style="padding:6px 8px;border:1px solid #e2e8f0;">Solo para turno partido — inicio del 2º tramo. En blanco si no aplica.</td></tr>
+                <tr><td style="padding:6px 8px;border:1px solid #e2e8f0;"><code>hora_fin_2</code></td><td style="padding:6px 8px;border:1px solid #e2e8f0;">Solo para turno partido — fin del 2º tramo.</td></tr>
+                <tr><td style="padding:6px 8px;border:1px solid #e2e8f0;"><code>dias</code></td><td style="padding:6px 8px;border:1px solid #e2e8f0;">"Lun-Vie", "Lun-Dom", "L,M,X,J,V"… Por defecto Lun-Vie.</td></tr>
+              </tbody>
+            </table>
+            <p style="margin-top:14px;"><b>Consejos</b></p>
+            <ul style="padding-left:22px;margin:6px 0;">
+              <li>Descarga la plantilla — trae 2 filas de ejemplo con los formatos correctos.</li>
+              <li>Los socorristas deben estar dados de alta antes de asignarles horario.</li>
+              <li>El horario actual se ARCHIVA al aplicar el nuevo (queda historial en BD).</li>
+              <li>El sistema muestra un preview con las filas OK y las que tienen error antes de aplicar.</li>
+            </ul>
+            <p style="margin-top:14px;color:#64748b;font-size:12px;">¿Te ha llegado el cuadrante en otro formato? Ábrelo con Excel/Numbers, ajústalo a esta plantilla y súbelo.</p>
+          </div>
+          <div style="padding:14px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:8px;">
+            <button class="btn btn-outline" onclick="document.getElementById('ayudaFormatoHorariosModal').remove()">Cerrar</button>
+            <button class="btn btn-primary" onclick="document.getElementById('ayudaFormatoHorariosModal').remove(); descargarPlantillaHorarios();">
+              <svg class="ic ic-16"><use href="#ic-download"/></svg> Descargar plantilla
+            </button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    }
   };
 
   /* ==========================================================================
@@ -2816,6 +3141,7 @@
 
         const kitFirma = firmasBD.find(f => f.documento_codigo === 'kit-alta');
         const jornadas = firmasBD.filter(f => f.documento_codigo.startsWith('jornada'));
+        const finiquitos = firmasBD.filter(f => f.documento_codigo.startsWith('finiquito'));
 
         body.innerHTML = `
         <div class="ficha-action-row ${kitFirma ? 'ok' : 'warn'}" style="flex-direction:column;align-items:stretch;">
@@ -2889,6 +3215,28 @@
               <div class="ficha-action-sub">Sin firmas mensuales aún. Se firma el último día trabajado del mes o cuando le solicites la firma.</div>
             </div>
           </div>` : ''}
+
+        ${finiquitos.map(f => `
+          <div class="ficha-action-row" style="flex-direction:column;align-items:stretch;background:#FEF2F2;border:1px solid #FCA5A5;">
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <div class="icon" style="background:#FEE2E2;color:#B91C1C;"><svg class="ic ic-18"><use href="#ic-file-text"/></svg></div>
+              <div class="ficha-action-body" style="flex:1;min-width:0;">
+                <div class="ficha-action-title">Recibo de finiquito</div>
+                <div class="ficha-action-sub">Firmado el ${new Date(f.fecha_firma).toLocaleString('es-ES')} · ${f.dispositivo || 'móvil'}</div>
+                ${f.firma_imagen ? `<img src="${f.firma_imagen}" class="firma-imagen" style="max-width:180px;margin-top:8px;" alt="Firma"/>` : ''}
+                ${f.ubicacion_lat ? `<div class="small text-muted mt-1">📍 <a href="https://www.google.com/maps?q=${f.ubicacion_lat},${f.ubicacion_lng}" target="_blank">${(+f.ubicacion_lat).toFixed(4)}, ${(+f.ubicacion_lng).toFixed(4)}</a></div>` : ''}
+              </div>
+            </div>
+            <div class="row gap-2 mt-3" style="justify-content:flex-end;flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" onclick="descargarPdfFirma('${f.id}','finiquito')" style="background:#B91C1C;">
+                <svg class="ic ic-16"><use href="#ic-download"/></svg>
+                Descargar PDF finiquito
+              </button>
+              ${f.archivo_pdf_url ? `<a class="btn btn-outline btn-sm" href="${f.archivo_pdf_url}" target="_blank">📎 Ver PDF guardado</a>` : ''}
+            </div>
+            <div class="small text-muted mt-2" style="text-align:right;">El PDF lleva la firma manuscrita, evidencia técnica y cuadro económico para que la gestoría lo cumplimente.</div>
+          </div>
+        `).join('')}
 
         <div class="ficha-action-row" style="flex-direction:column;align-items:stretch;background:#f0f9ff;border:1px dashed #7dd3fc;">
           <div style="display:flex;gap:10px;align-items:flex-start;">
@@ -3450,6 +3798,7 @@
         const key = d.toLocaleDateString('es-ES', { weekday:'short', day:'2-digit', month:'short' });
         (porDia[key] = porDia[key] || []).push(f);
       });
+      const esAdmin = ((window.PS_SESSION || {}).rol || rol) === 'dueno';
       cont.innerHTML = Object.entries(porDia).map(([diaTxt, arr]) => `
         <div style="margin-bottom:10px;">
           <div style="font-weight:700;font-size:12px;color:#475569;padding:4px 0;text-transform:uppercase;">${diaTxt}</div>
@@ -3465,13 +3814,7 @@
             const badgeManual = f.origen_manual
               ? '<span class="badge badge-info" style="margin-left:4px;">📌 manual</span>'
               : '';
-            return `
-              <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;margin:4px 0;">
-                <div style="min-width:60px;font-weight:700;font-family:monospace;">${hora}</div>
-                <div style="flex:1;min-width:0;">
-                  ${badgeTipo} ${badgeGps} ${badgeManual}
-                  <div class="small text-muted" style="margin-top:2px;">${puesto}${f.motivo_manual ? ' · ' + f.motivo_manual : ''}</div>
-                </div>
+            const botones = esAdmin ? `
                 <button class="btn-icon" title="Editar hora" onclick="editarFichaje('${f.id}','${empId}',${dias})"
                   style="width:30px;height:30px;background:#EFF6FF;color:#1D4ED8;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-pen"/></svg>
@@ -3479,7 +3822,15 @@
                 <button class="btn-icon" title="Borrar" onclick="borrarFichaje('${f.id}','${empId}',${dias})"
                   style="width:30px;height:30px;background:#FEF2F2;color:#DC2626;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-x"/></svg>
-                </button>
+                </button>` : '';
+            return `
+              <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;margin:4px 0;">
+                <div style="min-width:60px;font-weight:700;font-family:monospace;">${hora}</div>
+                <div style="flex:1;min-width:0;">
+                  ${badgeTipo} ${badgeGps} ${badgeManual}
+                  <div class="small text-muted" style="margin-top:2px;">${puesto}${f.motivo_manual ? ' · ' + f.motivo_manual : ''}</div>
+                </div>
+                ${botones}
               </div>
             `;
           }).join('')}
@@ -3491,6 +3842,8 @@
   };
 
   window.editarFichaje = async function (fichajeId, empId, dias) {
+    const rolAct = (window.PS_SESSION || {}).rol || rol;
+    if (rolAct !== 'dueno') { toast('Solo el administrador puede editar fichajes.'); return; }
     try {
       // Cargar el fichaje actual
       const { data: f, error } = await window.sb.from('fichajes')
@@ -3542,21 +3895,100 @@
       toast(`✓ Fichaje actualizado a ${nuevaFecha} ${nuevaHora}`);
       cargarFichajesEditables(empId, dias);
       if (window.renderPosts) renderPosts();
+      if (window.renderHours) renderHours(document.getElementById('hourFilter')?.value || 'all');
     } catch (err) { toast('Error: ' + err.message); }
   };
 
   window.borrarFichaje = async function (fichajeId, empId, dias) {
+    const rolAct = (window.PS_SESSION || {}).rol || rol;
+    if (rolAct !== 'dueno') { toast('Solo el administrador puede borrar fichajes.'); return; }
     try {
       const { data: f } = await window.sb.from('fichajes')
         .select('tipo, hora').eq('id', fichajeId).single();
       const cuando = f ? new Date(f.hora).toLocaleString('es-ES', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
       if (!confirm(`¿Borrar este fichaje?\n\n${f?.tipo?.toUpperCase() || ''} ${cuando}\n\nEsta acción no se puede deshacer.`)) return;
-      const { error } = await window.sb.from('fichajes').delete().eq('id', fichajeId);
+      const { data: del, error } = await window.sb.from('fichajes').delete().eq('id', fichajeId).select();
       if (error) throw error;
+      if (!del || !del.length) {
+        toast('No se ha podido borrar. Puede que no tengas permisos.'); return;
+      }
       toast('✓ Fichaje borrado');
       cargarFichajesEditables(empId, dias);
       if (window.renderPosts) renderPosts();
+      if (window.renderHours) renderHours(document.getElementById('hourFilter')?.value || 'all');
     } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  /* --- Editor de fichajes del mes desde la tabla "Horas del mes" (admin) ---
+     Abre un modal ligero con el mismo widget que ya usamos en Ficha → Acciones.
+     Botones lápiz / ✕ reutilizan editarFichaje() y borrarFichaje().
+     Al cerrar recalcula la fila para reflejar los cambios sin recargar. */
+  window.abrirEditorHorasMes = function (empId, nombreEmp) {
+    const rolAct = (window.PS_SESSION || {}).rol || rol;
+    if (rolAct !== 'dueno') { toast('Solo el administrador puede editar fichajes.'); return; }
+    let modal = document.getElementById('horasMesEditorModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'horasMesEditorModal';
+      modal.className = 'modal-overlay';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;';
+      modal.innerHTML = `
+        <div style="background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+          <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:10px;background:#FEFCE8;">
+            <div>
+              <div style="font-size:11px;color:#92400E;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Editar fichajes del mes</div>
+              <div id="horasMesEditorNombre" style="font-size:16px;font-weight:700;color:#111827;margin-top:2px;">—</div>
+            </div>
+            <button onclick="cerrarEditorHorasMes()" class="btn-icon" style="width:34px;height:34px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;">
+              <svg class="ic ic-16"><use href="#ic-x"/></svg>
+            </button>
+          </div>
+          <div style="padding:10px 14px;border-bottom:1px solid #F3F4F6;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <button class="btn btn-outline btn-sm" id="horasMesRango7">Últimos 7 días</button>
+            <button class="btn btn-primary btn-sm" id="horasMesRango31">Mes actual</button>
+            <div style="flex:1;"></div>
+            <button class="btn btn-outline btn-sm" onclick="ficharPorEmpleadoDesdeEditor()" title="Añadir un fichaje manual">＋ Añadir fichaje</button>
+          </div>
+          <div style="padding:12px 14px;background:#FFFBEB;border-bottom:1px solid #FDE68A;font-size:12px;color:#78350F;">
+            ⚠️ Cada edición o borrado queda registrado en auditoría (fecha + motivo).
+          </div>
+          <div id="horasMesEditorBody" style="padding:12px 14px;overflow-y:auto;flex:1;background:#F8FAFC;">
+            <div id="fichajesEdit_${empId}" data-empid="${empId}"></div>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', (e) => { if (e.target === modal) window.cerrarEditorHorasMes(); });
+    } else {
+      // Reutilizar modal: cambiar el data-empid para que cargarFichajesEditables apunte al contenedor correcto
+      const body = modal.querySelector('#horasMesEditorBody');
+      body.innerHTML = `<div id="fichajesEdit_${empId}" data-empid="${empId}"></div>`;
+      modal.style.display = 'flex';
+    }
+    modal.querySelector('#horasMesEditorNombre').textContent = nombreEmp || '—';
+    const b7  = modal.querySelector('#horasMesRango7');
+    const b31 = modal.querySelector('#horasMesRango31');
+    b7.onclick  = () => { cargarFichajesEditables(empId, 7);  b7.className='btn btn-primary btn-sm'; b31.className='btn btn-outline btn-sm'; };
+    b31.onclick = () => { cargarFichajesEditables(empId, 31); b31.className='btn btn-primary btn-sm'; b7.className='btn btn-outline btn-sm'; };
+    // Fichar manual desde aquí llama al mismo prompt que usa la ficha
+    window.ficharPorEmpleadoDesdeEditor = async () => {
+      if (typeof window.ficharPorEmpleado !== 'function') {
+        toast('No disponible aquí, hazlo desde la ficha del empleado.'); return;
+      }
+      const t = prompt('Tipo de fichaje (entrada / salida):', 'entrada');
+      if (!t) return;
+      const tipo = t.trim().toLowerCase() === 'salida' ? 'salida' : 'entrada';
+      await window.ficharPorEmpleado(empId, nombreEmp || 'este empleado', tipo);
+      // Refrescar la lista tras crear
+      cargarFichajesEditables(empId, 31);
+    };
+    // Cargar mes actual por defecto
+    cargarFichajesEditables(empId, 31);
+  };
+  window.cerrarEditorHorasMes = function () {
+    const modal = document.getElementById('horasMesEditorModal');
+    if (modal) modal.style.display = 'none';
+    // Recalcular tabla del mes por si borró/editó fichajes
+    if (window.renderHours) renderHours(document.getElementById('hourFilter')?.value || 'all');
   };
 
   // Botón masivo: dar de alta a TODOS los que estén en alta-pendiente
@@ -4596,8 +5028,23 @@
       const { data: firma, error } = await window.sb
         .from('firmas_documentos').select('*').eq('id', firmaId).single();
       if (error) throw error;
-      const empData = empleadoData(fichaActualId) || { nombre: '—' };
-      // Enriquecer con el nombre del puesto para el PDF oficial
+      let empData = empleadoData(firma.empleado_id || fichaActualId) || { nombre: '—' };
+      // Para finiquito y jornada oficial hay que garantizar fecha_alta/baja/tipo_contrato/puesto reales
+      const esFin = typeof firma.documento_codigo === 'string' && firma.documento_codigo.startsWith('finiquito');
+      const necesitaExtras = esFin || !empData.fecha_alta || !empData.puesto_nombre;
+      if (necesitaExtras) {
+        try {
+          const { data: eDb } = await window.sb.from('empleados')
+            .select('id, nombre, dni, fecha_alta, fecha_baja, tipo_contrato, puesto_id, puestos(nombre)')
+            .eq('id', firma.empleado_id || fichaActualId).single();
+          if (eDb) {
+            empData = Object.assign({}, empData, eDb, {
+              puesto_nombre: eDb.puestos?.nombre || empData.puesto_nombre
+            });
+          }
+        } catch (_) {}
+      }
+      // Fallback puesto por id si sigue sin nombre
       if (empData.puestoId && !empData.puesto_nombre) {
         try {
           const { data: p } = await window.sb.from('puestos').select('nombre').eq('id', empData.puestoId).single();

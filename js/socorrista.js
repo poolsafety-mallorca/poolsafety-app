@@ -617,17 +617,18 @@
     const firmaImagen = canvas.toDataURL('image/png');
 
     try {
-      // 1. Insertar firma del finiquito
-      const { error: fErr } = await window.sb.from('firmas_documentos').insert({
+      // 1. Insertar firma del finiquito (con .select() para recuperar el id)
+      const codigo = 'finiquito-' + new Date().toISOString().slice(0,10);
+      const { data: firmaIns, error: fErr } = await window.sb.from('firmas_documentos').insert({
         empleado_id: empId,
-        documento_codigo: 'finiquito-' + new Date().toISOString().slice(0,10),
+        documento_codigo: codigo,
         firma_nombre: nombre,
         dni,
         dispositivo: 'móvil empleado · finiquito',
         firma_imagen: firmaImagen,
         ubicacion_lat: ultimaPosicion?.lat || null,
         ubicacion_lng: ultimaPosicion?.lng || null
-      });
+      }).select().single();
       if (fErr) throw fErr;
 
       // 2. Pasar empleado a BAJA (no 'finiquitado' — así se puede reactivar el año siguiente)
@@ -636,7 +637,17 @@
         fecha_baja: new Date().toISOString().slice(0,10)
       }).eq('id', empId);
 
-      // 3. Desactivar usuario para cortar login
+      // 3. Generar+subir PDF del finiquito para que quede descargable
+      try {
+        if (window.PSPdf && firmaIns) {
+          const empData = Object.assign({}, empleadoReal || {}, { nombre, dni });
+          await window.PSPdf.generarYSubir(empData, firmaIns);
+        }
+      } catch (pdfErr) {
+        console.warn('[finiquito] no se pudo subir el PDF, la firma quedó guardada:', pdfErr);
+      }
+
+      // 4. Desactivar usuario para cortar login
       const psSes = window.PS_SESSION || {};
       if (psSes.userId) await window.sb.from('usuarios').update({ activo: false }).eq('id', psSes.userId);
 

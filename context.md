@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-03 (cuarta jornada · auditoría de seguridad + arranque con plantilla real)
-**Cache SW actual: `poolsafety-v77`**
+Última actualización: 2026-08-03 (quinta jornada · push local + editor horas + PDF finiquito + import Excel v2 + jornada solo fin de mes)
+**Cache SW actual: `poolsafety-v79`**
 
 ---
 
@@ -311,6 +311,58 @@ Ver commits: SMTP Resend, auto-update PWA, PSHor horarios editables, Correturnos
 
 ---
 
+---
+
+### Sesión 2026-08-03 · quinta jornada · v77→v78 · los 4 pendientes cerrados
+
+**Push local (Notification API + Realtime) para el coordinador:**
+- ✅ Nuevo módulo `js/ps-notifications.js` (`window.PSNotif`). Pide permiso al usuario con prompt nativo, guarda en localStorage. Suscribe canales Realtime `alertas` (INSERT) y `fichajes` (INSERT) y dispara `new Notification(...)` con vibración cuando la app está en background. Si está visible no molesta (solo suena si se pide `forceVisible`).
+- ✅ Banner integrado dentro del panel de la campana con estados verde/azul/rojo. Botón "Activar" pide permiso, "Silenciar" desactiva sin borrar el permiso, "Denied" instruye a ir a los ajustes del navegador.
+- ✅ Anti-spam: `notifiedIds` en memoria + marca de tiempo de arranque para no notificar el histórico al abrir la pestaña.
+- ✅ Tipos de aviso: rojo (fichaje fuera de zona), silent (fichaje normal), color por criticidad (alertas), formato distinto para mensajes de socorrista (`tipo='otro'`).
+- ⚠ Es push LOCAL — llega mientras la PWA está abierta o backgrounded, NO si el usuario cerró la pestaña del todo. Para eso haría falta Web Push con VAPID + backend, decisión aplazada.
+
+**Editar/borrar fichajes con lápiz en "Horas del mes" (solo admin=dueno):**
+- ✅ Nueva columna "Editar" en la tabla de Horas del mes por socorrista. Aparece solo si `rol==='dueno'`.
+- ✅ Botón lápiz por fila abre modal ligero `abrirEditorHorasMes(empId)` que reutiliza `cargarFichajesEditables` con los mismos botones ✏️/✕ que ya existían en Ficha > Acciones.
+- ✅ Añadido botón "＋ Añadir fichaje" en el modal (invoca `ficharPorEmpleado` pidiendo entrada/salida).
+- ✅ Restringido `editarFichaje` y `borrarFichaje` en runtime a rol `dueno` (defensa en profundidad — RLS es la barrera real). En `cargarFichajesEditables` los botones ✏️/✕ se ocultan para coord.
+- ✅ Al cerrar el modal se recarga `renderHours` para reflejar horas actualizadas.
+- ✅ `borrarFichaje` ahora usa `.select()` tras el `.delete()` para detectar RLS silencioso.
+
+**PDF finiquito descargable:**
+- ✅ Nueva función `PSPdf.generarFiniquito(empleado, firma)` — recibo de saldo y finiquito según art. 49.2 ET, con cabecera roja, datos empresa/empleado, tabla económica con 7 conceptos + total (líneas en blanco para la gestoría, o rellenadas si `firma.campos_json.importes` trae valores), cláusula legal, firma incrustada + hueco para sello de empresa, evidencia técnica (dispositivo, GPS al firmar).
+- ✅ `firmarFiniquitoAhora` (socorrista) ahora inserta con `.select().single()` y llama a `PSPdf.generarYSubir` en el mismo flujo → el PDF queda en Storage con URL guardada en `firmas_documentos.archivo_pdf_url` desde el momento cero.
+- ✅ Ficha del empleado (admin) muestra bloque rojo por cada finiquito firmado con "Descargar PDF finiquito" + link al PDF ya guardado en Storage.
+- ✅ `descargarPdfFirma` reforzado: si el código empieza por `finiquito-`, enriquece automáticamente el empleado con `fecha_alta`, `fecha_baja`, `tipo_contrato`, `puestos.nombre` desde BD (no basta con el cache local para el PDF).
+- ✅ Nueva función helper `PSPdf.descargarFiniquito(empleado, firma)` y router `generarDocSegunTipo` para no repetir el switch en cada punto de descarga.
+
+**Import Excel/CSV horarios v2 (superset del v1):**
+- ✅ Parser reescrito: reconoce columnas `nombre`, `dni`, `hotel`, `hora_inicio`, `hora_fin`, `hora_inicio_2`, `hora_fin_2`, `dias`. Cabecera detectable en cualquiera de las 5 primeras filas. Fallback al formato viejo `horario="10:00-18:00"` si no vienen columnas separadas. Detecta también el 2º tramo dentro de un texto "10:00-14:30 / 16:00-20:30".
+- ✅ **Match por DNI PRIMERO** (mucho más fiable que nombre). Si no hay DNI, match por nombre normalizado (todos los tokens del nombre buscado tienen que aparecer en el empleado). Antes hacía match débil por "primer nombre incluido" y podía enganchar a otro Alberto.
+- ✅ Turno partido: parsea 4 horas y guarda en `horarios.es_partido = true` + `hora_inicio_2` + `hora_fin_2`. Fallback automático si la BD no tiene esas columnas (schema antiguo).
+- ✅ Parser de horas robusto: acepta `10:00`, `10.00`, `10`, `10h`, y números decimales de Excel (0.416666... = 10:00).
+- ✅ **Preview separa filas OK vs errores** con motivo específico ("Empleado no encontrado: Juan Pérez. Debe estar dado de alta antes.", "Puesto no encontrado: Hotel X", "Horas de entrada/salida no válidas"). Las filas con error NO se aplican; el botón "Aplicar" muestra el nº real.
+- ✅ **Botón "Descargar plantilla Excel"**: genera plantilla `PoolSafety-plantilla-horarios.xlsx` con cabeceras + 2 filas de ejemplo (turno normal + turno partido) usando datos de empleados reales si existen. Anchuras de columna cómodas + notas al pie con recordatorios de formato.
+- ✅ **Modal "Ayuda de formato"**: tabla con todas las columnas reconocidas + qué debe contener cada una + consejos + botón de descargar plantilla.
+- ✅ `aplicarImportHorario` con doble intento: primero con todas las columnas nuevas, si BD antigua falla por columna → reintento sin ellas. Errores individuales se acumulan y se muestran en `alert()` final si los hay (máx 8 detalles).
+- ✅ El JSON no se serializa como atributo HTML (rompía con comillas). Guardado en `window.__horariosParaAplicar` y consumido por `aplicarImportHorarioReal()`.
+
+**Otros:**
+- ✅ SW `poolsafety-v79`, `ps-notifications.js` añadido al CORE cache.
+- ✅ Se restringe en runtime `editar/borrar fichaje` a dueño (defensa en profundidad además del RLS de la BD).
+
+**Fix panel Documentación (v79) — jornada del mes solo cuando toca:**
+- 🐛 Antes: mostraba "Jornada del mes pendiente" (naranja) para TODOS los empleados durante todo el mes → 40 falsas alertas no accionables (la jornada solo se firma a fin de mes o al dar de baja).
+- ✅ Nueva regla: la firma de jornada se considera "pendiente accionable" SOLO si (a) estamos en los últimos 4 días del mes, o (b) el empleado está en `finiquito-pendiente`/`baja`. Fuera de eso, se muestra badge gris "Jornada · fin de mes" (informativo, sin acción).
+- ✅ Contador de la cabecera (`X/Y al día · Z pendientes`) recalculado con la regla real. Añadida coletilla contextual: "últimos N días del mes: toca firmar jornadas" o "jornadas se firman al final del mes".
+- ✅ Filtro "Solo pendientes" ya no incluye jornadas fuera de ventana.
+- ✅ Botón nuevo "Solicitar firma" (color ámbar) por fila cuando toca firmar jornada, invoca `solicitarRegistroMensual`.
+- ✅ Banner explicativo del panel reescrito: "Kit Alta: una sola vez. Jornada del mes: último día del mes o baja."
+- ✅ Empleados en salida (finiquito-pendiente / baja) muestran badge "Firmar jornada de baja" para diferenciar del cierre mensual ordinario.
+
+---
+
 ### Aprendizajes clave de esta sesión (para no volver a caer)
 
 1. **RLS falla en silencio**: sin política Postgres devuelve 0 filas afectadas SIN error. Si algo "no guarda" pero no da error → probablemente falta policy. Añadir `.select()` tras el `.delete()`/`.update()` para detectarlo.
@@ -379,10 +431,8 @@ alter publication supabase_realtime add table firmas_documentos;
 ```
 
 ### Features aún no implementadas
-- **Notificación PUSH** al coordinador cuando socorrista ficha/reporta (hoy Realtime + refresh 25s + campana).
-- **Editar/borrar fichajes individuales con lápiz** en Horas del mes (hoy solo se ven agrupados).
-- **PDF finiquito descargable** (hoy se guarda la firma pero no genera PDF descargable).
-- **Import CSV masivo horarios** para 150 socorristas.
+- **Web Push real (VAPID)** al coordinador aunque la PWA esté cerrada (hoy hay push LOCAL solo si la app está abierta/backgrounded).
+- **Editor de importes** en el PDF de finiquito (hoy quedan líneas en blanco que rellena la gestoría sobre papel).
 
 ### Nice-to-have
 - Landing pública en `poolsafety.es` para captación hoteles.
