@@ -843,6 +843,44 @@
   setInterval(refrescarCampana, 30_000);
 
   /* ---------- Push local (Notification API + Realtime) ---------- */
+  // Banner rojo persistente arriba del dashboard cuando el coord/dueño aún NO
+  // ha firmado su Kit Alta laboral. Los coord son trabajadores igual y también
+  // deben firmar. Al pulsar el botón se les redirige a socorrista.html?kit=1
+  // donde ven el mismo wizard que los socorristas.
+  async function comprobarKitAltaCoord() {
+    const psSes = window.PS_SESSION || {};
+    if (!['dueno','coordinador'].includes(psSes.rol) || !psSes.userId || !window.sb) return;
+    // Quitar banner previo si existiese
+    document.getElementById('psKitCoordBanner')?.remove();
+    try {
+      // Empleado asociado a este usuario
+      const { data: emp } = await window.sb.from('empleados')
+        .select('id').eq('usuario_id', psSes.userId).maybeSingle();
+      if (!emp) return; // aún no está creada la ficha, reintentar más tarde
+      const { data: firmas } = await window.sb.from('firmas_documentos')
+        .select('id').eq('empleado_id', emp.id).eq('documento_codigo','kit-alta').limit(1);
+      if (firmas && firmas.length) return; // ya firmado, nada que hacer
+      // Inyectar banner rojo bajo la nav superior
+      const banner = document.createElement('div');
+      banner.id = 'psKitCoordBanner';
+      banner.style.cssText = 'background:linear-gradient(135deg,#B91C1C,#DC2626);color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 2px 10px rgba(185,28,28,.25);';
+      banner.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:240px;">
+          <span style="font-size:26px;">📋</span>
+          <div>
+            <div style="font-weight:800;font-size:14.5px;">Debes firmar tu Kit Alta Empresa</div>
+            <div style="font-size:12.5px;opacity:.92;margin-top:2px;">Los coordinadores también son trabajadores. La documentación laboral (RGPD, EPIs, salud, etc.) tiene que quedar firmada en el sistema.</div>
+          </div>
+        </div>
+        <a href="socorrista.html?kit=1&volver=coord" style="background:#fff;color:#B91C1C;border-radius:8px;padding:10px 18px;font-weight:800;text-decoration:none;font-size:13px;flex-shrink:0;">Firmar ahora →</a>`;
+      const nav = document.querySelector('nav.dash-nav');
+      if (nav && nav.parentNode) nav.parentNode.insertBefore(banner, nav.nextSibling);
+    } catch (_) {}
+  }
+  window.comprobarKitAltaCoord = comprobarKitAltaCoord;
+  document.addEventListener('ps-session-updated', () => setTimeout(comprobarKitAltaCoord, 1200));
+  setTimeout(comprobarKitAltaCoord, 2000);
+
   // Banner grande persistente arriba del dashboard cuando el permiso no está
   // concedido. Especialmente útil para coord que abren la app y no se enteran
   // de que hay que activar los avisos.

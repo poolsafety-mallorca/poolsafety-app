@@ -2501,6 +2501,13 @@
           await cargarFirmasBD();
           renderDocsHeader();
           renderDocsLists();
+          // Si vino desde el panel del coord (?kit=1&volver=coord), redirige de vuelta
+          try {
+            const q = new URLSearchParams(window.location.search);
+            if (q.get('volver') === 'coord' || q.get('kit') === '1') {
+              setTimeout(() => { window.location.replace('coordinador.html'); }, 1200);
+            }
+          } catch (_) {}
         } catch (err) {
           toast('Error al guardar la firma: ' + err.message);
         }
@@ -2779,6 +2786,12 @@
       const yaAbierto = modalEl?.classList.contains('open');
       const sinFirma = !firmas || firmas.length === 0;
       const tienePendiente = tareas && tareas.length > 0;
+      // Si vino un coord/dueño con ?kit=1 y YA ha firmado → redirige a coord
+      const q = new URLSearchParams(window.location.search);
+      if (q.get('kit') === '1' && !sinFirma && !tienePendiente) {
+        window.location.replace('coordinador.html');
+        return;
+      }
       if ((sinFirma || tienePendiente) && !yaAbierto) {
         await cargarFirmasBD();
         renderDocsHeader();

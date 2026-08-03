@@ -81,7 +81,11 @@
       const path = window.location.pathname.toLowerCase();
       const isSocorristaPage = path.includes('socorrista');
       const isCoordPage = path.includes('coordinador');
-      if (isSocorristaPage && usuario.rol !== 'socorrista') {
+      // Excepción: si el coord/dueño viene con ?kit=1 a socorrista.html es porque
+      // va a firmar su propio Kit Alta laboral (los coord son trabajadores igual).
+      // No redirigimos en ese caso — les dejamos ver el wizard del socorrista.
+      const forzarKit = new URLSearchParams(window.location.search).get('kit') === '1';
+      if (isSocorristaPage && usuario.rol !== 'socorrista' && !forzarKit) {
         window.location.replace('coordinador.html');
         return;
       }
@@ -89,6 +93,25 @@
         window.location.replace('socorrista.html');
         return;
       }
+
+      // AUTO-CREAR ficha empleado para cualquier rol (dueño/coord también son
+      // trabajadores y firman Kit Alta). Se ejecuta en background, no bloquea.
+      (async () => {
+        try {
+          const { data: exists } = await window.sb.from('empleados')
+            .select('id').eq('usuario_id', session.user.id).maybeSingle();
+          if (!exists) {
+            await window.sb.from('empleados').insert({
+              usuario_id: session.user.id,
+              empresa_id: usuario.empresa_id,
+              nombre: usuario.nombre || session.user.email.split('@')[0],
+              email: session.user.email,
+              estado: 'activo',
+              fecha_alta: new Date().toISOString().slice(0,10)
+            });
+          }
+        } catch (_) { /* silencioso si RLS bloquea o ya existe */ }
+      })();
 
       // Actualiza PS_SESSION con datos frescos de la BD
       window.PS_SESSION = {
