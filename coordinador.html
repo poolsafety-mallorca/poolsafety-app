@@ -76,7 +76,7 @@
 
     <!-- KPIs -->
     <div class="kpi-row">
-      <div class="kpi">
+      <div class="kpi kpi-clickable" onclick="filtrarPuestos('ok')" title="Ver los puestos que ya han fichado">
         <div class="kpi-head">
           <div class="kpi-label">Puestos operativos</div>
           <div class="kpi-icon emerald">
@@ -95,7 +95,7 @@
         </svg>
       </div>
 
-      <div class="kpi">
+      <div class="kpi kpi-clickable" onclick="filtrarPuestos('tarde')" title="Ver los puestos que han fichado tarde">
         <div class="kpi-head">
           <div class="kpi-label">Fichaje tarde</div>
           <div class="kpi-icon amber">
@@ -112,7 +112,7 @@
         </svg>
       </div>
 
-      <div class="kpi">
+      <div class="kpi kpi-clickable" onclick="filtrarPuestos('fuera')" title="Ver los fichajes fuera de zona">
         <div class="kpi-head">
           <div class="kpi-label">Fuera de zona</div>
           <div class="kpi-icon red">
@@ -129,7 +129,7 @@
         </svg>
       </div>
 
-      <div class="kpi">
+      <div class="kpi kpi-clickable" onclick="filtrarPuestos('pendiente')" title="Ver los puestos que aún no han fichado">
         <div class="kpi-head">
           <div class="kpi-label">Sin fichar</div>
           <div class="kpi-icon slate">
@@ -237,7 +237,9 @@
               </div>
               <h3 class="panel-title">Alertas de botiquín</h3>
             </div>
-            <span class="badge badge-danger" id="alertsCount">5 abiertas</span>
+            <span class="badge badge-danger" id="alertsCount" style="cursor:pointer;"
+                  onclick="document.querySelector('[data-section=&quot;botiquin&quot;]')?.click()"
+                  title="Ir a la gestión de botiquín">— abiertas</span>
           </div>
           <div class="panel-body" id="alertsList"></div>
         </section>

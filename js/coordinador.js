@@ -222,6 +222,30 @@
       renderPostsFromCache();
     });
   });
+
+  // Los KPIs de arriba filtran la lista de puestos igual que los chips.
+  // Así "Sin fichar: 19" te lleva directo a ver esos 19 puestos.
+  window.filtrarPuestos = function (filtro) {
+    // Nos aseguramos de estar en la pestaña Vista general
+    const tabGeneral = document.querySelector('[data-section="general"]');
+    if (tabGeneral && !tabGeneral.classList.contains('active')) tabGeneral.click();
+
+    setTimeout(() => {
+      const chip = document.querySelector(`#filterChips .chip[data-filter="${filtro}"]`);
+      if (chip) {
+        chip.click();
+      } else {
+        currentFilter = filtro;
+        renderPostsFromCache();
+      }
+      // Llevamos la vista a la lista de puestos
+      const grid = document.getElementById('postsGrid');
+      if (grid) {
+        const y = grid.getBoundingClientRect().top + window.scrollY - 90;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+      }
+    }, tabGeneral && !tabGeneral.classList.contains('active') ? 220 : 0);
+  };
   document.getElementById('postSearch')?.addEventListener('input', e => {
     currentSearch = e.target.value;
     renderPostsFromCache();
