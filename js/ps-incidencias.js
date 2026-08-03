@@ -106,94 +106,117 @@
     'talon-izq':     { label: 'Talón izquierdo',     cx: 132, cy: 465, r: 10, side: 'back' }
   };
 
-  // Silueta anatómica realista con curvas Bezier suaves. viewBox 220x540.
-  // Vista frontal y posterior comparten el mismo contorno base con pequeñas
-  // variaciones (rasgos faciales frontales / musculatura posterior).
+  // Silueta anatómica compuesta con formas simples pero proporcionadas.
+  // Sirve tanto para frontal como para posterior (variaciones sutiles en detalles).
+  // viewBox 220x540. Fill uniforme desde el gradient `bodyGrad`.
   function siluetaContorno(side) {
-    const facial = side === 'front' ? `
+    const F = 'url(#bodyGrad)';
+    const S = '#94A3B8';
+    const detalles = side === 'front' ? `
       <!-- Rasgos faciales sutiles -->
-      <ellipse cx="102" cy="34" rx="2" ry="2.6" fill="#64748B" opacity=".55"/>
-      <ellipse cx="118" cy="34" rx="2" ry="2.6" fill="#64748B" opacity=".55"/>
-      <path d="M 105 45 Q 110 48 115 45" stroke="#64748B" stroke-width="1.2" fill="none" opacity=".55"/>
-      <!-- Línea del pecho / esternón -->
-      <path d="M 110 90 L 110 155" stroke="#94A3B8" stroke-width=".8" fill="none" opacity=".4"/>
+      <ellipse cx="102" cy="35" rx="2" ry="2.6" fill="#64748B" opacity=".6"/>
+      <ellipse cx="118" cy="35" rx="2" ry="2.6" fill="#64748B" opacity=".6"/>
+      <path d="M 104 48 Q 110 51 116 48" stroke="#64748B" stroke-width="1.1" fill="none" opacity=".6" stroke-linecap="round"/>
+      <!-- Esternón sutil -->
+      <path d="M 110 92 L 110 155" stroke="${S}" stroke-width=".7" fill="none" opacity=".35"/>
       <!-- Ombligo -->
-      <circle cx="110" cy="185" r="1.6" fill="#64748B" opacity=".5"/>
+      <circle cx="110" cy="188" r="1.6" fill="#64748B" opacity=".55"/>
+      <!-- Línea de cintura suave -->
+      <path d="M 92 210 Q 110 214 128 210" stroke="${S}" stroke-width=".6" fill="none" opacity=".3"/>
     ` : `
-      <!-- Rasgos posteriores: columna -->
-      <path d="M 110 70 L 110 220" stroke="#94A3B8" stroke-width="1" fill="none" opacity=".55" stroke-dasharray="2 2"/>
-      <!-- Trazo omoplatos -->
-      <path d="M 90 100 Q 100 96 108 108" stroke="#94A3B8" stroke-width=".9" fill="none" opacity=".4"/>
-      <path d="M 130 100 Q 120 96 112 108" stroke="#94A3B8" stroke-width=".9" fill="none" opacity=".4"/>
+      <!-- Columna dashed -->
+      <path d="M 110 70 L 110 250" stroke="${S}" stroke-width=".9" fill="none" opacity=".55" stroke-dasharray="3 3"/>
+      <!-- Omóplatos -->
+      <path d="M 82 105 Q 96 100 106 118" stroke="${S}" stroke-width=".8" fill="none" opacity=".45"/>
+      <path d="M 138 105 Q 124 100 114 118" stroke="${S}" stroke-width=".8" fill="none" opacity=".45"/>
       <!-- Separación glúteos -->
-      <path d="M 110 210 L 110 250" stroke="#94A3B8" stroke-width="1" fill="none" opacity=".45"/>
+      <path d="M 110 215 L 110 258" stroke="${S}" stroke-width="1" fill="none" opacity=".5"/>
     `;
     return `
-      <!-- Contorno principal del cuerpo (proporciones anatómicas ~7,5 cabezas) -->
-      <path d="
-        M 110 12
-        C 92 12, 82 24, 82 40
-        C 82 52, 88 60, 96 64
-        L 92 76
-        L 78 82
-        C 62 88, 54 98, 50 116
-        L 42 168
-        C 40 180, 42 200, 46 220
-        L 40 258
-        C 38 268, 42 274, 50 272
-        L 55 254
-        L 58 220
-        L 64 190
-        L 68 130
-        L 76 118
-        L 78 158
-        L 80 210
-        L 82 265
-        L 82 310
-        L 86 370
-        L 86 445
-        L 84 480
-        C 82 495, 84 500, 90 502
-        L 100 500
-        C 108 498, 108 490, 106 480
-        L 100 445
-        L 100 380
-        L 105 310
-        L 110 260
-        L 115 310
-        L 120 380
-        L 120 445
-        L 114 480
-        C 112 490, 112 498, 120 500
-        L 130 502
-        C 136 500, 138 495, 136 480
-        L 134 445
-        L 134 370
-        L 138 310
-        L 138 265
-        L 140 210
-        L 142 158
-        L 144 118
-        L 152 130
-        L 156 190
-        L 162 220
-        L 165 254
-        L 170 272
-        C 178 274, 182 268, 180 258
-        L 174 220
-        C 178 200, 180 180, 178 168
-        L 170 116
-        C 166 98, 158 88, 142 82
-        L 128 76
-        L 124 64
-        C 132 60, 138 52, 138 40
-        C 138 24, 128 12, 110 12 Z"
-        fill="url(#bodyGrad)"
-        stroke="#94A3B8"
-        stroke-width="1.4"
-        stroke-linejoin="round"
-        stroke-linecap="round"/>
-      ${facial}
+      <!-- ===== Silueta anatómica compuesta ===== -->
+      <!-- Cabeza -->
+      <ellipse cx="110" cy="36" rx="22" ry="26" fill="${F}" stroke="${S}" stroke-width="1.3"/>
+      <!-- Cuello -->
+      <path d="M 100 60 Q 100 72 96 78 L 124 78 Q 120 72 120 60 Z" fill="${F}" stroke="${S}" stroke-width="1.3" stroke-linejoin="round"/>
+      <!-- Torso (trapecio con curva en cintura y cadera) -->
+      <path d="M 82 82
+               Q 80 80 78 82
+               C 70 88 66 98 66 108
+               L 62 168
+               C 62 190 68 208 74 220
+               L 78 250
+               L 82 268
+               Q 110 274 138 268
+               L 142 250
+               L 146 220
+               C 152 208 158 190 158 168
+               L 154 108
+               C 154 98 150 88 142 82
+               Q 140 80 138 82
+               L 128 80
+               L 92 80 Z"
+            fill="${F}" stroke="${S}" stroke-width="1.3" stroke-linejoin="round"/>
+      <!-- Brazo izquierdo (viewer's left = anatomical right) -->
+      <path d="M 66 108
+               C 52 116 46 130 44 148
+               L 40 195
+               L 36 235
+               L 34 258
+               Q 34 268 40 268
+               Q 46 268 48 260
+               L 52 235
+               L 58 195
+               L 62 148 Z"
+            fill="${F}" stroke="${S}" stroke-width="1.3" stroke-linejoin="round"/>
+      <!-- Brazo derecho -->
+      <path d="M 154 108
+               C 168 116 174 130 176 148
+               L 180 195
+               L 184 235
+               L 186 258
+               Q 186 268 180 268
+               Q 174 268 172 260
+               L 168 235
+               L 162 195
+               L 158 148 Z"
+            fill="${F}" stroke="${S}" stroke-width="1.3" stroke-linejoin="round"/>
+      <!-- Manos -->
+      <ellipse cx="41" cy="278" rx="11" ry="14" fill="${F}" stroke="${S}" stroke-width="1.3"/>
+      <ellipse cx="179" cy="278" rx="11" ry="14" fill="${F}" stroke="${S}" stroke-width="1.3"/>
+      <!-- Pierna izquierda (viewer's left) -->
+      <path d="M 82 270
+               C 78 290 78 320 82 350
+               L 84 400
+               L 84 460
+               L 82 490
+               Q 82 500 90 500
+               Q 100 500 102 495
+               L 104 480
+               Q 106 460 106 430
+               L 108 380
+               L 108 330
+               L 110 280
+               L 110 270 Z"
+            fill="${F}" stroke="${S}" stroke-width="1.3" stroke-linejoin="round"/>
+      <!-- Pierna derecha -->
+      <path d="M 138 270
+               C 142 290 142 320 138 350
+               L 136 400
+               L 136 460
+               L 138 490
+               Q 138 500 130 500
+               Q 120 500 118 495
+               L 116 480
+               Q 114 460 114 430
+               L 112 380
+               L 112 330
+               L 110 280
+               L 110 270 Z"
+            fill="${F}" stroke="${S}" stroke-width="1.3" stroke-linejoin="round"/>
+      <!-- Pies -->
+      <ellipse cx="80" cy="510" rx="16" ry="10" fill="${F}" stroke="${S}" stroke-width="1.3"/>
+      <ellipse cx="140" cy="510" rx="16" ry="10" fill="${F}" stroke="${S}" stroke-width="1.3"/>
+      ${detalles}
     `;
   }
 
