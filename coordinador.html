@@ -197,6 +197,11 @@
         Titulaciones
         <span class="menu-badge" id="menuBadgeTit" style="display:none;"></span>
       </button>
+      <button class="dash-menu-item" data-section="incidencias">
+        <svg class="ic ic-16"><use href="#ic-alert"/></svg>
+        Incidencias
+        <span class="menu-badge" id="menuBadgeInc" style="display:none;background:#B91C1C;"></span>
+      </button>
     </nav>
 
     <!-- ============ PANEL: VISTA GENERAL ============ -->
@@ -763,6 +768,42 @@
         </div>
       </section>
     </div><!-- /panel titulaciones -->
+
+    <!-- ============ PANEL: INCIDENCIAS ============ -->
+    <div class="tab-panel hidden" data-panel="incidencias">
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title-wrap">
+            <div class="kpi-icon" style="width:30px;height:30px;background:linear-gradient(135deg,#B91C1C,#F59E0B);color:#fff;">
+              <svg class="ic ic-16"><use href="#ic-alert"/></svg>
+            </div>
+            <h3 class="panel-title">Partes de incidencia</h3>
+            <span class="panel-count" id="incPanelCount">—</span>
+          </div>
+          <div class="row gap-2" style="flex-wrap:wrap;">
+            <select id="incFiltroTipo" style="padding:6px 10px;border-radius:6px;border:1px solid var(--line);font-size:13px;background:#fff;">
+              <option value="">Todos los tipos</option>
+            </select>
+            <input type="date" id="incFiltroDesde" style="padding:6px 10px;border-radius:6px;border:1px solid var(--line);font-size:13px;" />
+            <button class="btn btn-outline btn-sm" onclick="renderIncidenciasPanel()">
+              <svg class="ic ic-14"><use href="#ic-refresh"/></svg> Actualizar
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="exportarIncidenciasCSV()">
+              <svg class="ic ic-14"><use href="#ic-download"/></svg> Exportar CSV
+            </button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="norma-banner" style="margin-bottom:14px;">
+            <svg class="ic ic-14"><use href="#ic-shield"/></svg>
+            <span>Aquí llegan al momento los partes que firman los socorristas. Puedes descargar el PDF completo con la silueta del cuerpo, la firma y el material usado para entregarlo a la inspección o al seguro.</span>
+          </div>
+          <div id="incidenciasList">
+            <div class="text-muted small" style="padding:30px;text-align:center;">Cargando incidencias…</div>
+          </div>
+        </div>
+      </section>
+    </div><!-- /panel incidencias -->
 
   </div>
 </div>
@@ -1468,6 +1509,7 @@ socorrista,Ana López,ana@ejemplo.com"></textarea>
 <script src="js/titulaciones.js"></script>
 <script src="js/ps-horarios.js"></script>
 <script src="js/ps-notifications.js"></script>
+<script src="js/ps-incidencias.js"></script>
 <script src="js/coordinador.js"></script>
 </body>
 </html>

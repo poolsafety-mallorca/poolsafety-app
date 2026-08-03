@@ -2889,6 +2889,607 @@
   // Refresca cada 2 min para reflejar quién está Libre
   setInterval(renderContactCoord, 120_000);
 
+  /* ==========================================================================
+     PARTE DE INCIDENCIA · wizard 6 pasos con silueta + material + firma
+     Al enviar: insert incidencias, descuento stock inventario_puesto,
+     genera PDF, sube a Storage, guarda url en archivo_pdf_url.
+     ========================================================================== */
+  const INC_PASOS = [
+    { titulo: 'Paso 1 de 6 · Qué ha pasado' },
+    { titulo: 'Paso 2 de 6 · Datos de la víctima' },
+    { titulo: 'Paso 3 de 6 · Estado y zonas afectadas' },
+    { titulo: 'Paso 4 de 6 · Actuación y material usado' },
+    { titulo: 'Paso 5 de 6 · Derivación / traslado' },
+    { titulo: 'Paso 6 de 6 · Firma del socorrista' }
+  ];
+  let incState = null; // objeto con todos los datos del parte en curso
+  let incPasoActual = 0;
+
+  function incInicializar() {
+    incState = {
+      fecha_incidente: new Date().toISOString(),
+      tipo_incidente: '',
+      ubicacion_descripcion: '',
+      circunstancias: '',
+      testigos: '',
+      victima_nombre: '',
+      victima_edad: null,
+      victima_sexo: '',
+      victima_dni: '',
+      victima_telefono: '',
+      victima_nacionalidad: '',
+      victima_hotel_habitacion: '',
+      es_menor: false,
+      familiar_avisado: false,
+      familiar_nombre: '',
+      familiar_hora: null,
+      consciente: null,
+      respira: null,
+      sangrado: null,
+      dolor_zonas: [],
+      observaciones_medicas: '',
+      actuacion: '',
+      tecnicas_aplicadas: [],
+      material_usado: [], // [{item_id, nombre, unidad, cantidad}]
+      derivacion: '',
+      ambulancia_numero: '',
+      ambulancia_hora: null,
+      hospital: '',
+      firma_nombre: '',
+      firma_dni: '',
+      firma_imagen: null,
+      firma_gps_lat: null,
+      firma_gps_lng: null
+    };
+  }
+
+  window.abrirNuevaIncidencia = function () {
+    if (!empleadoReal) { toast('Espera unos segundos a que cargue tu ficha'); return; }
+    incInicializar();
+    incState.firma_nombre = empleadoReal.nombre || '';
+    incState.firma_dni = empleadoReal.dni || '';
+    incPasoActual = 0;
+    document.getElementById('incidenciaModal').style.display = 'block';
+    document.body.style.overflow = 'hidden';
+    incRender();
+  };
+  window.cerrarNuevaIncidencia = function () {
+    // Si hay datos rellenos, confirmar antes de perder
+    const tieneAlgo = incState && (incState.tipo_incidente || incState.victima_nombre || incState.circunstancias);
+    if (tieneAlgo && !confirm('¿Cerrar el parte? Se perderán los datos no enviados.')) return;
+    document.getElementById('incidenciaModal').style.display = 'none';
+    document.body.style.overflow = '';
+    incState = null;
+  };
+
+  function incRender() {
+    document.getElementById('incTituloPaso').textContent = INC_PASOS[incPasoActual].titulo;
+    document.getElementById('incProgressBar').style.width = ((incPasoActual + 1) / INC_PASOS.length * 100).toFixed(0) + '%';
+    const body = document.getElementById('incBody');
+    const paso = [incPasoQue, incPasoVictima, incPasoEstado, incPasoActuacion, incPasoDerivacion, incPasoFirma][incPasoActual];
+    body.innerHTML = paso();
+    incBindPaso();
+    document.getElementById('incBtnPrev').style.visibility = incPasoActual === 0 ? 'hidden' : 'visible';
+    document.getElementById('incBtnNext').textContent = incPasoActual === INC_PASOS.length - 1 ? '✓ Enviar parte' : 'Siguiente →';
+    document.getElementById('incBtnPrev').onclick = () => { incGuardarPasoActual(); if (incPasoActual > 0) { incPasoActual--; incRender(); } };
+    document.getElementById('incBtnNext').onclick = () => { if (incGuardarPasoActual({ validar: true })) {
+      if (incPasoActual === INC_PASOS.length - 1) return incEnviar();
+      incPasoActual++; incRender();
+    } };
+    // Scroll top del contenido
+    document.getElementById('incBody').scrollIntoView({ behavior: 'instant', block: 'start' });
+  }
+
+  /* ---------- PASO 1: Qué ha pasado ---------- */
+  function incPasoQue() {
+    return `
+      <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Tipo de incidencia *</label>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:16px;">
+        ${window.PSInc.TIPOS_INCIDENTE.map(t => `
+          <label style="display:flex;gap:8px;align-items:center;padding:10px;border:2px solid ${incState.tipo_incidente === t.value ? t.color : '#E2E8F0'};background:${incState.tipo_incidente === t.value ? t.color + '15' : '#fff'};border-radius:10px;cursor:pointer;font-size:13px;">
+            <input type="radio" name="inc_tipo" value="${t.value}" ${incState.tipo_incidente === t.value ? 'checked' : ''} style="margin:0;" />
+            <span style="font-weight:${incState.tipo_incidente === t.value ? 700 : 500};color:${incState.tipo_incidente === t.value ? t.color : '#334155'};">${t.label}</span>
+          </label>
+        `).join('')}
+      </div>
+
+      <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">¿Cuándo ocurrió?</label>
+      <input type="datetime-local" id="inc_fecha" value="${incState.fecha_incidente.slice(0,16)}"
+        style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:14px;" />
+
+      <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Ubicación exacta dentro del hotel</label>
+      <input type="text" id="inc_ubicacion" value="${incState.ubicacion_descripcion || ''}"
+        placeholder="Ej: Piscina infantil, esquina noreste"
+        style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:14px;" />
+
+      <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Circunstancias — cuenta qué pasó *</label>
+      <textarea id="inc_circunstancias" rows="5" placeholder="Ej: La víctima resbaló al salir de la piscina. Se golpeó la cabeza contra el bordillo. Testigos ayudaron a incorporarla."
+        style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:14px;resize:vertical;">${incState.circunstancias || ''}</textarea>
+
+      <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Testigos (opcional)</label>
+      <input type="text" id="inc_testigos" value="${incState.testigos || ''}"
+        placeholder="Nombres o descripción de quién lo vio"
+        style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;" />
+    `;
+  }
+
+  /* ---------- PASO 2: Víctima ---------- */
+  function incPasoVictima() {
+    return `
+      <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Nombre y apellidos *</label>
+      <input type="text" id="inc_v_nombre" value="${incState.victima_nombre || ''}"
+        style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:12px;" />
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Edad *</label>
+          <input type="number" min="0" max="120" id="inc_v_edad" value="${incState.victima_edad || ''}"
+            style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;" />
+        </div>
+        <div>
+          <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Sexo</label>
+          <select id="inc_v_sexo" style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;">
+            <option value="" ${!incState.victima_sexo?'selected':''}>—</option>
+            <option value="hombre" ${incState.victima_sexo==='hombre'?'selected':''}>Hombre</option>
+            <option value="mujer"  ${incState.victima_sexo==='mujer'?'selected':''}>Mujer</option>
+            <option value="otro"   ${incState.victima_sexo==='otro'?'selected':''}>Otro</option>
+            <option value="ns"     ${incState.victima_sexo==='ns'?'selected':''}>Prefiere no decir</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <label style="display:flex;gap:8px;align-items:center;padding:10px;background:${incState.es_menor?'#FEF3C7':'#F8FAFC'};border:1px solid ${incState.es_menor?'#F59E0B':'#E2E8F0'};border-radius:8px;cursor:pointer;">
+          <input type="checkbox" id="inc_es_menor" ${incState.es_menor?'checked':''} style="width:18px;height:18px;" />
+          <span style="font-weight:600;font-size:13.5px;">⚠️ La víctima es menor de edad</span>
+        </label>
+      </div>
+
+      <label class="field-label" style="font-weight:700;display:block;margin:14px 0 6px;">DNI / Pasaporte</label>
+      <input type="text" id="inc_v_dni" value="${incState.victima_dni || ''}"
+        style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;" />
+
+      <label class="field-label" style="font-weight:700;display:block;margin:12px 0 6px;">Teléfono de contacto</label>
+      <input type="tel" id="inc_v_telefono" value="${incState.victima_telefono || ''}"
+        style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;" />
+
+      <label class="field-label" style="font-weight:700;display:block;margin:12px 0 6px;">Nacionalidad</label>
+      <input type="text" id="inc_v_nacionalidad" value="${incState.victima_nacionalidad || ''}"
+        style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;" />
+
+      <label class="field-label" style="font-weight:700;display:block;margin:12px 0 6px;">Hotel / habitación (si es huésped)</label>
+      <input type="text" id="inc_v_hotel_hab" value="${incState.victima_hotel_habitacion || ''}"
+        placeholder="Ej: Hab. 214"
+        style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;" />
+
+      <div style="margin-top:16px;padding:12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;">
+        <label style="display:flex;gap:8px;align-items:center;font-weight:700;font-size:13.5px;color:#1E40AF;">
+          <input type="checkbox" id="inc_familia_avisada" ${incState.familiar_avisado?'checked':''} style="width:18px;height:18px;" />
+          Se ha avisado a un familiar / responsable
+        </label>
+        <div id="inc_familia_extra" style="display:${incState.familiar_avisado?'block':'none'};margin-top:8px;">
+          <input type="text" id="inc_familia_nombre" value="${incState.familiar_nombre || ''}"
+            placeholder="Nombre del familiar avisado"
+            style="width:100%;padding:10px;border:1px solid #BFDBFE;border-radius:6px;font-size:13px;margin-bottom:6px;" />
+          <input type="time" id="inc_familia_hora" value="${incState.familiar_hora ? new Date(incState.familiar_hora).toTimeString().slice(0,5) : ''}"
+            style="width:100%;padding:10px;border:1px solid #BFDBFE;border-radius:6px;font-size:13px;" />
+        </div>
+      </div>
+    `;
+  }
+
+  /* ---------- PASO 3: Estado + silueta ---------- */
+  function incPasoEstado() {
+    const btnBool = (id, campo, textoSi, textoNo) => `
+      <div style="margin-bottom:14px;">
+        <div class="field-label" style="font-weight:700;margin-bottom:6px;">${textoSi}</div>
+        <div style="display:flex;gap:6px;">
+          <button type="button" data-bool="${campo}" data-v="true"
+            style="flex:1;padding:12px;border-radius:8px;border:2px solid ${incState[campo]===true?'#059669':'#E2E8F0'};background:${incState[campo]===true?'#DCFCE7':'#fff'};font-weight:700;cursor:pointer;color:${incState[campo]===true?'#065F46':'#64748B'};">Sí</button>
+          <button type="button" data-bool="${campo}" data-v="false"
+            style="flex:1;padding:12px;border-radius:8px;border:2px solid ${incState[campo]===false?'#DC2626':'#E2E8F0'};background:${incState[campo]===false?'#FEE2E2':'#fff'};font-weight:700;cursor:pointer;color:${incState[campo]===false?'#7F1D1D':'#64748B'};">${textoNo}</button>
+        </div>
+      </div>`;
+    return `
+      ${btnBool(null, 'consciente', '¿Está consciente?', 'No, inconsciente')}
+      ${btnBool(null, 'respira',    '¿Respira?',         'No respira')}
+      ${btnBool(null, 'sangrado',   '¿Hay sangrado activo?', 'Sin sangrado')}
+
+      <div style="margin-top:6px;padding-top:6px;border-top:1px solid #F1F5F9;">
+        <div class="field-label" style="font-weight:700;margin-bottom:6px;">Zonas afectadas · pulsa donde le duele o tiene lesión</div>
+        <div class="chip-tabs" style="margin-bottom:8px;">
+          <button type="button" class="chip-tab active" data-inc-side="front">Frontal</button>
+          <button type="button" class="chip-tab" data-inc-side="back">Espalda</button>
+        </div>
+        <div id="inc_silueta_frontal">${window.PSInc.siluetaSVG(incState.dolor_zonas, true, 'front')}</div>
+        <div id="inc_silueta_posterior" style="display:none;">${window.PSInc.siluetaSVG(incState.dolor_zonas, true, 'back')}</div>
+        <div id="inc_zonas_lista" style="margin-top:8px;padding:8px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;font-size:12.5px;color:#7F1D1D;min-height:32px;">
+          ${incState.dolor_zonas.length === 0 ? 'Sin zonas marcadas.' : '<b>Marcadas:</b> ' + incState.dolor_zonas.map(z => window.PSInc.zonaLabel(z)).join(', ')}
+        </div>
+      </div>
+
+      <label class="field-label" style="font-weight:700;display:block;margin:14px 0 6px;">Observaciones médicas (opcional)</label>
+      <textarea id="inc_obs_medicas" rows="3" placeholder="Ej: refiere dolor 7/10, no puede apoyar el pie, náuseas…"
+        style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;resize:vertical;">${incState.observaciones_medicas || ''}</textarea>
+    `;
+  }
+
+  /* ---------- PASO 4: Actuación + material usado ---------- */
+  function incPasoActuacion() {
+    const materiales = inventarioCache || [];
+    return `
+      <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Qué hiciste (descripción de la actuación) *</label>
+      <textarea id="inc_actuacion" rows="4" placeholder="Ej: Se aplicó agua limpia sobre la herida, se comprimió con gasa estéril, se colocó vendaje compresivo. Víctima estable."
+        style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:16px;resize:vertical;">${incState.actuacion || ''}</textarea>
+
+      <div class="field-label" style="font-weight:700;margin-bottom:6px;">Técnicas aplicadas (marca las que uses)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px;">
+        ${window.PSInc.TECNICAS.map(t => `
+          <label style="display:flex;gap:6px;align-items:center;padding:8px;border:1px solid ${incState.tecnicas_aplicadas.includes(t.value)?'#059669':'#E2E8F0'};background:${incState.tecnicas_aplicadas.includes(t.value)?'#DCFCE7':'#fff'};border-radius:6px;font-size:12px;cursor:pointer;">
+            <input type="checkbox" data-tec="${t.value}" ${incState.tecnicas_aplicadas.includes(t.value)?'checked':''} style="width:16px;height:16px;" />
+            <span>${t.label}</span>
+          </label>
+        `).join('')}
+      </div>
+
+      <div style="padding:12px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;margin-bottom:8px;">
+        <div style="font-weight:700;font-size:13.5px;color:#78350F;">⚠️ Material del botiquín usado</div>
+        <div style="font-size:12px;color:#92400E;margin-top:2px;">Se DESCONTARÁ del stock automáticamente al enviar el parte.</div>
+      </div>
+      ${materiales.length === 0 ? `
+        <div class="text-muted small" style="padding:14px;text-align:center;">No hay inventario cargado. Puedes describir el material usado en las observaciones o volver más tarde.</div>
+      ` : `
+        <div id="inc_mat_lista" style="max-height:280px;overflow-y:auto;border:1px solid #E2E8F0;border-radius:8px;">
+          ${materiales.map(m => {
+            const usado = incState.material_usado.find(x => x.item_id === m.id);
+            const cant = usado ? usado.cantidad : 0;
+            return `
+              <div style="display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid #F1F5F9;">
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:600;font-size:13px;">${m.nombre}</div>
+                  <div class="small text-muted">Stock: ${m.stock} ${m.unidad}</div>
+                </div>
+                <button type="button" data-mat-minus="${m.id}"
+                  style="width:32px;height:32px;border-radius:6px;border:1px solid #CBD5E1;background:#fff;font-weight:700;cursor:pointer;">−</button>
+                <input type="number" min="0" max="${m.stock}" data-mat-cant="${m.id}" value="${cant}"
+                  style="width:56px;text-align:center;padding:6px;border:1px solid #CBD5E1;border-radius:6px;font-weight:700;" />
+                <button type="button" data-mat-plus="${m.id}"
+                  style="width:32px;height:32px;border-radius:6px;border:1px solid #CBD5E1;background:#fff;font-weight:700;cursor:pointer;">+</button>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `}
+    `;
+  }
+
+  /* ---------- PASO 5: Derivación ---------- */
+  function incPasoDerivacion() {
+    return `
+      <div class="field-label" style="font-weight:700;margin-bottom:8px;">¿Cómo termina la atención? *</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+        ${window.PSInc.DERIVACIONES.map(d => `
+          <label style="display:flex;gap:10px;align-items:center;padding:12px;border:2px solid ${incState.derivacion === d.value ? d.color : '#E2E8F0'};background:${incState.derivacion === d.value ? d.color + '15' : '#fff'};border-radius:10px;cursor:pointer;">
+            <input type="radio" name="inc_deriv" value="${d.value}" ${incState.derivacion === d.value ? 'checked' : ''} />
+            <span style="font-weight:${incState.derivacion === d.value ? 700 : 500};font-size:13.5px;color:${incState.derivacion === d.value ? d.color : '#334155'};">${d.label}</span>
+          </label>
+        `).join('')}
+      </div>
+
+      <div id="inc_amb_extra" style="display:${(incState.derivacion === 'ambulancia' || incState.derivacion === 'hospital') ? 'block' : 'none'};padding:14px;background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;">
+        <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;color:#7F1D1D;">Nº ambulancia / matrícula</label>
+        <input type="text" id="inc_amb_num" value="${incState.ambulancia_numero || ''}"
+          style="width:100%;padding:10px;border:1px solid #FCA5A5;border-radius:6px;font-size:13.5px;margin-bottom:10px;" />
+
+        <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;color:#7F1D1D;">Hora de llegada de la ambulancia</label>
+        <input type="time" id="inc_amb_hora" value="${incState.ambulancia_hora ? new Date(incState.ambulancia_hora).toTimeString().slice(0,5) : ''}"
+          style="width:100%;padding:10px;border:1px solid #FCA5A5;border-radius:6px;font-size:13.5px;margin-bottom:10px;" />
+
+        <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;color:#7F1D1D;">Hospital de destino</label>
+        <input type="text" id="inc_hospital" value="${incState.hospital || ''}"
+          placeholder="Ej: Hospital Manacor"
+          style="width:100%;padding:10px;border:1px solid #FCA5A5;border-radius:6px;font-size:13.5px;" />
+      </div>
+    `;
+  }
+
+  /* ---------- PASO 6: Firma ---------- */
+  function incPasoFirma() {
+    return `
+      <div style="padding:12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;margin-bottom:16px;">
+        <div style="font-weight:700;font-size:13.5px;color:#1E40AF;">Confirmación del socorrista</div>
+        <div style="font-size:12.5px;color:#1E3A8A;margin-top:4px;">
+          Al firmar declaras que los datos son ciertos y que has prestado la atención conforme a tu formación (socorrismo acuático).
+        </div>
+      </div>
+
+      <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Tu nombre completo</label>
+      <input type="text" id="inc_firm_nombre" value="${incState.firma_nombre || ''}"
+        style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:10px;" />
+
+      <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Tu DNI</label>
+      <input type="text" id="inc_firm_dni" value="${incState.firma_dni || ''}"
+        style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:14px;" />
+
+      <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Firma dentro del recuadro</label>
+      <div style="border:2px dashed #B91C1C;border-radius:10px;background:#fff;padding:6px;">
+        <canvas id="inc_canvas" width="560" height="180" style="width:100%;height:180px;background:#fff;touch-action:none;display:block;"></canvas>
+      </div>
+      <button type="button" onclick="incLimpiarFirma()" class="btn btn-outline btn-sm" style="margin-top:8px;">↺ Limpiar firma</button>
+
+      <div style="margin-top:14px;padding:12px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;font-size:12.5px;color:#166534;">
+        Al pulsar <b>Enviar parte</b>: se guarda en el sistema, se descuenta el material del botiquín, se avisa al coordinador y se genera un PDF descargable.
+      </div>
+    `;
+  }
+
+  /* ---------- Bind listeners de cada paso ---------- */
+  function incBindPaso() {
+    if (incPasoActual === 0) {
+      document.querySelectorAll('input[name="inc_tipo"]').forEach(r => r.addEventListener('change', () => {
+        incState.tipo_incidente = r.value; incRender();
+      }));
+    } else if (incPasoActual === 1) {
+      const cbMenor = document.getElementById('inc_es_menor');
+      cbMenor?.addEventListener('change', () => { incState.es_menor = cbMenor.checked; incRender(); });
+      const cbFam = document.getElementById('inc_familia_avisada');
+      cbFam?.addEventListener('change', () => {
+        incState.familiar_avisado = cbFam.checked;
+        document.getElementById('inc_familia_extra').style.display = cbFam.checked ? 'block' : 'none';
+      });
+    } else if (incPasoActual === 2) {
+      // Botones sí/no
+      document.querySelectorAll('button[data-bool]').forEach(b => b.addEventListener('click', () => {
+        const c = b.dataset.bool; incState[c] = b.dataset.v === 'true'; incRender();
+      }));
+      // Toggle silueta frontal/posterior
+      document.querySelectorAll('button[data-inc-side]').forEach(b => b.addEventListener('click', () => {
+        document.querySelectorAll('button[data-inc-side]').forEach(x => x.classList.toggle('active', x === b));
+        const front = b.dataset.incSide === 'front';
+        document.getElementById('inc_silueta_frontal').style.display  = front ? 'block' : 'none';
+        document.getElementById('inc_silueta_posterior').style.display = front ? 'none' : 'block';
+      }));
+      // Silueta editable
+      ['inc_silueta_frontal', 'inc_silueta_posterior'].forEach(id => {
+        window.PSInc.engancharSilueta(document.getElementById(id), incState.dolor_zonas, () => {
+          document.getElementById('inc_silueta_frontal').innerHTML = window.PSInc.siluetaSVG(incState.dolor_zonas, true, 'front');
+          document.getElementById('inc_silueta_posterior').innerHTML = window.PSInc.siluetaSVG(incState.dolor_zonas, true, 'back');
+          incBindPaso(); // re-enganchar
+          document.getElementById('inc_zonas_lista').innerHTML = incState.dolor_zonas.length === 0
+            ? 'Sin zonas marcadas.'
+            : '<b>Marcadas:</b> ' + incState.dolor_zonas.map(z => window.PSInc.zonaLabel(z)).join(', ');
+        });
+      });
+    } else if (incPasoActual === 3) {
+      // Técnicas
+      document.querySelectorAll('input[data-tec]').forEach(cb => cb.addEventListener('change', () => {
+        const v = cb.dataset.tec;
+        if (cb.checked && !incState.tecnicas_aplicadas.includes(v)) incState.tecnicas_aplicadas.push(v);
+        else if (!cb.checked) incState.tecnicas_aplicadas = incState.tecnicas_aplicadas.filter(x => x !== v);
+      }));
+      // Materiales
+      const actualizarMat = (id, nuevaCant) => {
+        const m = (inventarioCache || []).find(x => x.id === id);
+        if (!m) return;
+        nuevaCant = Math.max(0, Math.min(m.stock, parseInt(nuevaCant) || 0));
+        incState.material_usado = incState.material_usado.filter(x => x.item_id !== id);
+        if (nuevaCant > 0) {
+          incState.material_usado.push({ item_id: id, nombre: m.nombre, unidad: m.unidad, cantidad: nuevaCant });
+        }
+        const inp = document.querySelector(`input[data-mat-cant="${id}"]`);
+        if (inp) inp.value = nuevaCant;
+      };
+      document.querySelectorAll('button[data-mat-plus]').forEach(b => b.addEventListener('click', () => {
+        const id = b.dataset.matPlus;
+        const inp = document.querySelector(`input[data-mat-cant="${id}"]`);
+        actualizarMat(id, (parseInt(inp.value) || 0) + 1);
+      }));
+      document.querySelectorAll('button[data-mat-minus]').forEach(b => b.addEventListener('click', () => {
+        const id = b.dataset.matMinus;
+        const inp = document.querySelector(`input[data-mat-cant="${id}"]`);
+        actualizarMat(id, (parseInt(inp.value) || 0) - 1);
+      }));
+      document.querySelectorAll('input[data-mat-cant]').forEach(inp => inp.addEventListener('change', () => {
+        actualizarMat(inp.dataset.matCant, inp.value);
+      }));
+    } else if (incPasoActual === 4) {
+      document.querySelectorAll('input[name="inc_deriv"]').forEach(r => r.addEventListener('change', () => {
+        incState.derivacion = r.value; incRender();
+      }));
+    } else if (incPasoActual === 5) {
+      // Canvas firma
+      setTimeout(incInitCanvasFirma, 50);
+    }
+  }
+
+  /* ---------- Canvas firma ---------- */
+  let incCanvasCtx = null, incFirmaVacia = true;
+  function incInitCanvasFirma() {
+    const canvas = document.getElementById('inc_canvas');
+    if (!canvas) return;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = canvas.offsetWidth * ratio;
+    canvas.height = 180 * ratio;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(ratio, ratio);
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+    incCanvasCtx = ctx;
+    incFirmaVacia = !incState.firma_imagen;
+    if (incState.firma_imagen) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, canvas.offsetWidth, 180);
+      img.src = incState.firma_imagen;
+    }
+    let dib = false, lastX = 0, lastY = 0;
+    const start = (x, y) => { dib = true; lastX = x; lastY = y; incFirmaVacia = false; };
+    const move  = (x, y) => {
+      if (!dib) return;
+      ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(x, y); ctx.stroke();
+      lastX = x; lastY = y;
+    };
+    const end = () => { dib = false; };
+    const pos = (e) => {
+      const r = canvas.getBoundingClientRect();
+      const t = e.touches ? e.touches[0] : e;
+      return [t.clientX - r.left, t.clientY - r.top];
+    };
+    canvas.addEventListener('mousedown', e => { const [x,y] = pos(e); start(x,y); });
+    canvas.addEventListener('mousemove', e => { const [x,y] = pos(e); move(x,y); });
+    canvas.addEventListener('mouseup',   end);
+    canvas.addEventListener('mouseleave', end);
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); const [x,y] = pos(e); start(x,y); });
+    canvas.addEventListener('touchmove',  e => { e.preventDefault(); const [x,y] = pos(e); move(x,y); });
+    canvas.addEventListener('touchend',   e => { e.preventDefault(); end(); });
+  }
+  window.incLimpiarFirma = function () {
+    const canvas = document.getElementById('inc_canvas');
+    if (!canvas || !incCanvasCtx) return;
+    incCanvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+    incFirmaVacia = true;
+    incState.firma_imagen = null;
+  };
+
+  /* ---------- Guardar valores del paso actual en incState ---------- */
+  function incGuardarPasoActual({ validar } = {}) {
+    if (incPasoActual === 0) {
+      incState.fecha_incidente = document.getElementById('inc_fecha')?.value ? new Date(document.getElementById('inc_fecha').value).toISOString() : incState.fecha_incidente;
+      incState.ubicacion_descripcion = document.getElementById('inc_ubicacion')?.value.trim() || '';
+      incState.circunstancias = document.getElementById('inc_circunstancias')?.value.trim() || '';
+      incState.testigos = document.getElementById('inc_testigos')?.value.trim() || '';
+      if (validar) {
+        if (!incState.tipo_incidente) { toast('Selecciona el tipo de incidencia'); return false; }
+        if (!incState.circunstancias) { toast('Cuenta brevemente qué pasó'); return false; }
+      }
+    } else if (incPasoActual === 1) {
+      incState.victima_nombre = document.getElementById('inc_v_nombre')?.value.trim() || '';
+      const ed = document.getElementById('inc_v_edad')?.value;
+      incState.victima_edad = ed ? parseInt(ed) : null;
+      incState.victima_sexo = document.getElementById('inc_v_sexo')?.value || '';
+      incState.victima_dni = document.getElementById('inc_v_dni')?.value.trim() || '';
+      incState.victima_telefono = document.getElementById('inc_v_telefono')?.value.trim() || '';
+      incState.victima_nacionalidad = document.getElementById('inc_v_nacionalidad')?.value.trim() || '';
+      incState.victima_hotel_habitacion = document.getElementById('inc_v_hotel_hab')?.value.trim() || '';
+      incState.familiar_nombre = document.getElementById('inc_familia_nombre')?.value.trim() || '';
+      const fh = document.getElementById('inc_familia_hora')?.value;
+      if (fh) { const d = new Date(); const [h,m] = fh.split(':'); d.setHours(+h,+m,0,0); incState.familiar_hora = d.toISOString(); }
+      if (validar) {
+        if (!incState.victima_nombre) { toast('Escribe el nombre de la víctima'); return false; }
+        if (!incState.victima_edad && incState.victima_edad !== 0) { toast('Indica la edad'); return false; }
+      }
+    } else if (incPasoActual === 2) {
+      incState.observaciones_medicas = document.getElementById('inc_obs_medicas')?.value.trim() || '';
+      // consciente/respira/sangrado ya se guardan por click
+    } else if (incPasoActual === 3) {
+      incState.actuacion = document.getElementById('inc_actuacion')?.value.trim() || '';
+      if (validar && !incState.actuacion) { toast('Describe qué hiciste'); return false; }
+    } else if (incPasoActual === 4) {
+      incState.ambulancia_numero = document.getElementById('inc_amb_num')?.value.trim() || '';
+      const ah = document.getElementById('inc_amb_hora')?.value;
+      if (ah) { const d = new Date(); const [h,m] = ah.split(':'); d.setHours(+h,+m,0,0); incState.ambulancia_hora = d.toISOString(); }
+      incState.hospital = document.getElementById('inc_hospital')?.value.trim() || '';
+      if (validar && !incState.derivacion) { toast('Elige cómo termina la atención'); return false; }
+    } else if (incPasoActual === 5) {
+      incState.firma_nombre = document.getElementById('inc_firm_nombre')?.value.trim() || '';
+      incState.firma_dni = document.getElementById('inc_firm_dni')?.value.trim() || '';
+      const canvas = document.getElementById('inc_canvas');
+      if (canvas && !incFirmaVacia) incState.firma_imagen = canvas.toDataURL('image/png');
+      if (validar) {
+        if (!incState.firma_nombre) { toast('Escribe tu nombre'); return false; }
+        if (!incState.firma_dni)    { toast('Escribe tu DNI'); return false; }
+        if (incFirmaVacia || !incState.firma_imagen) { toast('Firma en el recuadro'); return false; }
+      }
+    }
+    return true;
+  }
+
+  /* ---------- Enviar parte ---------- */
+  async function incEnviar() {
+    const btn = document.getElementById('incBtnNext');
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    try {
+      const psSes = window.PS_SESSION || {};
+      const puestoId = puestoReal?.id || empleadoReal?.puesto_id || null;
+      const payload = {
+        empresa_id: psSes.empresaId || empleadoReal?.empresa_id || null,
+        empleado_id: empleadoReal?.id || null,
+        puesto_id: puestoId,
+        fecha_incidente: incState.fecha_incidente,
+        victima_nombre: incState.victima_nombre,
+        victima_edad: incState.victima_edad,
+        victima_sexo: incState.victima_sexo || null,
+        victima_dni: incState.victima_dni || null,
+        victima_telefono: incState.victima_telefono || null,
+        victima_nacionalidad: incState.victima_nacionalidad || null,
+        victima_hotel_habitacion: incState.victima_hotel_habitacion || null,
+        es_menor: !!incState.es_menor,
+        familiar_avisado: !!incState.familiar_avisado,
+        familiar_hora: incState.familiar_hora,
+        familiar_nombre: incState.familiar_nombre || null,
+        tipo_incidente: incState.tipo_incidente,
+        ubicacion_descripcion: incState.ubicacion_descripcion || null,
+        circunstancias: incState.circunstancias,
+        testigos: incState.testigos || null,
+        consciente: incState.consciente,
+        respira: incState.respira,
+        sangrado: incState.sangrado,
+        dolor_zonas: incState.dolor_zonas,
+        observaciones_medicas: incState.observaciones_medicas || null,
+        actuacion: incState.actuacion,
+        tecnicas_aplicadas: incState.tecnicas_aplicadas,
+        material_usado: incState.material_usado,
+        derivacion: incState.derivacion || null,
+        ambulancia_numero: incState.ambulancia_numero || null,
+        ambulancia_hora: incState.ambulancia_hora,
+        hospital: incState.hospital || null,
+        firma_nombre: incState.firma_nombre,
+        firma_dni: incState.firma_dni,
+        firma_imagen: incState.firma_imagen,
+        firma_gps_lat: ultimaPosicion?.lat || null,
+        firma_gps_lng: ultimaPosicion?.lng || null,
+        dispositivo: 'móvil socorrista',
+        estado: 'firmada'
+      };
+      const { data: ins, error } = await window.sb.from('incidencias').insert(payload).select().single();
+      if (error) throw error;
+
+      // Descontar material del stock (via RPC si existe, si no update en cliente)
+      if (incState.material_usado.length && puestoId) {
+        try {
+          await window.sb.rpc('descontar_material_incidencia', { p_puesto_id: puestoId, p_material: incState.material_usado });
+        } catch (rpcErr) {
+          // Fallback: update por cada item
+          for (const m of incState.material_usado) {
+            const inv = (inventarioCache || []).find(x => x.id === m.item_id);
+            if (!inv) continue;
+            const nuevo = Math.max(0, (inv.stock || 0) - (m.cantidad || 0));
+            try { await window.sb.from('inventario_puesto').update({ stock: nuevo }).eq('id', inv.rowId); } catch (_) {}
+          }
+        }
+      }
+
+      // Generar PDF y subir
+      try {
+        if (window.PSPdf && window.PSPdf.generarIncidencia) {
+          const doc = await window.PSPdf.generarIncidencia(ins, { nombre: empleadoReal?.nombre, dni: empleadoReal?.dni, puesto_nombre: puestoReal?.nombre });
+          const blob = doc.output('blob');
+          const path = `incidencias/${ins.id}.pdf`;
+          const url = await window.PSStorage.subir(path, blob, 'application/pdf');
+          await window.sb.from('incidencias').update({ archivo_pdf_url: url }).eq('id', ins.id);
+        }
+      } catch (pdfErr) { console.warn('[incidencia] PDF falló:', pdfErr.message); }
+
+      // Recargar botiquín para reflejar stock bajado
+      await cargarInventarioBD();
+      renderInventario && renderInventario();
+
+      toast(`✓ Parte ${ins.numero_parte || ''} enviado al coordinador`);
+      cerrarNuevaIncidencia();
+    } catch (err) {
+      toast('Error al enviar el parte: ' + err.message);
+      btn.disabled = false; btn.textContent = '✓ Enviar parte';
+    }
+  }
+
   /* ---------- Logout (real: cierra sesión en Supabase) ---------- */
   window.logout = function () {
     if (window.logoutReal) return window.logoutReal();

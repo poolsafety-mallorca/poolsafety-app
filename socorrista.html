@@ -141,6 +141,19 @@
         </div>
       </div>
 
+      <!-- Acción rápida: registrar parte de incidencia -->
+      <div class="section-eyebrow"><span class="eyebrow">Si ha ocurrido algo</span></div>
+      <button class="notice interactive" onclick="abrirNuevaIncidencia()" style="width:100%;border:2px solid #DC2626;background:linear-gradient(135deg,#FEF2F2,#FFF);padding:14px;cursor:pointer;">
+        <div class="notice-icon" style="background:#DC2626;color:#fff;">
+          <svg class="ic ic-22"><use href="#ic-alert"/></svg>
+        </div>
+        <div class="notice-body">
+          <div class="notice-title" style="color:#B91C1C;">Registrar parte de incidencia</div>
+          <div class="notice-sub">Ahogamiento, caída, corte, insolación… Se envía al momento al coordinador.</div>
+        </div>
+        <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
+      </button>
+
       <!-- Avisos rápidos -->
       <div class="section-eyebrow"><span class="eyebrow">Pendiente para hoy</span></div>
       <div class="col gap-2" id="pendientesHoy">
@@ -542,6 +555,31 @@
   <span id="toastText"></span>
 </div>
 
+<!-- ============ MODAL PARTE DE INCIDENCIA ============ -->
+<div id="incidenciaModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;overflow-y:auto;padding:0;">
+  <div style="max-width:640px;margin:0 auto;background:#fff;min-height:100vh;position:relative;">
+    <!-- Cabecera fija -->
+    <div style="position:sticky;top:0;background:#B91C1C;color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;z-index:2;box-shadow:0 2px 6px rgba(0,0,0,.15);">
+      <div>
+        <div style="font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.4px;">Parte de incidencia</div>
+        <div id="incTituloPaso" style="font-size:15px;font-weight:700;margin-top:2px;">Paso 1 de 6 · Qué ha pasado</div>
+      </div>
+      <button onclick="cerrarNuevaIncidencia()" style="background:rgba(255,255,255,.2);border:0;color:#fff;width:36px;height:36px;border-radius:8px;cursor:pointer;font-size:20px;">×</button>
+    </div>
+    <!-- Progreso -->
+    <div style="height:4px;background:#FEE2E2;">
+      <div id="incProgressBar" style="height:100%;background:#fff;width:16.6%;transition:width .25s;"></div>
+    </div>
+    <!-- Contenido -->
+    <div id="incBody" style="padding:18px 16px 100px;"></div>
+    <!-- Footer con botones -->
+    <div style="position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #E2E8F0;padding:10px 12px;display:flex;gap:8px;max-width:640px;margin:0 auto;">
+      <button id="incBtnPrev" class="btn btn-outline" style="flex:1;">← Atrás</button>
+      <button id="incBtnNext" class="btn btn-primary" style="flex:2;background:#B91C1C;">Siguiente →</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="js/supabase-client.js"></script>
@@ -552,6 +590,7 @@
 <script src="js/data.js"></script>
 <script src="js/ps-pdf.js"></script>
 <script src="js/titulaciones.js"></script>
+<script src="js/ps-incidencias.js"></script>
 <script src="js/socorrista.js"></script>
 </body>
 </html>

@@ -839,6 +839,186 @@ window.PSPdf = (function () {
   }
 
   /* ==========================================================================
+     PARTE DE INCIDENCIA (accidente/atención) — PDF con silueta y firma
+     ========================================================================== */
+  async function generarIncidencia(inc, empleado) {
+    const doc = nuevoPdf();
+    const fechaInc = inc.fecha_incidente ? new Date(inc.fecha_incidente) : new Date();
+    header(doc, 'Parte de incidencia', `Nº ${inc.numero_parte || '—'} · ${fechaInc.toLocaleString('es-ES')}`);
+
+    let y = 58;
+    doc.setFontSize(10);
+
+    // Bloque 1: incidencia
+    doc.setFont('helvetica', 'bold'); doc.text('DATOS DE LA INCIDENCIA', 15, y); y += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Tipo:           ${window.PSInc ? window.PSInc.formatTipo(inc.tipo_incidente) : (inc.tipo_incidente || '—')}`, 15, y); y += 4.6;
+    doc.text(`Fecha y hora:   ${fechaInc.toLocaleString('es-ES')}`, 15, y); y += 4.6;
+    doc.text(`Puesto:         ${limpiarTexto(empleado?.puesto_nombre || '—')}`, 15, y); y += 4.6;
+    if (inc.ubicacion_descripcion) { doc.text(`Ubicación:      ${limpiarTexto(inc.ubicacion_descripcion)}`, 15, y); y += 4.6; }
+    y += 3;
+
+    doc.setFont('helvetica', 'bold'); doc.text('CIRCUNSTANCIAS', 15, y); y += 5;
+    doc.setFont('helvetica', 'normal');
+    const circ = doc.splitTextToSize(limpiarTexto(inc.circunstancias || '—'), 180);
+    doc.text(circ, 15, y); y += circ.length * 4.5 + 3;
+    if (inc.testigos) {
+      doc.setFont('helvetica', 'bold'); doc.text('Testigos: ', 15, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(limpiarTexto(inc.testigos), 35, y); y += 5;
+    }
+
+    // Bloque 2: víctima
+    y = checkPage(doc, y, 50); y += 4;
+    doc.setFont('helvetica', 'bold'); doc.text('DATOS DE LA VÍCTIMA', 15, y); y += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Nombre:         ${limpiarTexto(inc.victima_nombre || '—')}${inc.es_menor ? '  (MENOR DE EDAD)' : ''}`, 15, y); y += 4.6;
+    doc.text(`Edad:           ${inc.victima_edad != null ? inc.victima_edad + ' años' : '—'}    Sexo: ${inc.victima_sexo || '—'}`, 15, y); y += 4.6;
+    doc.text(`DNI/Pasaporte:  ${inc.victima_dni || '—'}`, 15, y); y += 4.6;
+    doc.text(`Teléfono:       ${inc.victima_telefono || '—'}    Nacionalidad: ${inc.victima_nacionalidad || '—'}`, 15, y); y += 4.6;
+    if (inc.victima_hotel_habitacion) { doc.text(`Hotel/habitación: ${inc.victima_hotel_habitacion}`, 15, y); y += 4.6; }
+    if (inc.familiar_avisado) {
+      doc.text(`Familiar avisado: ${inc.familiar_nombre || '(sí)'}${inc.familiar_hora ? ' a las ' + new Date(inc.familiar_hora).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : ''}`, 15, y); y += 4.6;
+    }
+    y += 3;
+
+    // Bloque 3: estado + silueta
+    y = checkPage(doc, y, 90);
+    doc.setFont('helvetica', 'bold'); doc.text('ESTADO A LA LLEGADA', 15, y); y += 6;
+    doc.setFont('helvetica', 'normal');
+    const b = v => v === true ? 'Sí' : v === false ? 'No' : '—';
+    doc.text(`Consciente: ${b(inc.consciente)}    Respira: ${b(inc.respira)}    Sangrado: ${b(inc.sangrado)}`, 15, y); y += 6;
+    if (inc.observaciones_medicas) {
+      const om = doc.splitTextToSize('Observaciones: ' + limpiarTexto(inc.observaciones_medicas), 120);
+      doc.text(om, 15, y); y += om.length * 4.5;
+    }
+
+    // Silueta (SVG → convertimos a imagen dibujando)
+    const zonas = Array.isArray(inc.dolor_zonas) ? inc.dolor_zonas : [];
+    if (window.PSInc) {
+      // Frontal
+      const svgF = window.PSInc.siluetaSVG(zonas, false, 'front');
+      const svgB = window.PSInc.siluetaSVG(zonas, false, 'back');
+      try {
+        await svgToPdf(doc, svgF, 130, y - 20, 30, 60);
+        await svgToPdf(doc, svgB, 165, y - 20, 30, 60);
+        doc.setFontSize(7);
+        doc.text('Frontal', 135, y + 42);
+        doc.text('Espalda', 170, y + 42);
+        doc.setFontSize(10);
+      } catch (_) {}
+    }
+    if (zonas.length) {
+      y += 8;
+      const zonasTxt = 'Zonas marcadas: ' + zonas.map(z => window.PSInc?.zonaLabel(z) || z).join(', ');
+      const wrap = doc.splitTextToSize(zonasTxt, 180);
+      doc.setFont('helvetica', 'bold'); doc.text(wrap, 15, y);
+      doc.setFont('helvetica', 'normal');
+      y += wrap.length * 4.5;
+    }
+
+    // Bloque 4: actuación + técnicas + material
+    y = checkPage(doc, y, 60); y += 6;
+    doc.setFont('helvetica', 'bold'); doc.text('ACTUACIÓN REALIZADA', 15, y); y += 5;
+    doc.setFont('helvetica', 'normal');
+    const act = doc.splitTextToSize(limpiarTexto(inc.actuacion || '—'), 180);
+    doc.text(act, 15, y); y += act.length * 4.5 + 3;
+
+    if (Array.isArray(inc.tecnicas_aplicadas) && inc.tecnicas_aplicadas.length) {
+      doc.setFont('helvetica', 'bold'); doc.text('Técnicas: ', 15, y);
+      doc.setFont('helvetica', 'normal');
+      const tec = doc.splitTextToSize(inc.tecnicas_aplicadas.map(t => window.PSInc?.formatTecnica(t) || t).join(' · '), 165);
+      doc.text(tec, 35, y); y += tec.length * 4.5 + 2;
+    }
+
+    if (Array.isArray(inc.material_usado) && inc.material_usado.length) {
+      y = checkPage(doc, y, 30); y += 3;
+      doc.setFont('helvetica', 'bold'); doc.text('MATERIAL DEL BOTIQUÍN USADO', 15, y); y += 5;
+      doc.setFont('helvetica', 'normal');
+      doc.setDrawColor(200,200,200);
+      doc.rect(15, y, 140, 5.5, 'D'); doc.rect(155, y, 40, 5.5, 'D');
+      doc.setFont('helvetica', 'bold');
+      doc.text('Producto', 17, y + 4); doc.text('Cantidad', 193, y + 4, { align: 'right' });
+      y += 5.5;
+      doc.setFont('helvetica', 'normal');
+      inc.material_usado.forEach(m => {
+        y = checkPage(doc, y, 6);
+        doc.rect(15, y, 140, 5.5, 'D'); doc.rect(155, y, 40, 5.5, 'D');
+        doc.text(limpiarTexto(m.nombre || '—').slice(0, 60), 17, y + 4);
+        doc.text(`${m.cantidad || 0} ${m.unidad || ''}`, 193, y + 4, { align: 'right' });
+        y += 5.5;
+      });
+      doc.setFontSize(8); doc.setTextColor(120,120,120);
+      doc.text('Este material se ha descontado automáticamente del inventario del puesto.', 15, y + 4);
+      doc.setFontSize(10); doc.setTextColor(0,0,0);
+      y += 8;
+    }
+
+    // Bloque 5: derivación
+    y = checkPage(doc, y, 30); y += 3;
+    doc.setFont('helvetica', 'bold'); doc.text('DERIVACIÓN', 15, y); y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.text(window.PSInc?.formatDerivacion(inc.derivacion) || (inc.derivacion || '—'), 15, y); y += 5;
+    if (inc.ambulancia_numero || inc.ambulancia_hora || inc.hospital) {
+      if (inc.ambulancia_numero) { doc.text(`Ambulancia: ${inc.ambulancia_numero}`, 15, y); y += 4.5; }
+      if (inc.ambulancia_hora)   { doc.text(`Hora llegada: ${new Date(inc.ambulancia_hora).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}`, 15, y); y += 4.5; }
+      if (inc.hospital)          { doc.text(`Hospital: ${limpiarTexto(inc.hospital)}`, 15, y); y += 4.5; }
+    }
+
+    // Bloque 6: firma
+    y = checkPage(doc, y, 70); y += 6;
+    doc.setFont('helvetica', 'bold'); doc.text('FIRMA DEL SOCORRISTA', 15, y); y += 6;
+    doc.setFont('helvetica', 'normal');
+    if (inc.firma_imagen) {
+      try { doc.addImage(inc.firma_imagen, 'PNG', 15, y, 90, 34); } catch (_) {}
+    } else {
+      doc.setDrawColor(180,180,180); doc.rect(15, y, 90, 34, 'D');
+    }
+    y += 40;
+    doc.text(`Fdo: ${limpiarTexto(inc.firma_nombre || empleado?.nombre || '')}`, 15, y); y += 4.5;
+    doc.text(`DNI: ${inc.firma_dni || empleado?.dni || '—'}`, 15, y); y += 4.5;
+    doc.text(`Registrado el ${new Date(inc.fecha_creado || new Date()).toLocaleString('es-ES')}`, 15, y); y += 4.5;
+    if (inc.firma_gps_lat) {
+      doc.setFontSize(8); doc.setTextColor(120,120,120);
+      doc.text(`GPS al firmar: ${(+inc.firma_gps_lat).toFixed(5)}, ${(+inc.firma_gps_lng).toFixed(5)}`, 15, y);
+      doc.setFontSize(10); doc.setTextColor(0,0,0);
+    }
+
+    numerarPaginas(doc);
+    return doc;
+  }
+
+  // Convierte un fragmento SVG a imagen y lo pinta en el PDF. Async porque
+  // Image.onload es asíncrono. Si algo falla no rompe la generación del PDF.
+  function svgToPdf(doc, svgHtml, x, y, w, h) {
+    return new Promise((resolve, reject) => {
+      try {
+        const blob = new Blob([svgHtml], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 400; canvas.height = 800;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            doc.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, w, h);
+            URL.revokeObjectURL(url); resolve();
+          } catch (e) { URL.revokeObjectURL(url); reject(e); }
+        };
+        img.onerror = e => { URL.revokeObjectURL(url); reject(e); };
+        img.src = url;
+      } catch (e) { reject(e); }
+    });
+  }
+
+  async function descargarIncidencia(inc, empleado, nombreArchivo) {
+    const doc = await generarIncidencia(inc, empleado);
+    doc.save(nombreArchivo || `PoolSafety-incidencia-${inc.numero_parte || 'sin-num'}.pdf`);
+  }
+
+  /* ==========================================================================
      Storage + descarga
      ========================================================================== */
   function esFiniquito(firma) {
@@ -877,5 +1057,5 @@ window.PSPdf = (function () {
     doc.save(nombreArchivo || `finiquito-${(empleado.nombre || 'empleado').replace(/\s+/g,'_')}.pdf`);
   }
 
-  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito };
+  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarIncidencia, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito, descargarIncidencia };
 })();

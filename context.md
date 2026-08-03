@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-03 (quinta jornada · v79→v82 · fecha+mapa+revisión sección+quitar KPIs socorrista)
-**Cache SW actual: `poolsafety-v82`**
+Última actualización: 2026-08-03 (quinta jornada · v79→v83 · parte de incidencias completo)
+**Cache SW actual: `poolsafety-v83`**
 
 ---
 
@@ -351,6 +351,18 @@ Ver commits: SMTP Resend, auto-update PWA, PSHor horarios editables, Correturnos
 **Otros:**
 - ✅ SW `poolsafety-v79`, `ps-notifications.js` añadido al CORE cache.
 - ✅ Se restringe en runtime `editar/borrar fichaje` a dueño (defensa en profundidad además del RLS de la BD).
+
+**Parte de incidencias digital (v83) — REQUIERE ejecutar `sql/06-incidencias.sql` primero:**
+- ✅ Botón rojo "Registrar parte de incidencia" en Inicio del socorrista → wizard 6 pasos.
+- ✅ Pasos: (1) Tipo+circunstancias+ubicación+testigos, (2) Datos víctima+menor+familiar, (3) Estado+silueta cuerpo cliqueable (frontal y espalda), (4) Actuación+técnicas+material del botiquín, (5) Derivación+ambulancia, (6) Firma canvas + declaración.
+- ✅ Silueta SVG propia (frontal y posterior) con círculos cliqueables por zona anatómica (~30 zonas: cabeza, cuello, hombros, tórax, abdomen, brazos, manos, muslos, rodillas, piernas, pies + nuca, espalda, glúteos posteriores).
+- ✅ Material usado: lista del inventario_puesto del hotel con − / + / input. Al enviar se **descuenta stock automáticamente** via RPC `descontar_material_incidencia`, fallback en cliente si RPC no disponible.
+- ✅ Nueva tabla `incidencias` con RLS (empleado ve solo los suyos, admin/coord de la empresa todos). Trigger auto-genera `numero_parte` tipo `INC-2026-0001`. Realtime activado.
+- ✅ PDF generado con `PSPdf.generarIncidencia`: cabecera roja PoolSafety, todos los bloques del wizard, silueta con zonas marcadas en rojo, tabla de material, firma incrustada, GPS al firmar. Se sube a Storage `incidencias/{id}.pdf` y url guardada en `archivo_pdf_url`.
+- ✅ **Nuevo tab "Incidencias"** en menú del admin/coord con badge (nº de partes de las últimas 48 h). Panel con filtro por tipo + fecha, exportación CSV, botón "Ver detalle" con silueta y todos los datos, botón "Descargar PDF" (rojo).
+- ✅ **Realtime + push local**: cuando el socorrista firma un parte, el admin/coord recibe notificación nativa 🚨 al momento (si tiene los avisos activados) y aparece la fila en el panel sin refresh.
+- ✅ Módulo compartido `js/ps-incidencias.js` con `PSInc.TIPOS_INCIDENTE`, `TECNICAS`, `DERIVACIONES`, `ZONAS_CUERPO`, `siluetaSVG()`, `engancharSilueta()`.
+- ⚠️ **SQL a ejecutar antes**: `sql/06-incidencias.sql` en Supabase SQL Editor. Sin él el panel del admin muestra un error explícito indicando qué SQL falta.
 
 **Revisión por sección + auto-reset diario + observaciones + limpiar inicio socorrista (v82):**
 - ✅ **Botón único "Guardar revisión de <sección>"** grande al final de cada tab (Botiquín / DESA / Oxigenoterapia) — reemplaza al antiguo "Marcar todo comprobado". Pide observaciones por prompt.

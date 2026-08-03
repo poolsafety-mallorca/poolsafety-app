@@ -1465,6 +1465,291 @@
     el.addEventListener('click', () => setTimeout(renderTitulacionesPanel, 200)));
   setTimeout(renderTitulacionesPanel, 2500);
 
+  /* ==========================================================================
+     PANEL INCIDENCIAS · partes firmados por los socorristas
+     Realtime → aparecen al momento. Cada fila: descargar PDF, ver detalle.
+     ========================================================================== */
+  let incAdminCache = [];
+  let incAdminFiltroTipo = '';
+  let incAdminFiltroDesde = '';
+
+  function poblarFiltroTiposInc() {
+    const sel = document.getElementById('incFiltroTipo');
+    if (!sel || !window.PSInc) return;
+    if (sel.options.length > 1) return; // ya poblado
+    window.PSInc.TIPOS_INCIDENTE.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t.value; o.textContent = t.label;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', () => { incAdminFiltroTipo = sel.value; renderIncidenciasList(); });
+    const desde = document.getElementById('incFiltroDesde');
+    if (desde) desde.addEventListener('change', () => { incAdminFiltroDesde = desde.value; renderIncidenciasList(); });
+  }
+
+  window.renderIncidenciasPanel = async function () {
+    if (!window.sb) return;
+    poblarFiltroTiposInc();
+    const cont = document.getElementById('incidenciasList');
+    if (cont) cont.innerHTML = '<div class="text-muted small" style="padding:30px;text-align:center;">Cargando incidencias…</div>';
+    try {
+      const { data, error } = await window.sb.from('incidencias')
+        .select('*, empleados(id,nombre,dni,telefono), puestos(id,nombre)')
+        .order('fecha_incidente', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      incAdminCache = data || [];
+      renderIncidenciasList();
+      // Badge en menú lateral
+      const badge = document.getElementById('menuBadgeInc');
+      const nuevas = incAdminCache.filter(i => {
+        // Consideramos "nueva" las creadas en las últimas 48 h
+        const cr = i.fecha_creado ? new Date(i.fecha_creado) : null;
+        return cr && (Date.now() - cr.getTime() < 48 * 3600 * 1000);
+      }).length;
+      if (badge) {
+        if (nuevas > 0) { badge.textContent = nuevas; badge.style.display = 'inline-flex'; }
+        else { badge.style.display = 'none'; }
+      }
+    } catch (err) {
+      if (cont) cont.innerHTML = `<div class="alert-strip warn" style="margin:6px;">
+        Error cargando incidencias: ${err.message}<br>
+        <small>Si no has ejecutado el SQL <code>sql/06-incidencias.sql</code> aún, hazlo en Supabase primero.</small>
+      </div>`;
+    }
+  };
+
+  function renderIncidenciasList() {
+    const cont = document.getElementById('incidenciasList');
+    const cnt = document.getElementById('incPanelCount');
+    if (!cont) return;
+    let visibles = incAdminCache.slice();
+    if (incAdminFiltroTipo) visibles = visibles.filter(i => i.tipo_incidente === incAdminFiltroTipo);
+    if (incAdminFiltroDesde) {
+      const d0 = new Date(incAdminFiltroDesde); d0.setHours(0,0,0,0);
+      visibles = visibles.filter(i => new Date(i.fecha_incidente) >= d0);
+    }
+    if (cnt) cnt.textContent = `${visibles.length} de ${incAdminCache.length}`;
+    if (visibles.length === 0) {
+      cont.innerHTML = '<div class="text-muted small" style="padding:30px;text-align:center;">Sin partes con estos filtros.</div>';
+      return;
+    }
+    cont.innerHTML = visibles.map(i => {
+      const emp = i.empleados?.nombre || '—';
+      const puesto = i.puestos?.nombre || '—';
+      const tipo = window.PSInc?.formatTipo(i.tipo_incidente) || i.tipo_incidente || '—';
+      const color = window.PSInc?.colorTipo(i.tipo_incidente) || '#64748B';
+      const fecha = new Date(i.fecha_incidente).toLocaleString('es-ES', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+      const menor = i.es_menor ? '<span class="badge badge-warn" style="margin-left:6px;font-size:10px;">MENOR</span>' : '';
+      const amb = (i.derivacion === 'ambulancia' || i.derivacion === 'hospital') ? '<span class="badge badge-danger" style="margin-left:6px;font-size:10px;">🚑 Ambulancia/Hospital</span>' : '';
+      const mat = Array.isArray(i.material_usado) ? i.material_usado.length : 0;
+      return `
+        <div class="doc-admin-row" style="border-left:4px solid ${color};">
+          <div class="doc-admin-main">
+            <div style="width:36px;height:36px;border-radius:8px;background:${color}22;color:${color};display:flex;align-items:center;justify-content:center;">
+              <svg class="ic ic-18"><use href="#ic-alert"/></svg>
+            </div>
+            <div style="min-width:0;flex:1;">
+              <div class="doc-admin-name" style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
+                <span style="font-weight:700;">${tipo}</span>
+                ${menor}${amb}
+              </div>
+              <div class="doc-admin-sub">
+                <b>${i.numero_parte || '—'}</b> · ${fecha} · ${puesto}<br>
+                Víctima: ${i.victima_nombre || '—'}${i.victima_edad?' ('+i.victima_edad+' años)':''} · Socorrista: ${emp}
+                ${mat ? ' · ' + mat + ' productos usados' : ''}
+              </div>
+            </div>
+          </div>
+          <div class="doc-admin-actions">
+            <button class="btn btn-primary btn-sm" data-inc-pdf="${i.id}" style="background:#B91C1C;">
+              <svg class="ic ic-14"><use href="#ic-download"/></svg> PDF
+            </button>
+            <button class="btn btn-outline btn-sm" data-inc-ver="${i.id}">Ver detalle</button>
+            ${(window.PS_SESSION||{}).rol === 'dueno' ? `<button class="btn btn-outline btn-sm" data-inc-del="${i.id}" style="color:#DC2626;border-color:#DC2626;" title="Eliminar (irreversible)">✕</button>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+    cont.querySelectorAll('[data-inc-pdf]').forEach(b => b.addEventListener('click', () => descargarIncidenciaAdmin(b.dataset.incPdf)));
+    cont.querySelectorAll('[data-inc-ver]').forEach(b => b.addEventListener('click', () => verIncidenciaDetalle(b.dataset.incVer)));
+    cont.querySelectorAll('[data-inc-del]').forEach(b => b.addEventListener('click', () => borrarIncidencia(b.dataset.incDel)));
+  }
+
+  async function descargarIncidenciaAdmin(id) {
+    const inc = incAdminCache.find(x => x.id === id);
+    if (!inc) return;
+    toast('Generando PDF…');
+    try {
+      const emp = { nombre: inc.empleados?.nombre, dni: inc.empleados?.dni, puesto_nombre: inc.puestos?.nombre };
+      await window.PSPdf.descargarIncidencia(inc, emp);
+      toast('✓ PDF descargado');
+      // Si aún no había PDF en Storage, subirlo ahora
+      if (!inc.archivo_pdf_url) {
+        try {
+          const doc = await window.PSPdf.generarIncidencia(inc, emp);
+          const blob = doc.output('blob');
+          const url = await window.PSStorage.subir(`incidencias/${inc.id}.pdf`, blob, 'application/pdf');
+          await window.sb.from('incidencias').update({ archivo_pdf_url: url }).eq('id', inc.id);
+        } catch (_) {}
+      }
+    } catch (err) { toast('Error: ' + err.message); }
+  }
+
+  function verIncidenciaDetalle(id) {
+    const i = incAdminCache.find(x => x.id === id);
+    if (!i) return;
+    const zonas = Array.isArray(i.dolor_zonas) ? i.dolor_zonas : [];
+    const zonasHtml = zonas.length ? zonas.map(z => `<span class="badge badge-danger" style="margin:2px;font-size:11px;">${window.PSInc?.zonaLabel(z) || z}</span>`).join('') : '<span class="text-muted">—</span>';
+    const tec = Array.isArray(i.tecnicas_aplicadas) ? i.tecnicas_aplicadas : [];
+    const tecHtml = tec.length ? tec.map(t => `<span class="badge badge-info" style="margin:2px;font-size:11px;">${window.PSInc?.formatTecnica(t) || t}</span>`).join('') : '<span class="text-muted">—</span>';
+    const mat = Array.isArray(i.material_usado) ? i.material_usado : [];
+    const matHtml = mat.length ? mat.map(m => `<div style="padding:6px 8px;background:#F8FAFC;border-radius:6px;margin:3px 0;font-size:12.5px;">${m.nombre} · <b>${m.cantidad} ${m.unidad||''}</b></div>`).join('') : '<span class="text-muted">Sin material usado</span>';
+    let modal = document.getElementById('incDetalleModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'incDetalleModal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:12px;';
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+      document.body.appendChild(modal);
+    }
+    const b = v => v === true ? '<b style="color:#059669;">Sí</b>' : v === false ? '<b style="color:#DC2626;">No</b>' : '—';
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:14px;max-width:720px;width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+        <div style="padding:14px 18px;background:${window.PSInc?.colorTipo(i.tipo_incidente)};color:#fff;display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.4px;">Parte ${i.numero_parte || ''}</div>
+            <div style="font-size:16px;font-weight:700;margin-top:2px;">${window.PSInc?.formatTipo(i.tipo_incidente)}</div>
+          </div>
+          <button onclick="document.getElementById('incDetalleModal').remove()" style="background:rgba(255,255,255,.2);border:0;color:#fff;width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:20px;">×</button>
+        </div>
+        <div style="padding:16px 18px;overflow-y:auto;font-size:13.5px;line-height:1.55;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+            <div><b>Fecha:</b><br>${new Date(i.fecha_incidente).toLocaleString('es-ES')}</div>
+            <div><b>Puesto:</b><br>${i.puestos?.nombre || '—'}</div>
+          </div>
+          <div style="margin-bottom:12px;"><b>Ubicación:</b> ${i.ubicacion_descripcion || '—'}</div>
+          <div style="margin-bottom:12px;"><b>Circunstancias:</b><br><div style="padding:8px;background:#F8FAFC;border-radius:6px;white-space:pre-wrap;">${(i.circunstancias||'—').replace(/</g,'&lt;')}</div></div>
+          ${i.testigos ? `<div style="margin-bottom:12px;"><b>Testigos:</b> ${i.testigos}</div>` : ''}
+
+          <h4 style="border-top:1px solid #E2E8F0;padding-top:10px;margin:14px 0 8px;">Víctima</h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div><b>Nombre:</b> ${i.victima_nombre || '—'}${i.es_menor?' <span class="badge badge-warn" style="font-size:10px;">MENOR</span>':''}</div>
+            <div><b>Edad:</b> ${i.victima_edad ?? '—'} años · <b>Sexo:</b> ${i.victima_sexo || '—'}</div>
+            <div><b>DNI:</b> ${i.victima_dni || '—'}</div>
+            <div><b>Teléfono:</b> ${i.victima_telefono ? `<a href="tel:${i.victima_telefono}">${i.victima_telefono}</a>` : '—'}</div>
+            <div><b>Nacionalidad:</b> ${i.victima_nacionalidad || '—'}</div>
+            <div><b>Hotel/hab:</b> ${i.victima_hotel_habitacion || '—'}</div>
+          </div>
+          ${i.familiar_avisado ? `<div style="margin-top:8px;padding:8px;background:#EFF6FF;border-radius:6px;font-size:12.5px;">👨‍👩‍👧 Familiar avisado: ${i.familiar_nombre || '(sí)'} ${i.familiar_hora ? ' a las ' + new Date(i.familiar_hora).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : ''}</div>` : ''}
+
+          <h4 style="border-top:1px solid #E2E8F0;padding-top:10px;margin:14px 0 8px;">Estado y actuación</h4>
+          <div>Consciente: ${b(i.consciente)} · Respira: ${b(i.respira)} · Sangrado: ${b(i.sangrado)}</div>
+          <div style="margin:8px 0;"><b>Zonas afectadas:</b><br>${zonasHtml}</div>
+          <div style="margin-bottom:8px;"><b>Silueta:</b>
+            <div style="display:flex;gap:12px;justify-content:center;background:#F8FAFC;padding:10px;border-radius:8px;">
+              <div style="max-width:130px;text-align:center;"><div class="small text-muted">Frontal</div>${window.PSInc?.siluetaSVG(zonas, false, 'front')}</div>
+              <div style="max-width:130px;text-align:center;"><div class="small text-muted">Espalda</div>${window.PSInc?.siluetaSVG(zonas, false, 'back')}</div>
+            </div>
+          </div>
+          <div style="margin:10px 0;"><b>Actuación:</b><br><div style="padding:8px;background:#F8FAFC;border-radius:6px;white-space:pre-wrap;">${(i.actuacion||'—').replace(/</g,'&lt;')}</div></div>
+          <div style="margin:8px 0;"><b>Técnicas:</b><br>${tecHtml}</div>
+          <div style="margin:8px 0;"><b>Material usado:</b>${matHtml}</div>
+
+          <h4 style="border-top:1px solid #E2E8F0;padding-top:10px;margin:14px 0 8px;">Derivación</h4>
+          <div>${window.PSInc?.formatDerivacion(i.derivacion) || (i.derivacion||'—')}</div>
+          ${i.ambulancia_numero || i.hospital ? `
+          <div style="margin-top:6px;padding:8px;background:#FEF2F2;border-radius:6px;font-size:12.5px;">
+            ${i.ambulancia_numero ? `🚑 Ambulancia: ${i.ambulancia_numero}<br>` : ''}
+            ${i.ambulancia_hora ? `Hora llegada: ${new Date(i.ambulancia_hora).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}<br>` : ''}
+            ${i.hospital ? `Hospital: ${i.hospital}` : ''}
+          </div>` : ''}
+
+          <h4 style="border-top:1px solid #E2E8F0;padding-top:10px;margin:14px 0 8px;">Firma</h4>
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div style="flex:1;">
+              <div><b>Socorrista:</b> ${i.firma_nombre || i.empleados?.nombre || '—'}</div>
+              <div><b>DNI:</b> ${i.firma_dni || '—'}</div>
+              <div class="small text-muted" style="margin-top:4px;">Firmado el ${new Date(i.fecha_creado).toLocaleString('es-ES')}</div>
+            </div>
+            ${i.firma_imagen ? `<img src="${i.firma_imagen}" style="max-width:180px;border:1px solid #E2E8F0;border-radius:6px;" alt="firma"/>` : ''}
+          </div>
+        </div>
+        <div style="padding:12px 16px;border-top:1px solid #E2E8F0;display:flex;gap:8px;justify-content:flex-end;background:#F8FAFC;">
+          <button class="btn btn-outline" onclick="document.getElementById('incDetalleModal').remove()">Cerrar</button>
+          <button class="btn btn-primary" style="background:#B91C1C;" onclick="descargarIncAdminById('${i.id}')">
+            <svg class="ic ic-16"><use href="#ic-download"/></svg> Descargar PDF
+          </button>
+        </div>
+      </div>`;
+  }
+  window.descargarIncAdminById = descargarIncidenciaAdmin;
+
+  async function borrarIncidencia(id) {
+    if (((window.PS_SESSION||{}).rol) !== 'dueno') { toast('Solo el administrador puede borrar partes'); return; }
+    if (!confirm('¿Eliminar este parte permanentemente? Perderás el registro y el PDF asociado.')) return;
+    try {
+      const { error } = await window.sb.from('incidencias').delete().eq('id', id);
+      if (error) throw error;
+      toast('✓ Parte eliminado');
+      renderIncidenciasPanel();
+    } catch (err) { toast('Error: ' + err.message); }
+  }
+
+  window.exportarIncidenciasCSV = function () {
+    if (!incAdminCache.length) { toast('No hay incidencias'); return; }
+    const rows = [['Nº parte','Fecha','Tipo','Puesto','Socorrista','Víctima','Edad','Menor','Derivación','Ambulancia','Material items','Circunstancias']];
+    incAdminCache.forEach(i => {
+      const mat = Array.isArray(i.material_usado) ? i.material_usado.map(m => `${m.nombre} x${m.cantidad}`).join(' | ') : '';
+      rows.push([
+        i.numero_parte || '',
+        new Date(i.fecha_incidente).toLocaleString('es-ES'),
+        window.PSInc?.formatTipo(i.tipo_incidente) || i.tipo_incidente,
+        i.puestos?.nombre || '',
+        i.empleados?.nombre || '',
+        i.victima_nombre || '',
+        i.victima_edad ?? '',
+        i.es_menor ? 'Sí' : 'No',
+        window.PSInc?.formatDerivacion(i.derivacion) || i.derivacion || '',
+        i.ambulancia_numero || '',
+        mat,
+        (i.circunstancias || '').replace(/\n/g,' · ')
+      ]);
+    });
+    const csv = '﻿' + rows.map(r => r.map(c => {
+      const v = String(c ?? '');
+      return v.includes(';') || v.includes('"') || v.includes('\n') ? '"' + v.replace(/"/g,'""') + '"' : v;
+    }).join(';')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `PoolSafety-incidencias-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('✓ CSV descargado');
+  };
+
+  // Cargar al entrar en la sección + realtime + badge inicial
+  document.querySelectorAll('[data-section="incidencias"]').forEach(el =>
+    el.addEventListener('click', () => setTimeout(renderIncidenciasPanel, 200)));
+  setTimeout(renderIncidenciasPanel, 2500);
+  // Realtime: nuevos partes aparecen al momento
+  (function esperarSbInc(intentos) {
+    if (window.sb) {
+      try {
+        window.sb.channel('incidencias-admin')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'incidencias' }, () => {
+            renderIncidenciasPanel();
+            if (window.PSNotif) window.PSNotif.notify('🚨 Nueva incidencia', { body: 'Un socorrista acaba de firmar un parte.', tag: 'incidencia-new', url: '#incidencias' });
+          })
+          .subscribe();
+      } catch (_) {}
+      return;
+    }
+    if (intentos > 20) return;
+    setTimeout(() => esperarSbInc(intentos + 1), 300);
+  })(0);
+
   /* ---------- Panel Fichajes (selector de día) ---------- */
   function fechaISOhoy() {
     const d = new Date();
