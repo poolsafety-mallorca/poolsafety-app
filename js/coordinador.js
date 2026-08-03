@@ -5925,7 +5925,7 @@
     cont.innerHTML = '<div class="text-muted small" style="padding:12px;">Cargando equipo…</div>';
     try {
       const { data, error } = await window.sb.from('usuarios')
-        .select('id, nombre, email, rol, activo, disponible, created_at')
+        .select('id, nombre, email, telefono, rol, activo, disponible, created_at, ultimo_login')
         .in('rol', ['dueno','coordinador'])
         .order('rol', { ascending: true })
         .order('nombre', { ascending: true });
@@ -5955,6 +5955,7 @@
                     <td>${u.activo !== false ? '<span class="badge badge-ok"><span class="dot"></span>Activo</span>' : '<span class="badge badge-neutral"><span class="dot"></span>Inactivo</span>'}</td>
                     <td>${u.disponible !== false ? '<span class="badge badge-ok"><span class="dot"></span>Disponible</span>' : '<span class="badge" style="background:#FEF3C7;color:#92400E;"><span class="dot" style="background:#F59E0B;"></span>Libre</span>'}</td>
                     <td class="hor-actions">
+                      <button class="icon-btn-mini" title="Editar ficha (nombre, email, teléfono, rol)" onclick="editarMiembroEquipo('${u.id}')" style="color:#1D4ED8;"><svg class="ic ic-14"><use href="#ic-pen"/></svg></button>
                       <button class="icon-btn-mini" title="Enviar acceso por email" onclick="enviarAccesoDesdeEquipo('${u.email}')"><svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg></button>
                       ${u.id !== psSes.userId ? `
                         <button class="icon-btn-mini" title="Desactivar (bloquea login, se puede reactivar)" onclick="desactivarMiembroEquipo('${u.id}','${(u.nombre||u.email).replace(/'/g,"&#39;")}')" style="color:#B45309;"><svg class="ic ic-14"><use href="#ic-alert"/></svg></button>
@@ -6002,6 +6003,96 @@
       toast(`✓ ${nombre} eliminado. Recuerda borrar también la cuenta auth desde Supabase Dashboard → Auth → Users.`);
       renderEquipoBlock();
     } catch (err) { toast('Error: ' + err.message); alert('Detalle del error:\n' + err.message); }
+  };
+
+  /* ---- Editar ficha coordinador / dueño (nombre, email, teléfono, rol) ---- */
+  window.editarMiembroEquipo = async function (id) {
+    const psSes = window.PS_SESSION || {};
+    if (psSes.rol !== 'dueno') { alert('Solo el administrador puede editar miembros.'); return; }
+    try {
+      const { data: u, error } = await window.sb.from('usuarios')
+        .select('id, nombre, email, telefono, rol').eq('id', id).single();
+      if (error) throw error;
+      // Modal editor
+      let modal = document.getElementById('editarMiembroModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'editarMiembroModal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;';
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+      }
+      const esYo = id === psSes.userId;
+      modal.innerHTML = `
+        <div style="background:#fff;border-radius:14px;max-width:520px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+          <div style="padding:14px 18px;background:#DBEAFE;color:#1E3A8A;display:flex;justify-content:space-between;align-items:center;border-radius:14px 14px 0 0;">
+            <div>
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Editar miembro del equipo</div>
+              <div style="font-size:16px;font-weight:700;margin-top:2px;">${u.nombre || u.email.split('@')[0]}</div>
+            </div>
+            <button onclick="document.getElementById('editarMiembroModal').remove()" style="background:rgba(255,255,255,.5);border:0;color:#1E3A8A;width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:20px;">×</button>
+          </div>
+          <div style="padding:18px;">
+            <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Nombre y apellidos</label>
+            <input type="text" id="emm_nombre" value="${(u.nombre || '').replace(/"/g,'&quot;')}"
+              style="width:100%;padding:11px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:12px;" />
+
+            <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Email</label>
+            <input type="email" id="emm_email" value="${(u.email || '').replace(/"/g,'&quot;')}"
+              style="width:100%;padding:11px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:6px;" />
+            <div style="padding:8px 10px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:6px;font-size:11.5px;color:#78350F;margin-bottom:12px;">
+              ⚠️ <b>Cambiar el email aquí NO cambia el email de acceso</b> (usuario Supabase Auth). Actualiza sólo lo visible en la app.<br>
+              Para cambiar el email de LOGIN de un miembro debes ir a <b>Supabase Dashboard → Authentication → Users</b> y editar allí su email.
+            </div>
+
+            <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Teléfono</label>
+            <input type="tel" id="emm_tel" value="${(u.telefono || '').replace(/"/g,'&quot;')}"
+              style="width:100%;padding:11px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:12px;" />
+
+            <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Rol</label>
+            <select id="emm_rol" ${esYo?'disabled':''} style="width:100%;padding:11px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;background:#fff;">
+              <option value="coordinador" ${u.rol==='coordinador'?'selected':''}>Coordinador</option>
+              <option value="dueno" ${u.rol==='dueno'?'selected':''}>Administrador (dueño)</option>
+            </select>
+            ${esYo?'<div class="small text-muted" style="margin-top:4px;">No puedes cambiar tu propio rol para no perder acceso.</div>':''}
+          </div>
+          <div style="padding:14px 18px;border-top:1px solid #E2E8F0;display:flex;gap:8px;justify-content:flex-end;background:#F8FAFC;border-radius:0 0 14px 14px;">
+            <button class="btn btn-outline" onclick="document.getElementById('editarMiembroModal').remove()">Cancelar</button>
+            <button class="btn btn-primary" onclick="guardarMiembroEquipo('${id}')" style="background:#1D4ED8;">Guardar cambios</button>
+          </div>
+        </div>`;
+    } catch (err) { alert('Error cargando miembro: ' + err.message); }
+  };
+
+  window.guardarMiembroEquipo = async function (id) {
+    const nombre = document.getElementById('emm_nombre').value.trim();
+    const email  = document.getElementById('emm_email').value.trim();
+    const tel    = document.getElementById('emm_tel').value.trim();
+    const rol    = document.getElementById('emm_rol').value;
+    if (!nombre) { alert('El nombre es obligatorio'); return; }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert('Email no válido'); return; }
+    try {
+      // Detectar si cambia el email (para avisar del extra manual)
+      const { data: prev } = await window.sb.from('usuarios').select('email').eq('id', id).single();
+      const cambiaEmail = prev && prev.email && prev.email.toLowerCase() !== email.toLowerCase();
+      // Intentamos update con todas las columnas. Si `telefono` no existe en la BD, reintentamos sin ella.
+      const patch = { nombre, email, rol };
+      let { error, data: upd } = await window.sb.from('usuarios').update({ ...patch, telefono: tel }).eq('id', id).select();
+      if (error && /telefono/i.test(error.message)) {
+        ({ error, data: upd } = await window.sb.from('usuarios').update(patch).eq('id', id).select());
+      }
+      if (error) throw error;
+      if (!upd || !upd.length) {
+        alert('No se ha guardado (0 filas). Puede que falte una policy UPDATE en usuarios para el dueño. Revisa RLS en Supabase.');
+        return;
+      }
+      document.getElementById('editarMiembroModal')?.remove();
+      toast('✓ Ficha actualizada');
+      if (cambiaEmail) {
+        alert(`✓ Ficha actualizada.\n\n⚠️ El email de LOGIN sigue siendo el antiguo: ${prev.email}\n\nPara cambiarlo también en Supabase Auth ve a Dashboard → Authentication → Users → busca el usuario → Edit → nuevo email → Save. El miembro tendrá que confirmar el cambio desde su bandeja de entrada.`);
+      }
+      renderEquipoBlock();
+    } catch (err) { alert('Error guardando: ' + err.message); }
   };
 
   window.desactivarMiembroEquipo = async function (id, nombre) {
