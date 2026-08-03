@@ -2034,19 +2034,84 @@
   async function cargarEmpleadosDB() {
     if (!window.sb) { setTimeout(cargarEmpleadosDB, 300); return; }
     try {
+      // Traemos también usuarios.activo: es el campo que REALMENTE decide si el
+      // socorrista puede entrar en la app. Se puede desincronizar de empleados.estado
+      // (la ficha decía "Activo" mientras la persona no podía entrar).
       const { data, error } = await window.sb
         .from('empleados')
-        .select('*')
+        .select('*, usuarios(activo, ultimo_login)')
         .neq('estado', 'eliminado')
         .order('nombre');
       if (error) throw error;
-      empleadosDB = (data || []).map(rowToEmp);
+      empleadosDB = (data || []).map(r => {
+        const emp = rowToEmp(r);
+        emp.puedeEntrar   = r.usuarios ? r.usuarios.activo === true : null; // null = sin cuenta
+        emp.ultimoLogin   = r.usuarios ? r.usuarios.ultimo_login : null;
+        // Bandera de incoherencia: figura activo pero no puede entrar
+        emp.accesoRoto    = (r.estado === 'activo') && (emp.puedeEntrar !== true);
+        return emp;
+      });
       renderEmpleadosGrid();
+      avisarAccesosRotos();
     } catch (err) {
       console.error('[Empleados]', err);
       if (empleadosGrid) empleadosGrid.innerHTML = `<div style="grid-column:1/-1; padding:30px; text-align:center; color: var(--danger);">Error cargando empleados: ${err.message}</div>`;
     }
   }
+
+  // Aviso global: cuántos empleados figuran activos pero NO pueden entrar en la app.
+  function avisarAccesosRotos() {
+    const rotos = empleadosDB.filter(e => e.accesoRoto);
+    let banner = document.getElementById('bannerAccesosRotos');
+    if (rotos.length === 0) { if (banner) banner.remove(); return; }
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'bannerAccesosRotos';
+      banner.style.cssText = 'margin:0 0 14px;padding:12px 16px;background:#FEF3C7;border:1px solid #F59E0B;border-left:4px solid #D97706;border-radius:8px;color:#78350F;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;';
+      const grid = document.getElementById('empleadosGrid');
+      if (grid && grid.parentNode) grid.parentNode.insertBefore(banner, grid);
+    }
+    banner.innerHTML = `
+      <svg class="ic ic-18" style="flex-shrink:0;"><use href="#ic-alert"/></svg>
+      <div style="flex:1;min-width:200px;">
+        <b>${rotos.length} empleado${rotos.length>1?'s figuran activos':' figura activo'} pero NO puede${rotos.length>1?'n':''} entrar en la app.</b>
+        <div style="margin-top:3px;">${rotos.slice(0,5).map(e => e.nombre).join(' · ')}${rotos.length>5 ? ' y '+(rotos.length-5)+' más' : ''}</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="repararAccesos()">Reparar acceso de ${rotos.length===1?'este':'todos'}</button>
+    `;
+  }
+
+  // Restaurar acceso de UN empleado concreto (desde su ficha)
+  window.restaurarAccesoEmpleado = async function (usuarioId, nombre) {
+    if (!confirm(`¿Restaurar el acceso de ${nombre} a la app?\n\nPodrá volver a iniciar sesión y fichar.`)) return;
+    try {
+      const { error } = await window.sb.from('usuarios').update({ activo: true }).eq('id', usuarioId);
+      if (error) throw error;
+      toast(`✓ ${nombre} ya puede entrar en la app`);
+      await cargarEmpleadosDB();
+      renderFicha();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  // Reactiva usuarios.activo para todos los empleados con estado='activo'
+  window.repararAccesos = async function () {
+    const rotos = empleadosDB.filter(e => e.accesoRoto);
+    const conCuenta = rotos.filter(e => e.puedeEntrar === false && e.usuarioId);
+    const sinCuenta = rotos.filter(e => !e.usuarioId || e.puedeEntrar === null);
+    let msg = `Se va a restaurar el acceso a ${conCuenta.length} empleado(s).`;
+    if (sinCuenta.length) {
+      msg += `\n\n⚠️ ${sinCuenta.length} no tiene cuenta de acceso creada (${sinCuenta.slice(0,3).map(e=>e.nombre).join(', ')}${sinCuenta.length>3?'…':''}). A esos hay que crearles la cuenta con "Enviar email de acceso" desde su ficha.`;
+    }
+    if (conCuenta.length === 0) { alert(msg); return; }
+    if (!confirm(msg + '\n\n¿Continuar?')) return;
+    try {
+      const ids = conCuenta.map(e => e.usuarioId);
+      const { error } = await window.sb.from('usuarios').update({ activo: true }).in('id', ids);
+      if (error) throw error;
+      toast(`✓ Acceso restaurado a ${ids.length} empleado(s)`);
+      await cargarEmpleadosDB();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
 
   function empleadoData(id) {
     return empleadosDB.find(e => e.id === id) || null;
@@ -2130,6 +2195,12 @@
       if (e.estado === 'baja') badges.push(`<span class="badge badge-neutral small"><span class="dot"></span>Baja</span>`);
       else if (e.estado === 'alta-pendiente') badges.push(`<span class="badge badge-warn small"><span class="dot"></span>Alta pendiente</span>`);
       else badges.push(`<span class="badge badge-ok small"><span class="dot"></span>Activo</span>`);
+      // Aviso: figura activo pero NO puede entrar en la app (usuarios.activo = false o sin cuenta)
+      if (e.accesoRoto) {
+        badges.push(e.usuarioId
+          ? `<span class="badge badge-danger small" title="Su cuenta está desactivada: no puede entrar en la app"><span class="dot"></span>Sin acceso</span>`
+          : `<span class="badge badge-danger small" title="No tiene cuenta de acceso creada"><span class="dot"></span>Sin cuenta</span>`);
+      }
       if (e.esCorreturnos) badges.push(`<span class="badge small" style="background:#FEF3C7;color:#92400E;"><span class="dot" style="background:#F59E0B;"></span>Correturnos</span>`);
       return `
         <div class="emp-card ${e.estado === 'baja' ? 'baja' : ''}" data-emp="${e.id}">
@@ -2497,6 +2568,41 @@
       const psSes = window.PS_SESSION || {};
       const esAdmin = psSes.rol === 'dueno';
       body.innerHTML = `
+        <!-- Estado real de acceso a la app (usuarios.activo, no empleados.estado) -->
+        ${e.accesoRoto ? `
+          <div class="ficha-action-row" style="flex-direction:column;align-items:stretch;background:#FEF2F2;border-left:4px solid #DC2626;">
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <div class="icon" style="background:#FEE2E2;color:#B91C1C;"><svg class="ic ic-18"><use href="#ic-alert"/></svg></div>
+              <div class="ficha-action-body" style="flex:1;min-width:0;">
+                <div class="ficha-action-title" style="color:#B91C1C;">Este empleado NO puede entrar en la app</div>
+                <div class="ficha-action-sub">
+                  ${e.usuarioId
+                    ? 'Su ficha figura como <b>Activo</b>, pero su cuenta de acceso está desactivada. Al intentar entrar, la app le expulsa.'
+                    : 'No tiene cuenta de acceso creada. Usa "Enviar email de acceso" para crearla.'}
+                </div>
+              </div>
+            </div>
+            ${e.usuarioId ? `
+              <div class="row gap-2 mt-3" style="justify-content:flex-end;">
+                <button class="btn btn-primary btn-sm" onclick="restaurarAccesoEmpleado('${e.usuarioId}','${(e.nombre||'').replace(/'/g,'\\\'')}')">
+                  <svg class="ic ic-14"><use href="#ic-check-circle"/></svg> Restaurar acceso
+                </button>
+              </div>` : ''}
+          </div>` : `
+          <div class="ficha-action-row ok">
+            <div class="icon" style="background:#DCFCE7;color:#166534;"><svg class="ic ic-18"><use href="#ic-check-circle"/></svg></div>
+            <div class="ficha-action-body">
+              <div class="ficha-action-title">Acceso a la app</div>
+              <div class="ficha-action-sub">
+                ${e.puedeEntrar === true
+                  ? (e.ultimoLogin
+                      ? 'Puede entrar. Último acceso: <b>' + new Date(e.ultimoLogin).toLocaleString('es-ES') + '</b>'
+                      : 'Puede entrar, pero <b>aún no ha entrado nunca</b>. Envíale el email de acceso.')
+                  : 'Estado: ' + (e.estado || '—')}
+              </div>
+            </div>
+          </div>`}
+
         <!-- Reset password: coord + admin -->
         <div class="ficha-action-row">
           <div class="icon" style="background: var(--info-bg); color: var(--sky-700);"><svg class="ic ic-18"><use href="#ic-shield"/></svg></div>
