@@ -3353,3 +3353,34 @@ img, svg { display: block; max-width: 100%; }
   .hor-actions { text-align: left; }
 }
 
+
+/* ==========================================================================
+   Panel de notificaciones (campana) — desktop popover, móvil bottom-sheet
+   ========================================================================== */
+.notif-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 380px;
+  max-width: calc(100vw - 20px);
+  max-height: 70vh;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .15);
+  z-index: 1000;
+}
+@media (max-width: 720px) {
+  .notif-panel {
+    position: fixed;
+    top: 62px;              /* justo bajo la nav */
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+    max-height: calc(100vh - 80px);
+    border-radius: 14px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, .3);
+  }
+}

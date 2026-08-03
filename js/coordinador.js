@@ -5867,37 +5867,72 @@
      ========================================================================== */
   async function renderDisponibleBlock() {
     const cont = document.getElementById('coordDisponibleBlock');
-    if (!cont) return;
     const psSes = window.PS_SESSION || {};
-    if (!['dueno','coordinador'].includes(psSes.rol)) { cont.innerHTML = ''; return; }
+    const esCoord = ['dueno','coordinador'].includes(psSes.rol);
+    // Chip de cabecera (siempre visible para dueño/coord, en cualquier tab)
+    const chip = document.getElementById('dispQuickToggle');
+    const chipDot = document.getElementById('dispQuickDot');
+    const chipTxt = document.getElementById('dispQuickText');
+    if (!esCoord) {
+      if (cont) cont.innerHTML = '';
+      if (chip) chip.style.display = 'none';
+      return;
+    }
     let disponible = true;
     try {
       const { data } = await window.sb.from('usuarios').select('disponible').eq('id', psSes.userId).single();
       disponible = data && data.disponible !== false;
     } catch (_) {}
-    cont.innerHTML = `
-      <div class="disp-panel ${disponible ? 'on' : 'off'}">
-        <div class="disp-info">
-          <div class="disp-icon">
-            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              ${disponible
-                ? '<circle cx="12" cy="12" r="9"></circle><path d="M8 12l3 3 5-6"></path>'
-                : '<circle cx="12" cy="12" r="9"></circle><path d="M12 8v4"></path><circle cx="12" cy="16" r="1" fill="currentColor"></circle>'}
-            </svg>
+
+    // 1) Chip cabecera
+    if (chip) {
+      chip.style.display = 'inline-flex';
+      if (disponible) {
+        chip.style.border = '2px solid #10B981';
+        chip.style.background = '#DCFCE7';
+        chip.style.color = '#065F46';
+        if (chipDot) { chipDot.style.background = '#10B981'; chipDot.style.boxShadow = '0 0 0 3px rgba(16,185,129,.2)'; }
+        if (chipTxt) chipTxt.textContent = 'Disponible';
+        chip.title = 'Estás disponible. Pulsa para ponerte LIBRE (no recibirás avisos).';
+      } else {
+        chip.style.border = '2px solid #F59E0B';
+        chip.style.background = '#FEF3C7';
+        chip.style.color = '#78350F';
+        if (chipDot) { chipDot.style.background = '#F59E0B'; chipDot.style.boxShadow = '0 0 0 3px rgba(245,158,11,.25)'; }
+        if (chipTxt) chipTxt.textContent = 'Libre';
+        chip.title = 'Estás en modo LIBRE. Los socorristas no te ven ni te llegan avisos. Pulsa para volver a estar disponible.';
+      }
+    }
+
+    // 2) Panel completo dentro del tab Coordinación
+    if (cont) {
+      cont.innerHTML = `
+        <div class="disp-panel ${disponible ? 'on' : 'off'}">
+          <div class="disp-info">
+            <div class="disp-icon">
+              <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                ${disponible
+                  ? '<circle cx="12" cy="12" r="9"></circle><path d="M8 12l3 3 5-6"></path>'
+                  : '<circle cx="12" cy="12" r="9"></circle><path d="M12 8v4"></path><circle cx="12" cy="16" r="1" fill="currentColor"></circle>'}
+              </svg>
+            </div>
+            <div>
+              <div class="disp-title">${disponible ? 'Disponible' : 'Libre (no molestar)'}</div>
+              <div class="disp-sub">${disponible
+                ? 'Los socorristas te ven en la lista de contacto y recibes avisos.'
+                : 'Los socorristas NO te ven ni te llegarán avisos hasta que vuelvas a ponerte disponible.'}</div>
+            </div>
           </div>
-          <div>
-            <div class="disp-title">${disponible ? 'Disponible' : 'Libre (no molestar)'}</div>
-            <div class="disp-sub">${disponible
-              ? 'Los socorristas te ven en la lista de contacto y recibes avisos.'
-              : 'Los socorristas NO te ven ni te llegarán avisos hasta que vuelvas a ponerte disponible.'}</div>
-          </div>
-        </div>
-        <button class="disp-toggle" onclick="toggleDisponible()">
-          ${disponible ? 'Ponerme libre' : 'Volver a estar disponible'}
-        </button>
-      </div>`;
+          <button class="disp-toggle" onclick="toggleDisponible()">
+            ${disponible ? 'Ponerme libre' : 'Volver a estar disponible'}
+          </button>
+        </div>`;
+    }
   }
   window.renderDisponibleBlock = renderDisponibleBlock;
+  // Actualizar chip cabecera cada vez que la sesión llegue o cambie
+  document.addEventListener('ps-session-updated', () => setTimeout(renderDisponibleBlock, 300));
+  setTimeout(renderDisponibleBlock, 900);
 
   window.toggleDisponible = async function () {
     const psSes = window.PS_SESSION || {};
