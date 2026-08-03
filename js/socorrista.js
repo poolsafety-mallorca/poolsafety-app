@@ -223,20 +223,34 @@
         .order('hora', { ascending: true });
       const rows = data || [];
       const fmt = (iso) => new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-      // Reset y reconstruir
-      state.fichado = false; state.horaEntrada = null; state.horaSalida = null;
-      // Encontrar el último par entrada/salida sin cerrar
-      let ultimaEntrada = null, ultimaSalida = null;
+
+      // Reset y reconstruir. Soporta VARIOS tramos el mismo día (turno partido).
+      state.fichado = false;
+      state.horaEntrada = null;
+      state.horaSalida = null;
+      state.tramos = [];      // [{entrada:'10:00', salida:'14:30'}, …] ya cerrados
+      state.tramosMin = [];   // duración en minutos de cada tramo cerrado
+
+      let entradaAbierta = null;
       for (const f of rows) {
-        if (f.tipo === 'entrada') { ultimaEntrada = f.hora; ultimaSalida = null; }
-        else if (f.tipo === 'salida') { ultimaSalida = f.hora; }
+        if (f.tipo === 'entrada') {
+          entradaAbierta = f.hora;
+        } else if (f.tipo === 'salida' && entradaAbierta) {
+          state.tramos.push({ entrada: fmt(entradaAbierta), salida: fmt(f.hora) });
+          state.tramosMin.push(Math.max(0, (new Date(f.hora) - new Date(entradaAbierta)) / 60000));
+          entradaAbierta = null;
+        }
       }
-      if (ultimaEntrada && !ultimaSalida) {
+
+      if (entradaAbierta) {
+        // Hay un tramo abierto ahora mismo → está trabajando
         state.fichado = true;
-        state.horaEntrada = fmt(ultimaEntrada);
-      } else if (ultimaEntrada && ultimaSalida) {
-        state.horaEntrada = fmt(ultimaEntrada);
-        state.horaSalida = fmt(ultimaSalida);
+        state.horaEntrada = fmt(entradaAbierta);
+      } else if (state.tramos.length) {
+        // Todos los tramos cerrados → mostramos el último, pero se puede fichar otro
+        const ultimo = state.tramos[state.tramos.length - 1];
+        state.horaEntrada = ultimo.entrada;
+        state.horaSalida = ultimo.salida;
       }
       if (typeof renderPunch === 'function') renderPunch();
     } catch (err) {
@@ -339,7 +353,19 @@
   }
 
   function renderPunch() {
+    // Resumen de los tramos ya cerrados hoy (turnos partidos: mañana + tarde)
+    const tramos = state.tramos || [];
+    const resumenTramos = tramos.length
+      ? `<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:10px;">
+           ${tramos.map(t => `
+             <span style="background:rgba(255,255,255,.18);color:#fff;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">
+               ${t.entrada} – ${t.salida}
+             </span>`).join('')}
+         </div>`
+      : '';
+
     if (!state.fichado && !state.horaSalida) {
+      // Aún no ha fichado nada hoy
       punchBadge.innerHTML = `<span class="dot" style="background:#FCA5A5;"></span> No iniciado`;
       punchWhen.textContent = 'Pulsa para fichar tu entrada al turno';
       punchActions.innerHTML = `
@@ -348,24 +374,50 @@
           Fichar entrada
         </button>`;
       document.getElementById('punchInBtn').addEventListener('click', doPunchIn);
+
     } else if (state.fichado) {
+      // Está dentro de un tramo
       punchBadge.innerHTML = `<span class="dot" style="background:#34D399;"></span> Trabajando`;
-      punchWhen.textContent = `Fichaste entrada a las ${state.horaEntrada}`;
+      punchWhen.textContent = tramos.length
+        ? `Segundo tramo · entraste a las ${state.horaEntrada}`
+        : `Fichaste entrada a las ${state.horaEntrada}`;
       punchActions.innerHTML = `
         <button class="punch-cta out" id="punchOutBtn">
           <svg class="ic ic-18"><use href="#ic-stop"/></svg>
           Fichar salida
-        </button>`;
+        </button>
+        ${resumenTramos}`;
       document.getElementById('punchOutBtn').addEventListener('click', doPunchOut);
+
     } else {
-      punchBadge.innerHTML = `<span class="dot" style="background:#94A3B8;"></span> Turno finalizado`;
-      punchWhen.textContent = `${state.horaEntrada} – ${state.horaSalida} · registrado correctamente`;
+      // Tramo cerrado. IMPORTANTE: se deja fichar otra entrada el mismo día
+      // porque muchos socorristas tienen turno partido (mañana y tarde).
+      const totalHoy = calcularHorasHoy();
+      punchBadge.innerHTML = `<span class="dot" style="background:#94A3B8;"></span> Turno registrado`;
+      punchWhen.textContent = totalHoy
+        ? `Llevas ${totalHoy} hoy · puedes fichar otro tramo si vuelves`
+        : `${state.horaEntrada} – ${state.horaSalida} · registrado correctamente`;
       punchActions.innerHTML = `
-        <div style="text-align:center; padding:14px; color:#fff; opacity:.9; font-size:14px; display:inline-flex; gap:6px; align-items:center; justify-content:center; width:100%;">
-          <svg class="ic ic-16"><use href="#ic-check-circle"/></svg>
-          Fichaje registrado
+        <button class="punch-cta" id="punchInBtn">
+          <svg class="ic ic-18"><use href="#ic-play"/></svg>
+          Fichar nueva entrada
+        </button>
+        ${resumenTramos}
+        <div style="text-align:center;margin-top:8px;color:#fff;opacity:.75;font-size:12px;">
+          Úsalo si tienes turno partido o vuelves al puesto
         </div>`;
+      document.getElementById('punchInBtn').addEventListener('click', doPunchIn);
     }
+  }
+
+  // Suma de todos los tramos cerrados hoy, en formato "3h 30min"
+  function calcularHorasHoy() {
+    const tramos = state.tramosMin || [];
+    if (!tramos.length) return '';
+    const total = tramos.reduce((s, m) => s + m, 0);
+    const h = Math.floor(total / 60), m = Math.round(total % 60);
+    if (h === 0) return `${m} min`;
+    return m === 0 ? `${h}h` : `${h}h ${m}min`;
   }
 
   async function insertarFichaje(tipo) {
@@ -400,10 +452,9 @@
     btn.disabled = true;
     try {
       const r = await insertarFichaje('entrada');
-      state.fichado = true;
-      state.horaEntrada = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-      PS.setSocorristaState(state);
-      renderPunch();
+      // Releemos de BD para que los tramos del día queden bien (turnos partidos)
+      await sincronizarEstadoFichajeDesdeBD();
+      renderMetricasMes();
       if (r.fueraDeZona) {
         toast(`⚠️ Entrada FUERA de zona (${r.distanciaM}m del puesto). Registrada con aviso al coordinador.`);
       } else {
@@ -425,10 +476,9 @@
     if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="ic ic-18"><use href="#ic-signal"/></svg> Registrando salida…'; }
     try {
       const r = await insertarFichaje('salida');
-      state.horaSalida = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-      state.fichado = false;
-      PS.setSocorristaState(state);
-      renderPunch();
+      // Releemos de BD para recalcular los tramos del día (turnos partidos)
+      await sincronizarEstadoFichajeDesdeBD();
+      renderMetricasMes();
       toast(`✓ Salida registrada · ¡Buen trabajo!${r.fueraDeZona ? ' (fuera de zona)' : ''}`);
     } catch (err) {
       toast('Error: ' + err.message);
@@ -436,32 +486,11 @@
     }
   }
 
+  // Alias histórico: antes había aquí una segunda implementación que NO
+  // contemplaba turnos partidos y machacaba el estado. Ahora todo pasa por
+  // sincronizarEstadoFichajeDesdeBD, que sí reconstruye los tramos del día.
   async function cargarFichajesHoyDeBd() {
-    if (!empleadoReal || !window.sb) return;
-    const hoy = new Date().toISOString().slice(0,10);
-    try {
-      const { data, error } = await window.sb.from('fichajes')
-        .select('*')
-        .eq('empleado_id', empleadoReal.id)
-        .gte('hora', hoy + 'T00:00:00')
-        .order('hora', { ascending: true });
-      if (error) throw error;
-      if (data && data.length > 0) {
-        const ult = data[data.length - 1];
-        if (ult.tipo === 'entrada') {
-          state.fichado = true;
-          state.horaEntrada = new Date(ult.hora).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-          state.horaSalida = null;
-        } else if (ult.tipo === 'salida') {
-          state.fichado = false;
-          const ultEntrada = data.filter(f => f.tipo === 'entrada').pop();
-          state.horaEntrada = ultEntrada ? new Date(ultEntrada.hora).toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'}) : null;
-          state.horaSalida = new Date(ult.hora).toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'});
-        }
-        PS.setSocorristaState(state);
-        renderPunch();
-      }
-    } catch (err) { console.warn('[Fichajes]', err.message); }
+    return sincronizarEstadoFichajeDesdeBD();
   }
 
   renderPunch();
