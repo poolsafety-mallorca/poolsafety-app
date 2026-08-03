@@ -382,7 +382,7 @@
     try {
       const { data, error } = await window.sb
         .from('alertas')
-        .select('id, tipo, origen, criticidad, mensaje, cantidad_pedida, fecha_creacion, puesto_id, item_id, puestos(nombre), inventario_items(nombre, seccion)')
+        .select('id, tipo, origen, criticidad, mensaje, cantidad_pedida, fecha_creacion, puesto_id, item_id, empleado_id, puestos(nombre), inventario_items(nombre, seccion), empleados(nombre, telefono)')
         .eq('resuelto', false)
         .order('fecha_creacion', { ascending: false })
         .limit(50);
@@ -402,14 +402,18 @@
                         : a.criticidad === 'media' ? 'badge-warn' : 'badge-info';
         const origen = a.origen === 'auto'
           ? `<span class="badge badge-info small"><svg class="ic ic-14"><use href="#ic-signal"/></svg>Auto</span>`
-          : `<span class="badge badge-neutral small"><svg class="ic ic-14"><use href="#ic-user"/></svg>Socorrista</span>`;
+          : `<span class="badge badge-neutral small"><svg class="ic ic-14"><use href="#ic-user"/></svg>${a.empleados?.nombre || 'Socorrista'}</span>`;
         const itemNombre = (a.inventario_items && a.inventario_items.nombre) || a.mensaje || 'Material';
         const seccion = a.inventario_items && a.inventario_items.seccion;
         const secTag = seccion === 'desa' ? ' · DESA' : seccion === 'oxigeno' ? ' · Oxígeno' : '';
         const puestoNombre = (a.puestos && a.puestos.nombre) || '—';
         const sub = a.cantidad_pedida ? `${puestoNombre} · faltan ${a.cantidad_pedida}` : puestoNombre;
+        // Nota escrita por el socorrista al reportar. Se guarda dentro del
+        // mensaje con el formato "Falta 3x Gasas — su nota (Hotel X)".
+        const nota = extraerNotaDeAlerta(a);
+        const cuando = a.fecha_creacion ? tiempoRelativo(new Date(a.fecha_creacion)) : '';
         return `
-          <div class="alert ${cls}">
+          <div class="alert ${cls}" style="cursor:pointer;" onclick="verDetalleAlerta('${a.id}')" title="Pulsa para ver el detalle completo">
             <div class="alert-icon">
               <svg class="ic ic-18"><use href="#ic-alert"/></svg>
             </div>
@@ -420,19 +424,152 @@
               </div>
               <div class="alert-sub">
                 <svg class="ic ic-14"><use href="#ic-pin"/></svg>
-                ${sub}
+                ${sub}${cuando ? ' · ' + cuando : ''}
               </div>
+              ${nota ? `
+                <div style="margin-top:6px;padding:7px 10px;background:#FFFBEB;border-left:3px solid #F59E0B;border-radius:0 6px 6px 0;font-size:12.5px;color:#78350F;">
+                  <b>Nota:</b> ${nota}
+                </div>` : ''}
               <div class="row gap-1 mt-1">${origen}</div>
             </div>
-            <button class="alert-action" onclick="resolveAlert('${a.id}', this)">Reponer</button>
+            <button class="alert-action" onclick="event.stopPropagation(); resolveAlert('${a.id}', this)">Reponer</button>
           </div>
         `;
       }).join('');
+      // Guardamos para el modal de detalle
+      window.__alertasCache = alertas;
     } catch (err) {
       console.warn('[Alertas]', err);
       alertsList.innerHTML = `<div class="text-muted small" style="padding:16px;color:var(--danger);">Error: ${err.message}</div>`;
     }
   }
+
+  // Extrae la nota que escribió el socorrista dentro del mensaje de la alerta.
+  // Formatos que genera la app del socorrista:
+  //   "Falta 3× Gasas — se acabaron las del cajón (Hotel X)"   → reporte material
+  //   "[Mensaje de Carlos] texto libre"                        → mensaje al coord
+  function extraerNotaDeAlerta(a) {
+    const msg = a && a.mensaje ? String(a.mensaje) : '';
+    if (!msg) return '';
+    // Mensaje libre al coordinador
+    const libre = msg.match(/^\[Mensaje de [^\]]+\]\s*(.+)$/s);
+    if (libre) return libre[1].trim();
+    // Reporte de material: la nota va tras el guion largo, antes del hotel
+    const conNota = msg.match(/—\s*(.+?)\s*(?:\([^)]*\))?\s*$/s);
+    if (conNota) {
+      const nota = conNota[1].trim();
+      // Evitamos devolver el propio nombre del producto si no había nota
+      const item = (a.inventario_items && a.inventario_items.nombre) || '';
+      if (nota && nota.toLowerCase() !== item.toLowerCase()) return nota;
+    }
+    return '';
+  }
+
+  // Modal con toda la información de la alerta + acciones.
+  // Busca en los dos caches: el del widget lateral y el de la campana.
+  window.verDetalleAlerta = async function (id) {
+    let a = (window.__alertasCache || []).find(x => x.id === id)
+         || (typeof alertasPanelCache !== 'undefined' ? alertasPanelCache.find(x => x.id === id) : null);
+    // Si no está en memoria (p. ej. tras refrescar), la pedimos a la BD
+    if (!a) {
+      try {
+        const { data } = await window.sb.from('alertas')
+          .select('id, tipo, origen, criticidad, mensaje, cantidad_pedida, fecha_creacion, puestos(nombre), inventario_items(nombre, seccion), empleados(nombre, telefono)')
+          .eq('id', id).single();
+        a = data;
+      } catch (_) {}
+    }
+    if (!a) { toast('No se encontró la alerta'); return; }
+    const item = a.inventario_items?.nombre || 'Material';
+    const puesto = a.puestos?.nombre || '—';
+    const quien = a.empleados?.nombre || (a.origen === 'auto' ? 'Sistema (stock bajo)' : 'Socorrista');
+    const tel = (a.empleados?.telefono || '').replace(/\s+/g,'');
+    const telHref = tel ? (tel.startsWith('+') ? tel : (tel.length === 9 ? '+34'+tel : tel)) : '';
+    const nota = extraerNotaDeAlerta(a);
+    const cuando = a.fecha_creacion
+      ? new Date(a.fecha_creacion).toLocaleString('es-ES', { weekday:'long', day:'2-digit', month:'long', hour:'2-digit', minute:'2-digit' })
+      : '—';
+    const critColor = a.criticidad === 'alta' ? '#DC2626' : a.criticidad === 'media' ? '#D97706' : '#0891B2';
+
+    const body = document.getElementById('postModalBody');
+    if (!body) return;
+    body.innerHTML = `
+      <div class="modal-head">
+        <div>
+          <h3>${item}</h3>
+          <p class="small text-muted" style="margin:4px 0 0;">
+            <svg class="ic ic-14" style="vertical-align:-3px;"><use href="#ic-pin"/></svg> ${puesto}
+          </p>
+        </div>
+        <button class="modal-close" onclick="closePostModal()">
+          <svg class="ic ic-16"><use href="#ic-x"/></svg>
+        </button>
+      </div>
+
+      <div style="margin:6px 0 14px;">
+        <span class="badge" style="background:${critColor}1a;color:${critColor};padding:6px 12px;font-size:12px;">
+          <span class="dot" style="background:${critColor};"></span> Criticidad ${a.criticidad}
+        </span>
+        ${a.cantidad_pedida ? `<span class="badge badge-neutral" style="margin-left:6px;padding:6px 12px;font-size:12px;">Faltan ${a.cantidad_pedida} uds</span>` : ''}
+      </div>
+
+      ${nota ? `
+        <div style="padding:14px 16px;background:#FFFBEB;border-left:4px solid #F59E0B;border-radius:0 8px 8px 0;margin-bottom:14px;">
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#92400E;font-weight:700;margin-bottom:5px;">
+            Nota de ${quien}
+          </div>
+          <div style="font-size:14.5px;color:#78350F;line-height:1.5;">${nota}</div>
+        </div>` : `
+        <div class="text-muted small" style="padding:12px;background:#F8FAFC;border-radius:8px;margin-bottom:14px;">
+          No escribió ninguna nota adicional.
+        </div>`}
+
+      <div class="li" style="margin-bottom:10px;">
+        <div class="li-body">
+          <div class="li-title">Reportado por</div>
+          <div class="li-sub">${quien}${a.empleados?.telefono ? ' · ' + a.empleados.telefono : ''}</div>
+        </div>
+        ${telHref ? `
+          <a class="btn btn-primary btn-sm" href="tel:${telHref}" style="text-decoration:none;background:#059669;border-color:transparent;">
+            <svg class="ic ic-16"><use href="#ic-phone"/></svg> Llamar
+          </a>` : ''}
+      </div>
+
+      <div class="li" style="margin-bottom:10px;">
+        <div class="li-body">
+          <div class="li-title">Cuándo</div>
+          <div class="li-sub">${cuando}</div>
+        </div>
+      </div>
+
+      <div class="li">
+        <div class="li-body">
+          <div class="li-title">Mensaje completo registrado</div>
+          <div class="li-sub" style="white-space:pre-wrap;">${a.mensaje || '—'}</div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closePostModal()">Cerrar</button>
+        <button class="btn btn-primary" onclick="resolverDesdeDetalle('${a.id}')">
+          <svg class="ic ic-16"><use href="#ic-check"/></svg> Marcar como repuesto
+        </button>
+      </div>`;
+    document.getElementById('postModal').classList.add('open');
+  };
+
+  window.resolverDesdeDetalle = async function (id) {
+    try {
+      const { error } = await window.sb.from('alertas')
+        .update({ resuelto: true, fecha_resolucion: new Date().toISOString(), resuelto_por: (window.PS_SESSION||{}).userId || null })
+        .eq('id', id);
+      if (error) throw error;
+      closePostModal();
+      toast('✓ Alerta resuelta');
+      renderAlertas();
+      if (typeof refrescarCampana === 'function') refrescarCampana();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
 
   window.resolveAlert = async function (id, btn) {
     btn.disabled = true;
@@ -498,18 +635,21 @@
       const cuando = new Date(a.fecha_creacion);
       const hace = tiempoRelativo(cuando);
       const iconTipo = a.tipo === 'otro' ? 'ic-message-circle' : a.tipo === 'manual' ? 'ic-alert' : 'ic-bell';
+      const notaPanel = extraerNotaDeAlerta(a);
       return `
-        <div style="display:flex;gap:10px;padding:12px;margin:4px 0;border:1px solid #e2e8f0;border-radius:8px;background:#fff;">
+        <div style="display:flex;gap:10px;padding:12px;margin:4px 0;border:1px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer;"
+             onclick="toggleNotifPanel(); verDetalleAlerta('${a.id}')" title="Pulsa para ver el detalle">
           <div style="width:36px;height:36px;border-radius:8px;background:${critBg};color:${critColor};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
             <svg class="ic ic-16"><use href="#${iconTipo}"/></svg>
           </div>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;font-size:13px;line-height:1.3;">${a.mensaje || item || 'Alerta'}</div>
+            ${notaPanel ? `<div style="margin-top:4px;padding:5px 8px;background:#FFFBEB;border-left:3px solid #F59E0B;border-radius:0 4px 4px 0;font-size:11.5px;color:#78350F;"><b>Nota:</b> ${notaPanel}</div>` : ''}
             <div style="color:#64748b;font-size:11px;margin-top:3px;">
               📍 ${puesto}${emp ? ' · 👤 ' + emp : ''} · ${hace}
             </div>
           </div>
-          <button class="btn btn-outline btn-sm" onclick="resolverAlerta('${a.id}')" style="padding:4px 8px;font-size:11px;flex-shrink:0;height:26px;align-self:center;">
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); resolverAlerta('${a.id}')" style="padding:4px 8px;font-size:11px;flex-shrink:0;height:26px;align-self:center;">
             ✓ Resolver
           </button>
         </div>
