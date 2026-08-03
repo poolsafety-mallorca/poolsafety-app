@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-03 (quinta jornada · v79→v83 · parte de incidencias completo)
-**Cache SW actual: `poolsafety-v83`**
+Última actualización: 2026-08-03 (v84 · botón incidencia en tab + mapa real socorrista + 3 tareas diarias)
+**Cache SW actual: `poolsafety-v84`**
 
 ---
 

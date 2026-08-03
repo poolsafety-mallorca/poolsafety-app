@@ -284,6 +284,35 @@
       if (mapAddr) mapAddr.textContent = 'El coordinador debe asignarte un hotel';
       if (btnLlegar) btnLlegar.disabled = true;
     }
+    pintarMapaMiPuesto();
+  }
+
+  // Mapa real (OSM embed) del puesto asignado.
+  // Si el puesto no tiene coords, muestra placeholder textual con enlace a buscar en maps.
+  function pintarMapaMiPuesto() {
+    const cont = document.getElementById('miPuestoMapa');
+    if (!cont) return;
+    if (!puestoReal) {
+      cont.innerHTML = `<div style="height:180px;display:flex;align-items:center;justify-content:center;color:#94A3B8;font-size:13px;text-align:center;padding:20px;">Sin puesto asignado.<br>El coordinador debe asignarte un hotel.</div>`;
+      return;
+    }
+    const lat = parseFloat(puestoReal.gps_lat);
+    const lng = parseFloat(puestoReal.gps_lng);
+    if (!lat || !lng) {
+      cont.innerHTML = `<div style="height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#64748B;font-size:13px;padding:20px;text-align:center;">
+        <svg class="ic ic-22"><use href="#ic-pin"/></svg>
+        <div>El puesto aún no tiene coordenadas GPS registradas.</div>
+        <div class="small">Pídele al coordinador que las añada en el panel de puestos.</div>
+      </div>`;
+      return;
+    }
+    // Bbox pequeño alrededor del punto (~200m)
+    const marg = 0.0015;
+    const bbox = [lng - marg, lat - marg, lng + marg, lat + marg].join(',');
+    const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
+    cont.innerHTML = `
+      <iframe src="${src}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+        style="width:100%;height:200px;border:0;display:block;" title="Mapa del puesto"></iframe>`;
   }
 
   window.comoLlegarPuesto = function () {
@@ -817,21 +846,27 @@
       } catch (_) {}
     }
 
-    // Comprobación botiquín: cuántos items del puesto están revisados HOY
+    // Comprobación por sección: cuántos items de cada sección están revisados HOY.
+    // La sección se considera "pendiente" si tiene al menos 1 item y hay al menos 1
+    // no revisado hoy. Al día siguiente se resetea sola (ultima_revision es de ayer).
+    const stats = { botiquin: { total: 0, rev: 0 }, desa: { total: 0, rev: 0 }, oxigeno: { total: 0, rev: 0 } };
     if (puestoId) {
       try {
         const desdeHoy = new Date();
         desdeHoy.setHours(0, 0, 0, 0);
         const { data } = await window.sb.from('inventario_puesto')
-          .select('id, revisado_hoy, ultima_revision')
+          .select('id, revisado_hoy, ultima_revision, inventario_items(seccion)')
           .eq('puesto_id', puestoId);
-        botiquinTotal = (data || []).length;
-        botiquinRevHoy = (data || []).filter(r =>
-          r.revisado_hoy && r.ultima_revision && new Date(r.ultima_revision) >= desdeHoy
-        ).length;
+        (data || []).forEach(r => {
+          const sec = r.inventario_items?.seccion;
+          if (!stats[sec]) return;
+          stats[sec].total++;
+          if (r.revisado_hoy && r.ultima_revision && new Date(r.ultima_revision) >= desdeHoy) stats[sec].rev++;
+        });
       } catch (_) {}
     }
-    const botiquinPendiente = botiquinTotal > 0 && botiquinRevHoy < botiquinTotal;
+    const pend = (s) => s.total > 0 && s.rev < s.total;
+    const algunaSeccionPendiente = pend(stats.botiquin) || pend(stats.desa) || pend(stats.oxigeno);
 
     // Notice tareas
     const noticeTareas = document.getElementById('noticeTareas');
@@ -846,19 +881,23 @@
       }
     }
 
-    // Notice Botiquín (visible solo si aún queda material sin revisar HOY)
-    const noticeBotiquin = document.getElementById('noticeBotiquin');
-    if (noticeBotiquin) {
-      if (botiquinPendiente) {
-        noticeBotiquin.style.display = '';
-        const btit = document.getElementById('noticeBotiquinTitle');
-        const bsub = document.getElementById('noticeBotiquinSub');
-        if (btit) btit.textContent = 'Revisar botiquín';
-        if (bsub) bsub.textContent = `${botiquinRevHoy}/${botiquinTotal} revisados hoy · pulsa para completar`;
+    // Notices independientes por sección (botiquín / DESA / oxigenoterapia)
+    const pintarSeccion = (id, subId, s) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (pend(s)) {
+        el.style.display = '';
+        const sub = document.getElementById(subId);
+        if (sub) sub.textContent = s.rev === 0
+          ? `Pendiente de revisar hoy · ${s.total} artículos`
+          : `${s.rev}/${s.total} marcados · pulsa para completar`;
       } else {
-        noticeBotiquin.style.display = 'none';
+        el.style.display = 'none';
       }
-    }
+    };
+    pintarSeccion('noticeBotiquin', 'noticeBotiquinSub', stats.botiquin);
+    pintarSeccion('noticeDesa',     'noticeDesaSub',     stats.desa);
+    pintarSeccion('noticeOxigeno',  'noticeOxigenoSub',  stats.oxigeno);
 
     // Notice Docs pendiente
     const noticeDocs = document.getElementById('noticeDocs');
@@ -866,7 +905,7 @@
 
     // "Todo al día" cuando no hay ninguna alerta
     const allOk = document.getElementById('noticeAllOk');
-    const nadaPendiente = !kitAltaPendiente && tareasPend === 0 && !botiquinPendiente;
+    const nadaPendiente = !kitAltaPendiente && tareasPend === 0 && !algunaSeccionPendiente;
     if (allOk) allOk.style.display = nadaPendiente ? '' : 'none';
 
     // Punto rojo campana (tareas + kit alta pendiente)
@@ -1339,6 +1378,8 @@
           toast(`✓ Revisión de ${nombreLabel} guardada`);
           renderInventario();
           renderRevisionSummary();
+          // Refrescar el home para que la tarjeta correspondiente desaparezca
+          if (typeof renderPendientesYCampana === 'function') renderPendientesYCampana();
         } catch (err) {
           toast('Error guardando la revisión: ' + err.message);
           btnGuardar.disabled = false;
@@ -1364,6 +1405,7 @@
           items.forEach(it => { it.revisadoHoy = false; it.ultimaRevision = null; });
           renderInventario();
           renderRevisionSummary();
+          if (typeof renderPendientesYCampana === 'function') renderPendientesYCampana();
           toast('Sección desbloqueada — revísala de nuevo');
         } catch (err) { toast('Error: ' + err.message); }
       });
@@ -1395,6 +1437,14 @@
       renderInventario();
     });
   });
+
+  // Salto directo desde la home a la sección concreta pendiente
+  window.irARevisarSeccion = function (sec) {
+    if (['botiquin','desa','oxigeno'].indexOf(sec) === -1) sec = 'botiquin';
+    seccionActual = sec;
+    showView('botiquin');
+    setTimeout(() => { renderTabs(); renderInventario(); }, 60);
+  };
 
   renderTabs();
   renderRevisionSummary();

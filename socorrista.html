@@ -95,39 +95,11 @@
         </div>
       </section>
 
-      <!-- Puesto de hoy con mapa SVG -->
+      <!-- Puesto de hoy con mapa REAL de OpenStreetMap -->
       <div class="section-eyebrow"><span class="eyebrow">Mi puesto de hoy</span></div>
       <div class="card map-card">
-        <div class="map-view">
-          <!-- Falso mapa: bloques y calles -->
-          <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice">
-            <defs>
-              <pattern id="waves" x="0" y="0" width="30" height="30" patternUnits="userSpaceOnUse">
-                <path d="M0 15 Q7.5 10 15 15 T30 15" fill="none" stroke="#7EC8E8" stroke-opacity=".3" stroke-width="1"/>
-              </pattern>
-            </defs>
-            <!-- Manzanas -->
-            <rect x="10" y="10" width="90" height="60" fill="#E8F0F7" rx="4"/>
-            <rect x="110" y="10" width="70" height="50" fill="#E8F0F7" rx="4"/>
-            <rect x="190" y="10" width="120" height="55" fill="#E8F0F7" rx="4"/>
-            <rect x="320" y="10" width="70" height="65" fill="#E8F0F7" rx="4"/>
-            <rect x="10" y="130" width="140" height="60" fill="#E8F0F7" rx="4"/>
-            <rect x="160" y="120" width="110" height="70" fill="#E8F0F7" rx="4"/>
-            <rect x="280" y="130" width="110" height="60" fill="#E8F0F7" rx="4"/>
-            <!-- Calles horizontales -->
-            <path d="M0 80 L400 80" stroke="#fff" stroke-width="10"/>
-            <path d="M0 110 L400 110" stroke="#fff" stroke-width="8"/>
-            <!-- Calles verticales -->
-            <path d="M105 0 L105 200" stroke="#fff" stroke-width="8"/>
-            <path d="M275 0 L275 200" stroke="#fff" stroke-width="8"/>
-            <!-- Mar / piscina zona (fondo con waves) -->
-            <rect x="180" y="80" width="90" height="30" fill="url(#waves)" opacity=".6"/>
-          </svg>
-          <div class="map-radius"></div>
-          <svg class="map-pin" viewBox="0 0 32 40">
-            <path d="M16 40 C16 40 2 22 2 14 A14 14 0 0 1 30 14 C30 22 16 40 16 40 Z" fill="#EF4444"/>
-            <circle cx="16" cy="14" r="5" fill="#fff"/>
-          </svg>
+        <div id="miPuestoMapa" style="border-radius:12px;overflow:hidden;background:#F1F5F9;min-height:180px;">
+          <div style="height:180px;display:flex;align-items:center;justify-content:center;color:#94A3B8;font-size:13px;">Cargando mapa…</div>
         </div>
         <div class="map-info">
           <div class="map-info-left">
@@ -140,19 +112,6 @@
           </button>
         </div>
       </div>
-
-      <!-- Acción rápida: registrar parte de incidencia -->
-      <div class="section-eyebrow"><span class="eyebrow">Si ha ocurrido algo</span></div>
-      <button class="notice interactive" onclick="abrirNuevaIncidencia()" style="width:100%;border:2px solid #DC2626;background:linear-gradient(135deg,#FEF2F2,#FFF);padding:14px;cursor:pointer;">
-        <div class="notice-icon" style="background:#DC2626;color:#fff;">
-          <svg class="ic ic-22"><use href="#ic-alert"/></svg>
-        </div>
-        <div class="notice-body">
-          <div class="notice-title" style="color:#B91C1C;">Registrar parte de incidencia</div>
-          <div class="notice-sub">Ahogamiento, caída, corte, insolación… Se envía al momento al coordinador.</div>
-        </div>
-        <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
-      </button>
 
       <!-- Avisos rápidos -->
       <div class="section-eyebrow"><span class="eyebrow">Pendiente para hoy</span></div>
@@ -167,13 +126,33 @@
           </div>
           <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
         </div>
-        <div class="notice interactive" onclick="showView('botiquin')" id="noticeBotiquin" style="display:none;">
+        <div class="notice interactive" onclick="irARevisarSeccion('botiquin')" id="noticeBotiquin" style="display:none;">
           <div class="notice-icon sky">
             <svg class="ic ic-22"><use href="#ic-medkit"/></svg>
           </div>
           <div class="notice-body">
-            <div class="notice-title" id="noticeBotiquinTitle">Revisar botiquín</div>
-            <div class="notice-sub" id="noticeBotiquinSub">Verifica al empezar tu turno</div>
+            <div class="notice-title">Revisar botiquín (diario)</div>
+            <div class="notice-sub" id="noticeBotiquinSub">—</div>
+          </div>
+          <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
+        </div>
+        <div class="notice interactive" onclick="irARevisarSeccion('desa')" id="noticeDesa" style="display:none;">
+          <div class="notice-icon" style="background:#FEE2E2;color:#B91C1C;">
+            <svg class="ic ic-22"><use href="#ic-heart-pulse"/></svg>
+          </div>
+          <div class="notice-body">
+            <div class="notice-title">Revisar DESA (diario)</div>
+            <div class="notice-sub" id="noticeDesaSub">—</div>
+          </div>
+          <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
+        </div>
+        <div class="notice interactive" onclick="irARevisarSeccion('oxigeno')" id="noticeOxigeno" style="display:none;">
+          <div class="notice-icon" style="background:#DBEAFE;color:#1D4ED8;">
+            <svg class="ic ic-22"><use href="#ic-droplet"/></svg>
+          </div>
+          <div class="notice-body">
+            <div class="notice-title">Revisar oxigenoterapia (diario)</div>
+            <div class="notice-sub" id="noticeOxigenoSub">—</div>
           </div>
           <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
         </div>
@@ -420,6 +399,11 @@
     <svg class="ic ic-18"><use href="#ic-file-text"/></svg>
     Docs
     <span class="tab-dot" id="docsPendingDot" style="display:none;"></span>
+  </button>
+  <button type="button" onclick="abrirNuevaIncidencia()" title="Registrar parte de incidencia"
+    style="color:#B91C1C;">
+    <svg class="ic ic-18"><use href="#ic-alert"/></svg>
+    Incidencia
   </button>
   <button data-tab="perfil">
     <svg class="ic ic-18"><use href="#ic-user"/></svg>
