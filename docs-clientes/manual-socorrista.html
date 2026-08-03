@@ -151,12 +151,81 @@
     text-align: center;
   }
 
+  /* Barra de acciones fija */
+  .barra-acciones {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(255,255,255,0.97);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--linea);
+    padding: 12px 0;
+    margin: -24px -20px 24px;
+    padding-left: 20px;
+    padding-right: 20px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .btn-accion {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 18px;
+    border-radius: 999px;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    text-decoration: none;
+    transition: transform .1s, box-shadow .2s;
+  }
+  .btn-accion:active { transform: scale(0.97); }
+  .btn-pdf { background: var(--rojo); color: #fff; }
+  .btn-pdf:hover { box-shadow: 0 4px 14px rgba(185,28,28,0.3); }
+  .btn-wa { background: #25D366; color: #fff; }
+  .btn-wa:hover { box-shadow: 0 4px 14px rgba(37,211,102,0.3); }
+  .btn-copiar { background: #F1F5F9; color: var(--tinta); }
+  .barra-hint { font-size: 12px; color: var(--gris); margin-left: auto; }
+
+  @media (max-width: 600px) {
+    .barra-hint { display: none; }
+    .btn-accion { flex: 1; justify-content: center; }
+  }
+
   @media print {
-    body { max-width: 100%; }
+    body { max-width: 100%; padding: 0; }
     h2 { page-break-after: avoid; }
-    .paso, .aviso, .importante, .ok { page-break-inside: avoid; }
+    .paso, .aviso, .importante, .ok, .faq, table { page-break-inside: avoid; }
+    .barra-acciones { display: none !important; }
+    header.portada {
+      background: var(--rojo) !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .paso, .aviso, .importante, .ok, .indice, .pantalla, th {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    a { text-decoration: none; color: inherit; }
+    .indice { page-break-after: always; }
   }
 </style>
+
+<div class="barra-acciones">
+  <button class="btn-accion btn-pdf" onclick="descargarPDF()">
+    ⬇ Descargar en PDF
+  </button>
+  <button class="btn-accion btn-wa" onclick="compartirWhatsApp()">
+    Compartir por WhatsApp
+  </button>
+  <button class="btn-accion btn-copiar" onclick="copiarEnlace()" id="btnCopiar">
+    Copiar enlace
+  </button>
+  <span class="barra-hint">Guárdalo en el móvil para consultarlo cuando quieras</span>
+</div>
 
 <header class="portada">
   <div class="marca">Pool Safety Des Llevant, S.L.</div>
@@ -522,3 +591,57 @@
   info@poolsafety.es<br><br>
   App: poolsafety-app.netlify.app
 </footer>
+
+<script>
+  // URL fija del manual (para compartir aunque se abra desde un archivo local)
+  var URL_MANUAL = 'https://poolsafety-app.netlify.app/docs-clientes/manual-socorrista.html';
+
+  function descargarPDF() {
+    // El diálogo de impresión del navegador permite "Guardar como PDF"
+    // en Windows, Mac, Android y iOS.
+    window.print();
+  }
+
+  function compartirWhatsApp() {
+    var texto = 'Manual de la app PoolSafety para socorristas. ' +
+                'Aquí tienes todos los pasos: cómo entrar, firmar tus documentos, ' +
+                'fichar, revisar el botiquín y pedir material.\n\n' + URL_MANUAL;
+
+    // En móvil usamos el menú nativo de compartir (permite elegir contacto o grupo)
+    if (navigator.share) {
+      navigator.share({
+        title: 'Manual del socorrista · PoolSafety',
+        text: texto
+      }).catch(function () { /* el usuario canceló, no hacemos nada */ });
+      return;
+    }
+    // En ordenador abrimos WhatsApp Web con el mensaje ya escrito
+    window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
+  }
+
+  function copiarEnlace() {
+    var btn = document.getElementById('btnCopiar');
+    var original = btn.textContent;
+    function feedback(ok) {
+      btn.textContent = ok ? '✓ Enlace copiado' : 'Copia manual: ' + URL_MANUAL;
+      setTimeout(function () { btn.textContent = original; }, 2200);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(URL_MANUAL).then(
+        function () { feedback(true); },
+        function () { feedback(false); }
+      );
+    } else {
+      // Fallback para navegadores antiguos
+      var ta = document.createElement('textarea');
+      ta.value = URL_MANUAL;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); feedback(true); }
+      catch (e) { feedback(false); }
+      document.body.removeChild(ta);
+    }
+  }
+</script>
