@@ -891,8 +891,8 @@ window.PSPdf = (function () {
       try {
         doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
         doc.text('Zonas afectadas', COL_R + COL_R_W/2, y + 3, { align: 'center' });
-        await svgToPdf(doc, window.PSInc.siluetaSVG(zonas, false, 'front'), COL_R, y + 5, 24, 55);
-        await svgToPdf(doc, window.PSInc.siluetaSVG(zonas, false, 'back'),  COL_R + 28, y + 5, 24, 55);
+        await svgToPdf(doc, window.PSInc.siluetaParaPDF(zonas, 'front'), COL_R, y + 5, 24, 55);
+        await svgToPdf(doc, window.PSInc.siluetaParaPDF(zonas, 'back'),  COL_R + 28, y + 5, 24, 55);
         doc.setFontSize(6.5);
         doc.text('Frontal', COL_R + 12, y + 63, { align: 'center' });
         doc.text('Espalda', COL_R + 40, y + 63, { align: 'center' });

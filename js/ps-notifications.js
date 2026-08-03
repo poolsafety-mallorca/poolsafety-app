@@ -62,26 +62,93 @@
     localStorage.setItem(LS_KEY, '0');
   }
 
+  // Pequeño beep sintético — reproduce solo si el navegador lo permite tras la primera interacción del usuario
+  let __audioCtx = null;
+  function beepCorto(volumen) {
+    try {
+      if (!__audioCtx) __audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = __audioCtx;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 880;
+      g.gain.value = Math.min(0.15, Math.max(0.02, volumen || 0.08));
+      o.connect(g); g.connect(ctx.destination);
+      o.start();
+      setTimeout(() => { try { o.stop(); } catch (_) {} }, 160);
+      // Segundo tono más agudo para el "ding-ding"
+      setTimeout(() => {
+        try {
+          const o2 = ctx.createOscillator();
+          const g2 = ctx.createGain();
+          o2.type = 'sine';
+          o2.frequency.value = 1200;
+          g2.gain.value = Math.min(0.12, (volumen || 0.08) * 0.9);
+          o2.connect(g2); g2.connect(ctx.destination);
+          o2.start();
+          setTimeout(() => { try { o2.stop(); } catch (_) {} }, 160);
+        } catch (_) {}
+      }, 180);
+    } catch (_) { /* silencioso si no hay audio */ }
+  }
+
+  // Toast in-app grande (parte superior) para cuando la app está VISIBLE
+  // y no puede saltar la notificación nativa del SO.
+  function toastInApp(titulo, body, url) {
+    try {
+      let cont = document.getElementById('__psnotif_toast');
+      if (!cont) {
+        cont = document.createElement('div');
+        cont.id = '__psnotif_toast';
+        cont.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:100000;display:flex;flex-direction:column;gap:8px;max-width:calc(100vw - 24px);width:380px;';
+        document.body.appendChild(cont);
+      }
+      const t = document.createElement('div');
+      t.style.cssText = 'background:#111827;color:#fff;border-left:4px solid #B91C1C;border-radius:10px;padding:12px 14px;box-shadow:0 12px 30px rgba(0,0,0,.35);cursor:pointer;animation:psSlideDown .25s ease;';
+      t.innerHTML = `<div style="font-weight:800;font-size:13.5px;">${titulo}</div>${body ? `<div style="font-size:12.5px;opacity:.85;margin-top:2px;">${body}</div>` : ''}<div style="font-size:10.5px;opacity:.55;margin-top:4px;letter-spacing:.5px;">Pulsa para ver · se cierra en 8s</div>`;
+      t.onclick = () => {
+        if (url && url !== '#') location.hash = url;
+        t.remove();
+      };
+      cont.prepend(t);
+      setTimeout(() => t.remove(), 8000);
+      // Añadir keyframes una sola vez
+      if (!document.getElementById('__psnotif_kf')) {
+        const s = document.createElement('style');
+        s.id = '__psnotif_kf';
+        s.textContent = '@keyframes psSlideDown{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:translateY(0)}}';
+        document.head.appendChild(s);
+      }
+    } catch (_) {}
+  }
+
   function notify(titulo, opciones) {
     if (!habilitado()) return null;
-    // Si la pestaña está visible y NO se ha forzado, no molestamos
-    if (!opciones?.forceVisible && document.visibilityState === 'visible') return null;
+    const opts = opciones || {};
+    const visible = document.visibilityState === 'visible';
+
+    // Siempre: pitido y toast in-app (para que el coord se entere aunque la app
+    // esté abierta en primer plano — el Notification API nativo NO dispara si
+    // la app está visible).
+    if (!opts.silent) beepCorto();
+    toastInApp(titulo, opts.body || '', opts.url);
+
+    // Notificación nativa del SO — solo si la app NO está visible o si se fuerza
+    if (visible && !opts.forceVisible) return null;
     try {
-      const opts = Object.assign({
+      const nOpts = Object.assign({
         icon: '/assets/logo-blanco.png',
         badge: '/assets/logo-blanco.png',
         vibrate: [180, 90, 180],
         renotify: true,
         requireInteraction: false,
         silent: false
-      }, opciones || {});
-      const n = new Notification(titulo, opts);
-      if (opts.url) {
+      }, opts);
+      const n = new Notification(titulo, nOpts);
+      if (nOpts.url) {
         n.onclick = () => {
           window.focus();
-          if (opts.url && opts.url !== '#') {
-            location.hash = opts.url;
-          }
+          if (nOpts.url && nOpts.url !== '#') location.hash = nOpts.url;
           n.close();
         };
       }

@@ -843,7 +843,43 @@
   setInterval(refrescarCampana, 30_000);
 
   /* ---------- Push local (Notification API + Realtime) ---------- */
+  // Banner grande persistente arriba del dashboard cuando el permiso no está
+  // concedido. Especialmente útil para coord que abren la app y no se enteran
+  // de que hay que activar los avisos.
+  function refrescarPushBannerHero() {
+    const rol = ((window.PS_SESSION || {}).rol) || '';
+    if (!['dueno','coordinador'].includes(rol) || !window.PSNotif) return;
+    let host = document.getElementById('psPushHeroBanner');
+    const necesitaMostrar = PSNotif.soporta() && !PSNotif.enabled() && PSNotif.permiso() !== 'denied';
+    if (!necesitaMostrar) {
+      if (host) host.remove();
+      return;
+    }
+    if (host) return; // ya visible
+    host = document.createElement('div');
+    host.id = 'psPushHeroBanner';
+    host.style.cssText = 'background:linear-gradient(135deg,#F59E0B,#FBBF24);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:13.5px;font-weight:600;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.1);';
+    host.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:220px;">
+        <span style="font-size:22px;">🔔</span>
+        <div>
+          <div style="font-weight:800;">Activa los avisos para no perder alertas</div>
+          <div style="font-size:12px;font-weight:400;opacity:.9;margin-top:2px;">Sin esto no recibirás notificaciones cuando entre una alerta o mensaje del socorrista.</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="document.getElementById('psPushHeroBanner').remove()" style="background:rgba(255,255,255,.2);color:#fff;border:0;padding:8px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px;">Luego</button>
+        <button onclick="activarAvisosPush(); setTimeout(refrescarPushBannerHeroPublic,600);" style="background:#fff;color:#B45309;border:0;padding:8px 16px;border-radius:6px;font-weight:800;cursor:pointer;font-size:13px;">Activar ahora</button>
+      </div>`;
+    // Insertar justo debajo de la nav superior
+    const nav = document.querySelector('nav.dash-nav');
+    if (nav && nav.parentNode) nav.parentNode.insertBefore(host, nav.nextSibling);
+    else document.body.prepend(host);
+  }
+  window.refrescarPushBannerHeroPublic = refrescarPushBannerHero;
+
   function refrescarPushBanner() {
+    refrescarPushBannerHero();
     const banner = document.getElementById('notifPushBanner');
     const text   = document.getElementById('notifPushBannerText');
     const btn    = document.getElementById('notifPushBannerBtn');

@@ -220,30 +220,75 @@
     `;
   }
 
+  // Ruta a la imagen anatómica realista del cliente (ChatGPT-generated, 1536×1024)
+  // Contiene las 2 vistas (frontal a la izquierda, posterior a la derecha) con
+  // sombreado muscular. La usamos como fondo del SVG, cada vista recortada por
+  // CSS background-position, con los círculos cliqueables SVG encima.
+  const IMG_MAPA_DOLOR = 'assets/mapa-dolor.png';
+
   function siluetaSVG(seleccionadas, editable, side) {
     side = side || 'front';
     seleccionadas = seleccionadas || [];
     const zonas = Object.entries(ZONAS_CUERPO).filter(([, z]) => z.side === side);
     const editableCls = editable ? 'cursor:pointer;' : '';
+    // Círculos cliqueables (fondo transparente cuando no está marcada)
     const circles = zonas.map(([id, z]) => {
       const activa = seleccionadas.includes(id);
-      // Zona no marcada: casi invisible (guía sutil). Marcada: rojo intenso.
       const fill = activa ? '#DC2626' : 'transparent';
-      const stroke = activa ? '#7F1D1D' : (editable ? '#CBD5E1' : 'transparent');
-      const opacity = activa ? '.75' : (editable ? '.6' : '0');
+      const stroke = activa ? '#FFFFFF' : (editable ? 'rgba(255,255,255,.7)' : 'transparent');
+      const strokeW = activa ? 2.2 : (editable ? 1.2 : 0);
+      const opacity = activa ? '.85' : (editable ? '.35' : '0');
       const strokeDash = editable && !activa ? 'stroke-dasharray="3 3"' : '';
       return `<circle data-zona="${id}" cx="${z.cx}" cy="${z.cy}" r="${z.r}"
-        fill="${fill}" fill-opacity="${opacity}" stroke="${stroke}" stroke-width="1" ${strokeDash}
+        fill="${fill}" fill-opacity="${opacity}" stroke="${stroke}" stroke-width="${strokeW}" ${strokeDash}
         style="transition:all .15s;${editableCls}"><title>${z.label}${activa ? ' · MARCADA' : ''}</title></circle>`;
     }).join('');
-    // Marca X roja adicional sobre las zonas seleccionadas para mayor contraste
+    // X blanca encima de las zonas marcadas para máximo contraste
+    const marks = zonas.filter(([id]) => seleccionadas.includes(id)).map(([, z]) => `
+      <g stroke="#fff" stroke-width="2.6" stroke-linecap="round">
+        <line x1="${z.cx-5}" y1="${z.cy-5}" x2="${z.cx+5}" y2="${z.cy+5}"/>
+        <line x1="${z.cx+5}" y1="${z.cy-5}" x2="${z.cx-5}" y2="${z.cy+5}"/>
+      </g>`).join('');
+
+    // Posicionamiento de la imagen: la PNG mide 1536×1024 con la frontal en la
+    // mitad izquierda y la posterior en la mitad derecha, con título y etiquetas
+    // arriba. Con background-size:230% y background-position afinado dejamos
+    // visible solo el cuerpo entero de cada vista.
+    // - front: mostrar el trozo x≈180..760 y≈180..1024 → posición 0% 100%
+    // - back : mostrar el trozo x≈820..1400 y≈180..1024 → posición 100% 100%
+    const bgPos = side === 'front' ? '18% 100%' : '82% 100%';
+
+    return `
+      <div style="position:relative;width:100%;max-width:240px;margin:0 auto;aspect-ratio:220 / 540;background:#F8FAFC;border-radius:12px;overflow:hidden;">
+        <div style="position:absolute;inset:0;background-image:url('${IMG_MAPA_DOLOR}');background-repeat:no-repeat;background-size:250% auto;background-position:${bgPos};"></div>
+        <svg viewBox="0 0 220 540" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;width:100%;height:100%;">
+          ${circles}
+          ${marks}
+        </svg>
+      </div>`;
+  }
+
+  // Versión SVG puro (sin imagen de fondo PNG) para el PDF con jsPDF.
+  // Usa el contorno anatómico dibujado (siluetaContorno) porque svgToPdf en
+  // ps-pdf.js no puede embeber la PNG a través del SVG (CORS/data URI).
+  function siluetaParaPDF(seleccionadas, side) {
+    side = side || 'front';
+    seleccionadas = seleccionadas || [];
+    const zonas = Object.entries(ZONAS_CUERPO).filter(([, z]) => z.side === side);
+    const circles = zonas.map(([id, z]) => {
+      const activa = seleccionadas.includes(id);
+      const fill = activa ? '#DC2626' : 'transparent';
+      const stroke = activa ? '#7F1D1D' : 'transparent';
+      const opacity = activa ? '.75' : '0';
+      return `<circle cx="${z.cx}" cy="${z.cy}" r="${z.r}" fill="${fill}" fill-opacity="${opacity}" stroke="${stroke}" stroke-width="1"/>`;
+    }).join('');
     const marks = zonas.filter(([id]) => seleccionadas.includes(id)).map(([, z]) => `
       <g stroke="#fff" stroke-width="2.2" stroke-linecap="round">
         <line x1="${z.cx-5}" y1="${z.cy-5}" x2="${z.cx+5}" y2="${z.cy+5}"/>
         <line x1="${z.cx+5}" y1="${z.cy-5}" x2="${z.cx-5}" y2="${z.cy+5}"/>
       </g>`).join('');
     return `
-      <svg viewBox="0 0 220 540" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:240px;height:auto;display:block;margin:0 auto;background:linear-gradient(180deg,#F8FAFC,#EFF6FF);border-radius:12px;">
+      <svg viewBox="0 0 220 540" xmlns="http://www.w3.org/2000/svg" style="background:#F8FAFC;">
         <defs>
           <linearGradient id="bodyGrad" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0" stop-color="#E2E8F0" stop-opacity=".55"/>
@@ -293,7 +338,7 @@
 
   window.PSInc = {
     TIPOS_INCIDENTE, TECNICAS, DERIVACIONES, ZONAS_CUERPO,
-    siluetaSVG, engancharSilueta,
+    siluetaSVG, siluetaParaPDF, engancharSilueta,
     formatTipo, colorTipo, formatTecnica, formatDerivacion, zonaLabel
   };
 })();
