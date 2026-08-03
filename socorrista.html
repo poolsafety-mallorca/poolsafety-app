@@ -95,6 +95,28 @@
         </div>
       </section>
 
+      <!-- Ranking de puntualidad del mes -->
+      <div id="rankingCard" style="display:none;margin-top:14px;padding:14px 16px;border-radius:14px;background:linear-gradient(135deg,#FEF3C7,#FDE68A);border:1px solid #F59E0B;box-shadow:0 2px 6px rgba(245,158,11,.15);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#78350F;">🏆 Tu mes</div>
+            <div style="font-size:20px;font-weight:800;color:#92400E;margin-top:2px;" id="rankingTitulo">—</div>
+            <div style="font-size:12.5px;color:#78350F;margin-top:2px;" id="rankingSub">—</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:32px;font-weight:900;color:#B45309;line-height:1;" id="rankingPct">—<span style="font-size:16px;">%</span></div>
+            <div style="font-size:10.5px;font-weight:700;color:#92400E;text-transform:uppercase;">Puntualidad</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:10px;padding-top:10px;border-top:1px solid rgba(245,158,11,.4);font-size:12px;color:#78350F;">
+          <div><b id="rankingDias">—</b> días trabajados</div>
+          <div>·</div>
+          <div><b id="rankingATiempo">—</b> a tiempo</div>
+          <div>·</div>
+          <div><b id="rankingTarde">—</b> tarde</div>
+        </div>
+      </div>
+
       <!-- Puesto de hoy con mapa REAL de OpenStreetMap -->
       <div class="section-eyebrow"><span class="eyebrow">Mi puesto de hoy</span></div>
       <div class="card map-card">

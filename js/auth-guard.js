@@ -100,9 +100,26 @@
       };
       localStorage.setItem('ps-session', JSON.stringify(window.PS_SESSION));
 
-      // Marca el último login (fire-and-forget). Sirve al admin para saber quién ha entrado alguna vez.
-      window.sb.from('usuarios').update({ ultimo_login: new Date().toISOString() })
-        .eq('id', session.user.id).then(() => {}, () => {});
+      // Marca el último login (fire-and-forget). Sirve al admin para saber quién
+      // ha entrado alguna vez. Doble vía por si la policy UPDATE de usuarios
+      // solo deja al admin (bug antiguo, ver sql/07-fix-ultimo-login.sql):
+      //  1) UPDATE directo — funciona si RLS ampliada está aplicada
+      //  2) RPC security definer — funciona SIEMPRE (no depende de RLS)
+      // .select() al final del update para poder detectar 0 filas silenciosas
+      // en consola durante debug (no rompe si el RPC no existe).
+      (async () => {
+        try {
+          const { data: upd } = await window.sb.from('usuarios')
+            .update({ ultimo_login: new Date().toISOString() })
+            .eq('id', session.user.id).select('id');
+          if (!upd || upd.length === 0) {
+            // RLS bloqueó el update → intentamos la RPC
+            try { await window.sb.rpc('marcar_ultimo_login'); } catch (_) {}
+          }
+        } catch (_) {
+          try { await window.sb.rpc('marcar_ultimo_login'); } catch (_) {}
+        }
+      })();
 
       // Notifica a los scripts de página para que refresquen cabecera con nombre real
       document.dispatchEvent(new CustomEvent('ps-session-updated', { detail: window.PS_SESSION }));

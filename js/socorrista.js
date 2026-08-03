@@ -964,6 +964,77 @@
   setTimeout(renderMetricasMes, 1400);
   setInterval(renderMetricasMes, 60_000);
 
+  /* ---------- Ranking de puntualidad del mes ----------
+     Compara cada fichaje de ENTRADA con la hora de inicio del turno
+     asignado (puestos.hora_inicio_default). Tolerancia: 5 min.
+     · A tiempo → fichó a la hora o antes (o hasta 5 min tarde)
+     · Tarde   → fichó con más de 5 min de retraso
+     Se muestra el % y motivador según nivel. ---------- */
+  async function renderRankingPuntualidad() {
+    const card = document.getElementById('rankingCard');
+    if (!card || !window.sb) return;
+    const empId = empleadoReal?.id;
+    if (!empId) return;
+    try {
+      const hoy = new Date();
+      const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
+      const hasta = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1).toISOString();
+      // Traemos entradas del mes con el puesto (hora_inicio_default) para poder comparar
+      const { data: fichs } = await window.sb.from('fichajes')
+        .select('hora, tipo, puesto_id, puestos(hora_inicio_default)')
+        .eq('empleado_id', empId).eq('tipo', 'entrada')
+        .gte('hora', desde).lt('hora', hasta).order('hora');
+      const entradas = fichs || [];
+      const totalEntradas = entradas.length;
+      if (totalEntradas === 0) {
+        card.style.display = 'none';
+        return;
+      }
+      // Cuenta días distintos y cuántas entradas son "a tiempo"
+      const TOL_MIN = 5;
+      const diasSet = new Set();
+      let aTiempo = 0, tarde = 0;
+      entradas.forEach(f => {
+        const d = new Date(f.hora);
+        diasSet.add(d.toDateString());
+        const horaTurno = (f.puestos && f.puestos.hora_inicio_default) || null;
+        if (!horaTurno) return; // sin hora prevista no cuenta
+        const [th, tm] = horaTurno.split(':').map(Number);
+        const previsto = new Date(d); previsto.setHours(th, tm || 0, 0, 0);
+        const diffMin = (d - previsto) / 60000;
+        if (diffMin <= TOL_MIN) aTiempo++;
+        else tarde++;
+      });
+      const contados = aTiempo + tarde;
+      if (contados === 0) {
+        card.style.display = 'none';
+        return;
+      }
+      const pct = Math.round((aTiempo / contados) * 100);
+      let titulo, sub, gradFrom, gradTo, borde;
+      if (pct >= 95) { titulo = '¡Impecable!'; sub = 'Estás en lo más alto del ranking del equipo 🏆'; gradFrom = '#DCFCE7'; gradTo = '#BBF7D0'; borde = '#059669'; }
+      else if (pct >= 85) { titulo = '¡Vas muy bien!'; sub = 'Sigue así, prácticamente ninguna incidencia 👏'; gradFrom = '#DBEAFE'; gradTo = '#BFDBFE'; borde = '#2563EB'; }
+      else if (pct >= 70) { titulo = 'Bien, pero puedes mejorar'; sub = 'Intenta llegar unos minutos antes cada día 💪'; gradFrom = '#FEF3C7'; gradTo = '#FDE68A'; borde = '#F59E0B'; }
+      else                { titulo = 'Ojo con la puntualidad'; sub = 'Muchos fichajes con retraso — revísalo esta semana ⏰'; gradFrom = '#FEE2E2'; gradTo = '#FECACA'; borde = '#DC2626'; }
+
+      card.style.display = '';
+      card.style.background = `linear-gradient(135deg, ${gradFrom}, ${gradTo})`;
+      card.style.borderColor = borde;
+      document.getElementById('rankingTitulo').textContent = titulo;
+      document.getElementById('rankingSub').textContent = sub;
+      document.getElementById('rankingPct').innerHTML = pct + '<span style="font-size:16px;">%</span>';
+      document.getElementById('rankingDias').textContent = String(diasSet.size);
+      document.getElementById('rankingATiempo').textContent = String(aTiempo);
+      document.getElementById('rankingTarde').textContent = String(tarde);
+    } catch (err) {
+      console.warn('[ranking]', err.message);
+      card.style.display = 'none';
+    }
+  }
+  document.addEventListener('ps-session-updated', () => setTimeout(renderRankingPuntualidad, 1500));
+  setTimeout(renderRankingPuntualidad, 2200);
+  setInterval(renderRankingPuntualidad, 120_000);
+
   /* ---------- Subir mi documentación (socorrista) ---------- */
   let misubidaBlob = null, misubidaTipo = null;
   window.onMisubidaFile = function (e) {
