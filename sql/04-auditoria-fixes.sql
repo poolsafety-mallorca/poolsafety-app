@@ -65,18 +65,46 @@ drop policy if exists usuarios_delete on usuarios;
 create policy usuarios_delete on usuarios for delete
   using (auth_es_dueno() and empresa_id = auth_empresa());
 
--- USUARIOS · solo el DUEÑO puede cambiar el rol de alguien
--- (un coordinador no debe poder auto-promocionarse a dueño)
+-- USUARIOS · quién puede hacer UPDATE
+-- OJO: la policy se mantiene SIMPLE a propósito. auth-guard.js hace un UPDATE
+-- de ultimo_login en CADA login; si esta policy fuera compleja (subconsultas a
+-- la propia tabla usuarios) podría entrar en recursión y dejar a todos fuera.
+-- La protección del campo 'rol' se hace con un TRIGGER, más abajo.
 drop policy if exists usuarios_update on usuarios;
 create policy usuarios_update on usuarios for update
   using (
-    auth_es_dueno() and empresa_id = auth_empresa()
-    or (id = auth.uid())  -- cada uno puede editar su propio perfil
+    id = auth.uid()                                    -- su propio perfil
+    or (auth_es_admin() and empresa_id = auth_empresa())  -- admin/coord de su empresa
   )
   with check (
-    auth_es_dueno() and empresa_id = auth_empresa()
-    or (id = auth.uid() and rol = (select rol from usuarios where id = auth.uid()))
+    id = auth.uid()
+    or (auth_es_admin() and empresa_id = auth_empresa())
   );
+
+-- TRIGGER · nadie salvo el DUEÑO puede cambiar el rol de un usuario.
+-- Esto impide que un coordinador se auto-promocione a 'dueno' desde la consola.
+create or replace function usuarios_proteger_rol()
+returns trigger as $$
+begin
+  if new.rol is distinct from old.rol then
+    if not (select rol = 'dueno' from usuarios where id = auth.uid()) then
+      new.rol := old.rol;   -- se ignora el cambio de rol
+    end if;
+  end if;
+  -- Un no-dueño tampoco puede reactivarse a sí mismo si le cortaron el acceso
+  if new.activo is distinct from old.activo then
+    if not (select rol = 'dueno' from usuarios where id = auth.uid()) then
+      new.activo := old.activo;
+    end if;
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists trg_usuarios_proteger_rol on usuarios;
+create trigger trg_usuarios_proteger_rol
+  before update on usuarios
+  for each row execute function usuarios_proteger_rol();
 
 -- EMPLEADOS · separar: coordinador CREA y EDITA, solo dueño BORRA
 drop policy if exists empleados_admin on empleados;
