@@ -592,14 +592,306 @@
   App: poolsafety-app.netlify.app
 </footer>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
   // URL fija del manual (para compartir aunque se abra desde un archivo local)
   var URL_MANUAL = 'https://poolsafety-app.netlify.app/docs-clientes/manual-socorrista.html';
 
+  /* ==========================================================================
+     Generación del PDF con jsPDF · texto real seleccionable, no capturas.
+     Se recorre el propio contenido del manual y se maqueta a A4.
+     ========================================================================== */
   function descargarPDF() {
-    // El diálogo de impresión del navegador permite "Guardar como PDF"
-    // en Windows, Mac, Android y iOS.
-    window.print();
+    var btn = document.querySelector('.btn-pdf');
+    var textoOriginal = btn.textContent;
+    btn.textContent = 'Generando PDF…';
+    btn.disabled = true;
+
+    try {
+      var jsPDF = window.jspdf.jsPDF;
+      var doc = new jsPDF({ unit: 'mm', format: 'a4' });
+
+      var ANCHO = 210, ALTO = 297;
+      var MX = 18;                 // margen lateral
+      var ANCHO_UTIL = ANCHO - MX * 2;
+      var y = 0;
+      var pagina = 1;
+
+      var ROJO = [185, 28, 28];
+      var TINTA = [15, 23, 42];
+      var GRIS = [100, 116, 139];
+
+      // Quita emojis y símbolos que la fuente estándar del PDF no dibuja
+      function limpiar(t) {
+        return (t || '')
+          .replace(/[\u{1F000}-\u{1FFFF}]/gu, '')
+          .replace(/[\u{2190}-\u{27BF}]/gu, '')
+          .replace(/[✓✗⚠▶■⬇·]/g, function (m) {
+            return m === '·' ? '-' : (m === '✓' ? '[OK]' : (m === '⚠' ? '[!]' : ''));
+          })
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      function pieDePagina() {
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.2);
+        doc.line(MX, ALTO - 14, ANCHO - MX, ALTO - 14);
+        doc.setFontSize(8);
+        doc.setTextColor(GRIS[0], GRIS[1], GRIS[2]);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Pool Safety Des Llevant, S.L. - Manual del socorrista', MX, ALTO - 9);
+        doc.text(String(pagina), ANCHO - MX, ALTO - 9, { align: 'right' });
+        doc.setTextColor(TINTA[0], TINTA[1], TINTA[2]);
+      }
+
+      function nuevaPagina() {
+        pieDePagina();
+        doc.addPage();
+        pagina++;
+        y = 22;
+      }
+
+      function espacio(nec) {
+        if (y + nec > ALTO - 22) nuevaPagina();
+      }
+
+      // ---------- PORTADA ----------
+      doc.setFillColor(ROJO[0], ROJO[1], ROJO[2]);
+      doc.rect(0, 0, ANCHO, 105, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text('POOL SAFETY DES LLEVANT, S.L.', MX, 42);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(30);
+      doc.text('Manual del', MX, 62);
+      doc.text('socorrista', MX, 76);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11.5);
+      doc.text('Todo lo que necesitas saber para usar', MX, 90);
+      doc.text('la app PoolSafety en tu dia a dia', MX, 96);
+
+      doc.setTextColor(TINTA[0], TINTA[1], TINTA[2]);
+      y = 122;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.text('Que vas a encontrar aqui', MX, y);
+      y += 9;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10.5);
+      var indice = [
+        '1.  Entrar por primera vez e instalar la app',
+        '2.  Firmar tu documentacion (Kit Alta)',
+        '3.  Fichar entrada y salida',
+        '4.  Revisar el botiquin',
+        '5.  Pedir material que falta',
+        '6.  Hablar con tu coordinador',
+        '7.  Tus tareas',
+        '8.  Tus documentos y horas',
+        '9.  Si algo no funciona'
+      ];
+      indice.forEach(function (linea) {
+        doc.text(linea, MX + 2, y);
+        y += 7;
+      });
+
+      y += 6;
+      doc.setDrawColor(226, 232, 240);
+      doc.line(MX, y, ANCHO - MX, y);
+      y += 8;
+      doc.setFontSize(9.5);
+      doc.setTextColor(GRIS[0], GRIS[1], GRIS[2]);
+      doc.text('La app se abre en: poolsafety-app.netlify.app', MX, y);
+      y += 5.5;
+      doc.text('Dudas: info@poolsafety.es', MX, y);
+      doc.setTextColor(TINTA[0], TINTA[1], TINTA[2]);
+
+      nuevaPagina();
+
+      // ---------- CONTENIDO ----------
+      // Recorremos el documento real para no duplicar el texto
+      var nodos = document.querySelectorAll('h2, h3, p, .paso, .aviso, .importante, .ok, ol, ul, table, .faq, .pantalla');
+      var dentroIndice = false;
+
+      nodos.forEach(function (nodo) {
+        // Saltamos el índice de la portada web (ya lo hemos pintado arriba)
+        if (nodo.closest('.indice')) return;
+        if (nodo.closest('.barra-acciones')) return;
+
+        var tag = nodo.tagName.toLowerCase();
+        var clase = nodo.className || '';
+
+        // --- Título de sección ---
+        if (tag === 'h2') {
+          espacio(30);
+          y += 6;
+          doc.setDrawColor(ROJO[0], ROJO[1], ROJO[2]);
+          doc.setLineWidth(0.9);
+          doc.line(MX, y, ANCHO - MX, y);
+          y += 8;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.setTextColor(ROJO[0], ROJO[1], ROJO[2]);
+          var tH2 = limpiar(nodo.textContent);
+          doc.splitTextToSize(tH2, ANCHO_UTIL).forEach(function (l) {
+            espacio(9); doc.text(l, MX, y); y += 8;
+          });
+          doc.setTextColor(TINTA[0], TINTA[1], TINTA[2]);
+          y += 2;
+          return;
+        }
+
+        // --- Subtítulo ---
+        if (tag === 'h3') {
+          espacio(16);
+          y += 4;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          doc.setTextColor(ROJO[0], ROJO[1], ROJO[2]);
+          doc.splitTextToSize(limpiar(nodo.textContent), ANCHO_UTIL).forEach(function (l) {
+            espacio(7); doc.text(l, MX, y); y += 6.5;
+          });
+          doc.setTextColor(TINTA[0], TINTA[1], TINTA[2]);
+          y += 1.5;
+          return;
+        }
+
+        // --- Cajas de color (paso / aviso / importante / ok / pantalla) ---
+        if (/paso|aviso|importante|ok|pantalla/.test(clase)) {
+          var colores = {
+            paso:       { fondo: [248, 250, 252], borde: [29, 78, 216] },
+            aviso:      { fondo: [254, 243, 199], borde: [217, 119, 6] },
+            importante: { fondo: [254, 226, 226], borde: [185, 28, 28] },
+            ok:         { fondo: [220, 252, 231], borde: [5, 150, 105] },
+            pantalla:   { fondo: [241, 245, 249], borde: [100, 116, 139] }
+          };
+          var tipo = ['paso','aviso','importante','ok','pantalla'].find(function (k) {
+            return clase.indexOf(k) !== -1;
+          }) || 'paso';
+          var c = colores[tipo];
+
+          var texto = limpiar(nodo.innerText || nodo.textContent);
+          if (!texto) return;
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10);
+          var lineas = doc.splitTextToSize(texto, ANCHO_UTIL - 10);
+          var alto = lineas.length * 5 + 8;
+
+          espacio(alto + 6);
+          doc.setFillColor(c.fondo[0], c.fondo[1], c.fondo[2]);
+          doc.rect(MX, y, ANCHO_UTIL, alto, 'F');
+          doc.setFillColor(c.borde[0], c.borde[1], c.borde[2]);
+          doc.rect(MX, y, 1.5, alto, 'F');
+
+          var yTexto = y + 6;
+          lineas.forEach(function (l) {
+            doc.text(l, MX + 6, yTexto);
+            yTexto += 5;
+          });
+          y += alto + 5;
+          return;
+        }
+
+        // --- Bloques de pregunta/respuesta ---
+        if (clase.indexOf('faq') !== -1) {
+          var pregunta = nodo.querySelector('.faq-q');
+          var respuesta = nodo.querySelector('.faq-a');
+          if (!pregunta) return;
+          espacio(22);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10.5);
+          doc.splitTextToSize(limpiar(pregunta.textContent), ANCHO_UTIL).forEach(function (l) {
+            espacio(7); doc.text(l, MX, y); y += 5.5;
+          });
+          if (respuesta) {
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.setTextColor(71, 85, 105);
+            doc.splitTextToSize(limpiar(respuesta.innerText || respuesta.textContent), ANCHO_UTIL).forEach(function (l) {
+              espacio(6); doc.text(l, MX + 3, y); y += 5;
+            });
+            doc.setTextColor(TINTA[0], TINTA[1], TINTA[2]);
+          }
+          y += 5;
+          return;
+        }
+
+        // --- Tablas ---
+        if (tag === 'table') {
+          var filas = nodo.querySelectorAll('tr');
+          filas.forEach(function (fila) {
+            var celdas = fila.querySelectorAll('th, td');
+            if (!celdas.length) return;
+            var etiqueta = limpiar(celdas[0].innerText || celdas[0].textContent);
+            var valor = celdas[1] ? limpiar(celdas[1].innerText || celdas[1].textContent) : '';
+            espacio(14);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.text(etiqueta, MX, y);
+            y += 5;
+            if (valor) {
+              doc.setFont('helvetica', 'normal');
+              doc.setTextColor(71, 85, 105);
+              doc.splitTextToSize(valor, ANCHO_UTIL - 4).forEach(function (l) {
+                espacio(6); doc.text(l, MX + 4, y); y += 5;
+              });
+              doc.setTextColor(TINTA[0], TINTA[1], TINTA[2]);
+            }
+            y += 2;
+          });
+          y += 3;
+          return;
+        }
+
+        // --- Listas ---
+        if (tag === 'ol' || tag === 'ul') {
+          var items = nodo.querySelectorAll(':scope > li');
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10.5);
+          items.forEach(function (li, i) {
+            var marca = tag === 'ol' ? (i + 1) + '.' : '-';
+            var t = limpiar(li.innerText || li.textContent);
+            if (!t) return;
+            var ls = doc.splitTextToSize(t, ANCHO_UTIL - 8);
+            espacio(ls.length * 5.5 + 3);
+            doc.setFont('helvetica', 'bold');
+            doc.text(marca, MX + 1, y);
+            doc.setFont('helvetica', 'normal');
+            ls.forEach(function (l, j) {
+              doc.text(l, MX + 8, y + j * 5.2);
+            });
+            y += ls.length * 5.2 + 2.5;
+          });
+          y += 3;
+          return;
+        }
+
+        // --- Párrafos normales ---
+        if (tag === 'p') {
+          var tp = limpiar(nodo.innerText || nodo.textContent);
+          if (!tp) return;
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10.5);
+          doc.splitTextToSize(tp, ANCHO_UTIL).forEach(function (l) {
+            espacio(7); doc.text(l, MX, y); y += 5.4;
+          });
+          y += 3.5;
+        }
+      });
+
+      pieDePagina();
+      doc.save('PoolSafety-Manual-del-socorrista.pdf');
+
+      btn.textContent = '[OK] PDF descargado';
+      setTimeout(function () { btn.textContent = textoOriginal; btn.disabled = false; }, 2500);
+    } catch (err) {
+      alert('No se ha podido generar el PDF: ' + err.message +
+            '\n\nPuedes compartir el enlace del manual en su lugar.');
+      btn.textContent = textoOriginal;
+      btn.disabled = false;
+    }
   }
 
   function compartirWhatsApp() {
