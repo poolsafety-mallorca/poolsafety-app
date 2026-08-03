@@ -324,12 +324,18 @@
         <span class="eyebrow">Mi documentación (subida por mí)</span>
       </div>
       <div class="card" style="padding:14px;">
-        <div class="small text-muted" style="margin-bottom:10px;">Adjunta cualquier documento que quieras compartir con la empresa: contrato firmado, DNI, títulos, certificados, nóminas, etc. Formatos: PDF, JPG, PNG. Máx 20 MB.</div>
+        <div class="small text-muted" style="margin-bottom:10px;">Adjunta cualquier documento que quieras compartir con la empresa: contrato firmado, DNI, títulos, certificados, nóminas, etc. Formatos: PDF, Word, JPG, PNG. Máx 20 MB.</div>
         <label for="misubidaFile" class="btn btn-primary btn-block" style="cursor:pointer;">
           <svg class="ic ic-18"><use href="#ic-upload"/></svg>
-          Elegir archivo o hacer foto
+          Subir un archivo
         </label>
-        <input type="file" id="misubidaFile" accept="image/*,application/pdf" capture="environment" style="display:none;" onchange="onMisubidaFile(event)" />
+        <!-- Sin atributo capture: así el móvil deja elegir entre Archivos, Galería o Cámara -->
+        <input type="file" id="misubidaFile"
+               accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.heic,image/*,application/pdf"
+               style="display:none;" onchange="onMisubidaFile(event)" />
+        <div class="small text-muted" style="margin-top:6px;text-align:center;">
+          Podrás elegir un archivo del móvil, una foto de la galería o hacer una foto nueva.
+        </div>
         <div class="field mt-3">
           <label>Tipo de documento</label>
           <select id="misubidaTipo">

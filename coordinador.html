@@ -786,12 +786,15 @@
     </div>
 
     <div class="section-eyebrow" style="margin-top:20px;"><span class="eyebrow">Mi documentación</span></div>
-    <div class="small text-muted" style="margin-bottom:8px;">Adjunta cualquier documento personal (DNI, título, contrato, etc.). Formatos: PDF, JPG, PNG. Máx 20 MB.</div>
+    <div class="small text-muted" style="margin-bottom:8px;">Adjunta cualquier documento personal (DNI, título, contrato, etc.). Formatos: PDF, Word, JPG, PNG. Máx 20 MB.</div>
     <label for="mp-file" class="btn btn-outline btn-block" style="cursor:pointer;">
       <svg class="ic ic-16"><use href="#ic-upload"/></svg>
-      Elegir archivo o hacer foto
+      Subir un archivo
     </label>
-    <input type="file" id="mp-file" accept="image/*,application/pdf" capture="environment" style="display:none;" onchange="onMiPerfilFile(event)" />
+    <!-- Sin atributo capture: así el móvil deja elegir entre Archivos, Galería o Cámara -->
+    <input type="file" id="mp-file"
+           accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.heic,image/*,application/pdf"
+           style="display:none;" onchange="onMiPerfilFile(event)" />
     <div class="field" style="margin-top:10px;">
       <label>Tipo</label>
       <select id="mp-tipo">
