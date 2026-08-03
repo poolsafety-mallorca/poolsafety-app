@@ -186,6 +186,11 @@
         <svg class="ic ic-16"><use href="#ic-clock"/></svg>
         Fichajes
       </button>
+      <button class="dash-menu-item" data-section="titulaciones">
+        <svg class="ic ic-16"><use href="#ic-award"/></svg>
+        Titulaciones
+        <span class="menu-badge" id="menuBadgeTit" style="display:none;"></span>
+      </button>
     </nav>
 
     <!-- ============ PANEL: VISTA GENERAL ============ -->
@@ -709,6 +714,38 @@
         </div>
       </section>
     </div><!-- /panel fichajes -->
+
+    <!-- ============ PANEL: TITULACIONES ============ -->
+    <div class="tab-panel hidden" data-panel="titulaciones">
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title-wrap">
+            <div class="kpi-icon" style="width:30px;height:30px;background:linear-gradient(135deg,#DC2626,#F59E0B);color:#fff;">
+              <svg class="ic ic-16"><use href="#ic-award"/></svg>
+            </div>
+            <h3 class="panel-title">Titulaciones y caducidades</h3>
+            <span class="panel-count" id="titPanelCount">—</span>
+          </div>
+          <div class="row gap-2">
+            <button class="btn btn-outline btn-sm" onclick="renderTitulacionesPanel()">
+              <svg class="ic ic-14"><use href="#ic-refresh"/></svg> Actualizar
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="exportarTitulacionesCSV()">
+              <svg class="ic ic-14"><use href="#ic-download"/></svg> Exportar
+            </button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="norma-banner" style="margin-bottom:14px;">
+            <svg class="ic ic-14"><use href="#ic-shield"/></svg>
+            <span>Un socorrista con la titulación caducada <b>no puede prestar servicio</b>. La responsabilidad es de la empresa. Revisa este panel cada semana.</span>
+          </div>
+          <div id="titulacionesPanelBody">
+            <div class="text-muted small" style="padding:30px;text-align:center;">Cargando titulaciones…</div>
+          </div>
+        </div>
+      </section>
+    </div><!-- /panel titulaciones -->
 
   </div>
 </div>

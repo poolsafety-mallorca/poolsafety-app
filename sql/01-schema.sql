@@ -337,17 +337,21 @@ create table if not exists notas (
 create table if not exists titulaciones_empleado (
   id uuid primary key default gen_random_uuid(),
   empleado_id uuid not null references empleados(id) on delete cascade,
-  tipo text not null,                 -- dni, svb, dea, socorrismo, prl, contrato, nomina, otro
-  numero text,
-  fecha_emision date,
+  -- tipo: dni | socorrismo_acuatico | svb | dea | prl | contrato | nomina | otro
+  tipo text not null,
+  nombre text,
+  entidad_emisora text,
+  numero_referencia text,
+  fecha_obtencion date,
   fecha_caducidad date,
-  archivo_url text,
-  nombre_archivo text,
+  fecha_reciclaje date,
+  documento_url text,
+  documento_nombre text,
   notas text,
-  subido_por uuid references usuarios(id) on delete set null,
   created_at timestamptz default now()
 );
 create index if not exists idx_titulaciones_empleado on titulaciones_empleado(empleado_id, tipo);
+-- Índice para el panel de titulaciones caducadas / por caducar:
 create index if not exists idx_titulaciones_caducidad on titulaciones_empleado(fecha_caducidad)
   where fecha_caducidad is not null;
 

@@ -2586,6 +2586,7 @@
     titulacionesList.innerHTML = '<div class="tit-empty">Cargando documentación…</div>';
     const items = await window.PSTit.cargar(empId);
     titulacionesList.innerHTML = window.PSTit.renderLista(items, { canEdit: true });
+    avisarTitulacionesCaducadas(items);
     // Wire acciones
     titulacionesList.querySelectorAll('[data-editar]').forEach(b => b.addEventListener('click', () => {
       const t = items.find(x => x.id === b.dataset.editar);
@@ -2599,6 +2600,55 @@
         renderMisTitulaciones();
       } catch (err) { toast('Error: ' + err.message); }
     }));
+  }
+
+  // Aviso destacado en Inicio si tiene titulaciones caducadas o a punto de caducar.
+  // Es importante para él: sin la titulación en vigor no puede prestar servicio.
+  function avisarTitulacionesCaducadas(items) {
+    const cont = document.getElementById('pendientesHoy');
+    if (!cont) return;
+    let aviso = document.getElementById('noticeTitulaciones');
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const conCaducidad = (items || []).filter(t => t.fecha_caducidad);
+    const caducadas = [], proximas = [];
+    conCaducidad.forEach(t => {
+      const dias = Math.floor((new Date(t.fecha_caducidad) - hoy) / 86400000);
+      const nombre = (window.PSTit?.TIPOS[t.tipo]?.label) || t.nombre || 'Documento';
+      if (dias < 0) caducadas.push({ nombre, dias });
+      else if (dias <= 45) proximas.push({ nombre, dias });
+    });
+
+    if (caducadas.length === 0 && proximas.length === 0) {
+      if (aviso) aviso.remove();
+      return;
+    }
+    if (!aviso) {
+      aviso = document.createElement('div');
+      aviso.id = 'noticeTitulaciones';
+      aviso.className = 'notice interactive';
+      aviso.onclick = () => showView('perfil');
+      cont.insertBefore(aviso, cont.firstChild); // arriba del todo
+    }
+    const esCaducada = caducadas.length > 0;
+    const lista = esCaducada ? caducadas : proximas;
+    aviso.innerHTML = `
+      <div class="notice-icon" style="background:${esCaducada ? '#FEE2E2' : '#FEF3C7'};color:${esCaducada ? '#B91C1C' : '#B45309'};">
+        <svg class="ic ic-22"><use href="#ic-alert"/></svg>
+      </div>
+      <div class="notice-body">
+        <div class="notice-title" style="color:${esCaducada ? '#B91C1C' : '#B45309'};">
+          ${esCaducada
+            ? (caducadas.length === 1 ? 'Tienes una titulación caducada' : `Tienes ${caducadas.length} titulaciones caducadas`)
+            : (proximas.length === 1 ? 'Una titulación caduca pronto' : `${proximas.length} titulaciones caducan pronto`)}
+        </div>
+        <div class="notice-sub">
+          ${lista.slice(0,2).map(x => x.dias < 0
+            ? `${x.nombre} (hace ${Math.abs(x.dias)} d)`
+            : `${x.nombre} (en ${x.dias} d)`).join(' · ')}${lista.length > 2 ? ' y más' : ''}
+          — avisa a tu coordinador
+        </div>
+      </div>
+      <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>`;
   }
 
   window.openTitulacionModal = function (t) {

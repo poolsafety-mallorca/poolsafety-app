@@ -918,6 +918,226 @@
   document.querySelectorAll('[data-section="horas"]').forEach(el => el.addEventListener('click', () => setTimeout(() => renderHours(document.getElementById('hourFilter')?.value || 'all'), 200)));
   document.getElementById('hourFilter')?.addEventListener('change', e => renderHours(e.target.value));
 
+  /* ==========================================================================
+     PANEL TITULACIONES · quién tiene documentación caducada o a punto
+     Un socorrista con la titulación caducada no puede prestar servicio y la
+     responsabilidad recae en la empresa, así que esto es control de riesgo.
+     ========================================================================== */
+  let titulacionesCache = [];
+
+  window.renderTitulacionesPanel = async function () {
+    const cont = document.getElementById('titulacionesPanelBody');
+    const countEl = document.getElementById('titPanelCount');
+    if (!cont || !window.sb) return;
+    cont.innerHTML = '<div class="text-muted small" style="padding:30px;text-align:center;">Cargando titulaciones…</div>';
+    try {
+      // 1) Empleados activos
+      const { data: emps, error: e1 } = await window.sb.from('empleados')
+        .select('id, nombre, email, telefono, puesto_id, puestos(nombre)')
+        .eq('estado', 'activo')
+        .order('nombre');
+      if (e1) throw e1;
+      const empleados = emps || [];
+      if (empleados.length === 0) {
+        cont.innerHTML = '<div class="text-muted small" style="padding:30px;text-align:center;">No hay empleados activos.</div>';
+        return;
+      }
+
+      // 2) Todas sus titulaciones de una sola consulta
+      const ids = empleados.map(e => e.id);
+      const { data: tits, error: e2 } = await window.sb.from('titulaciones_empleado')
+        .select('id, empleado_id, tipo, nombre, fecha_caducidad, fecha_reciclaje, documento_url')
+        .in('empleado_id', ids);
+      if (e2) throw e2;
+      titulacionesCache = tits || [];
+
+      const porEmpleado = {};
+      titulacionesCache.forEach(t => {
+        (porEmpleado[t.empleado_id] = porEmpleado[t.empleado_id] || []).push(t);
+      });
+
+      // 3) Clasificar
+      const TIPOS = (window.PSTit && window.PSTit.TIPOS) || {};
+      const obligatorios = Object.keys(TIPOS).filter(k => TIPOS[k].obligatorio);
+      const hoy = new Date(); hoy.setHours(0,0,0,0);
+      const diasHasta = f => Math.floor((new Date(f) - hoy) / 86400000);
+
+      const caducadas = [], en30 = [], en90 = [], faltan = [];
+
+      empleados.forEach(emp => {
+        const suyas = porEmpleado[emp.id] || [];
+        // Titulaciones con fecha de caducidad
+        suyas.forEach(t => {
+          if (!t.fecha_caducidad) return;
+          const d = diasHasta(t.fecha_caducidad);
+          const item = { emp, tit: t, dias: d };
+          if (d < 0) caducadas.push(item);
+          else if (d <= 30) en30.push(item);
+          else if (d <= 90) en90.push(item);
+        });
+        // Obligatorias que NO ha subido
+        const tiposQueTiene = new Set(suyas.map(t => t.tipo));
+        const suFaltan = obligatorios.filter(tp => !tiposQueTiene.has(tp));
+        if (suFaltan.length) faltan.push({ emp, tipos: suFaltan });
+      });
+
+      caducadas.sort((a,b) => a.dias - b.dias);
+      en30.sort((a,b) => a.dias - b.dias);
+      en90.sort((a,b) => a.dias - b.dias);
+
+      const totalCritico = caducadas.length + en30.length;
+      if (countEl) {
+        countEl.textContent = totalCritico > 0
+          ? `${totalCritico} requieren atención`
+          : 'Todo en regla';
+      }
+      // Badge en el menú lateral
+      const badge = document.getElementById('menuBadgeTit');
+      if (badge) {
+        if (totalCritico > 0) { badge.textContent = totalCritico; badge.style.display = ''; }
+        else badge.style.display = 'none';
+      }
+
+      // 4) Pintar
+      const tel = e => (e.telefono || '').replace(/\s+/g,'');
+      const telHref = e => { const t = tel(e); return t ? (t.startsWith('+') ? t : (t.length === 9 ? '+34'+t : t)) : ''; };
+      const nombreTipo = tp => (TIPOS[tp] && TIPOS[tp].label) || tp;
+
+      function bloque(titulo, items, color, fondo, descripcion, render) {
+        if (!items.length) return '';
+        return `
+          <div style="margin-bottom:22px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+              <div style="width:10px;height:10px;border-radius:50%;background:${color};"></div>
+              <h4 style="margin:0;font-size:15px;">${titulo}</h4>
+              <span style="background:${fondo};color:${color};padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700;">${items.length}</span>
+            </div>
+            <div class="small text-muted" style="margin:0 0 10px 20px;">${descripcion}</div>
+            ${items.map(render).join('')}
+          </div>`;
+      }
+
+      const filaTit = (color, fondo) => (it) => {
+        const h = telHref(it.emp);
+        const txtDias = it.dias < 0
+          ? `Caducó hace ${Math.abs(it.dias)} día${Math.abs(it.dias)===1?'':'s'}`
+          : `Caduca en ${it.dias} día${it.dias===1?'':'s'}`;
+        return `
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;margin:5px 0;background:#fff;border:1px solid #e2e8f0;border-left:4px solid ${color};border-radius:8px;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:700;font-size:14px;">${it.emp.nombre}</div>
+              <div class="small text-muted">
+                ${nombreTipo(it.tit.tipo)} · ${it.emp.puestos?.nombre || 'sin puesto'}
+              </div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-weight:700;font-size:12.5px;color:${color};">${txtDias}</div>
+              <div class="small text-muted">${new Date(it.tit.fecha_caducidad).toLocaleDateString('es-ES')}</div>
+            </div>
+            ${h ? `<a class="btn-icon" href="tel:${h}" title="Llamar a ${it.emp.nombre}" style="width:34px;height:34px;background:${color};color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;text-decoration:none;flex-shrink:0;">
+              <svg class="ic ic-14"><use href="#ic-phone"/></svg></a>` : ''}
+            <button class="btn-icon" title="Abrir su ficha" onclick="abrirFichaTitulaciones('${it.emp.id}')"
+              style="width:34px;height:34px;background:#EFF6FF;color:#1D4ED8;border-radius:50%;border:none;cursor:pointer;flex-shrink:0;">
+              <svg class="ic ic-14"><use href="#ic-chevron-right"/></svg>
+            </button>
+          </div>`;
+      };
+
+      let html = '';
+
+      if (totalCritico === 0 && faltan.length === 0) {
+        html = `<div class="alert-strip ok" style="padding:20px;">
+          <svg class="ic ic-18"><use href="#ic-check-circle"/></svg>
+          <div><b>Toda la plantilla al día.</b> Ninguna titulación caducada ni próxima a caducar, y no falta ninguna obligatoria.</div>
+        </div>`;
+      }
+
+      html += bloque(
+        'Caducadas', caducadas, '#DC2626', '#FEE2E2',
+        'Estas personas NO deberían estar prestando servicio hasta renovar.',
+        filaTit('#DC2626', '#FEE2E2')
+      );
+      html += bloque(
+        'Caducan este mes', en30, '#D97706', '#FEF3C7',
+        'Avisa ya para que tengan tiempo de renovar sin perder días de trabajo.',
+        filaTit('#D97706', '#FEF3C7')
+      );
+      html += bloque(
+        'Caducan en 3 meses', en90, '#0891B2', '#CFFAFE',
+        'Conviene ir planificando la renovación.',
+        filaTit('#0891B2', '#CFFAFE')
+      );
+
+      if (faltan.length) {
+        html += `
+          <div style="margin-bottom:22px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+              <div style="width:10px;height:10px;border-radius:50%;background:#7C3AED;"></div>
+              <h4 style="margin:0;font-size:15px;">Documentación obligatoria sin subir</h4>
+              <span style="background:#EDE9FE;color:#7C3AED;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700;">${faltan.length}</span>
+            </div>
+            <div class="small text-muted" style="margin:0 0 10px 20px;">Aún no han subido estos documentos a su ficha.</div>
+            ${faltan.map(f => `
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;margin:5px 0;background:#fff;border:1px solid #e2e8f0;border-left:4px solid #7C3AED;border-radius:8px;">
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:700;font-size:14px;">${f.emp.nombre}</div>
+                  <div class="small text-muted">Falta: ${f.tipos.map(nombreTipo).join(' · ')}</div>
+                </div>
+                <button class="btn-icon" title="Abrir su ficha" onclick="abrirFichaTitulaciones('${f.emp.id}')"
+                  style="width:34px;height:34px;background:#EFF6FF;color:#1D4ED8;border-radius:50%;border:none;cursor:pointer;flex-shrink:0;">
+                  <svg class="ic ic-14"><use href="#ic-chevron-right"/></svg>
+                </button>
+              </div>`).join('')}
+          </div>`;
+      }
+
+      cont.innerHTML = html;
+      // Guardamos para el export
+      window.__titExport = { caducadas, en30, en90, faltan, nombreTipo };
+    } catch (err) {
+      cont.innerHTML = `<div class="alert-strip warn" style="margin:6px;">Error cargando titulaciones: ${err.message}</div>`;
+    }
+  };
+
+  // Abre la ficha del empleado directamente en su pestaña de titulaciones
+  window.abrirFichaTitulaciones = function (empId) {
+    if (!window.openEmpleadoModal) return;
+    window.openEmpleadoModal(empId);
+    setTimeout(() => {
+      const tab = document.querySelector('.ficha-tab[data-ftab="titulaciones"]');
+      if (tab) tab.click();
+    }, 250);
+  };
+
+  window.exportarTitulacionesCSV = function () {
+    const d = window.__titExport;
+    if (!d) { toast('Carga primero el panel'); return; }
+    const filas = [['Estado','Socorrista','Documento','Caducidad','Dias','Puesto']];
+    const add = (estado, arr) => arr.forEach(it => filas.push([
+      estado, it.emp.nombre, d.nombreTipo(it.tit.tipo),
+      new Date(it.tit.fecha_caducidad).toLocaleDateString('es-ES'),
+      it.dias, it.emp.puestos?.nombre || ''
+    ]));
+    add('CADUCADA', d.caducadas);
+    add('CADUCA EN 30 DIAS', d.en30);
+    add('CADUCA EN 90 DIAS', d.en90);
+    d.faltan.forEach(f => filas.push([
+      'SIN SUBIR', f.emp.nombre, f.tipos.map(d.nombreTipo).join(' / '), '', '', f.emp.puestos?.nombre || ''
+    ]));
+    const csv = '﻿' + filas.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `PoolSafety-titulaciones-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    toast('✓ CSV descargado');
+  };
+
+  // Cargar al entrar en la sección + comprobar al arrancar para pintar el badge
+  document.querySelectorAll('[data-section="titulaciones"]').forEach(el =>
+    el.addEventListener('click', () => setTimeout(renderTitulacionesPanel, 200)));
+  setTimeout(renderTitulacionesPanel, 2500);
+
   /* ---------- Panel Fichajes (selector de día) ---------- */
   function fechaISOhoy() {
     const d = new Date();
