@@ -3684,30 +3684,63 @@
 
   // Fichar por un empleado (cuando la app no le funciona, sin GPS, etc.)
   // Registra entrada o salida en fichajes con marca clara de que lo hizo admin.
-  window.ficharPorEmpleado = async function (empId, nombre, tipo) {
-    // 1) Pedir hora — default = ahora
+  window.ficharPorEmpleado = async function (empId, nombre, tipo, fechaPredeterminada) {
+    // Selección de tipo si no viene (entrada/salida) — para invocaciones sin argumento
+    if (tipo !== 'entrada' && tipo !== 'salida') {
+      const t = prompt(`¿Fichar ENTRADA o SALIDA para ${nombre}?\n\nEscribe "entrada" o "salida":`, 'entrada');
+      if (!t) return;
+      tipo = t.trim().toLowerCase() === 'salida' ? 'salida' : 'entrada';
+    }
+
+    // 1) Pedir FECHA — default = fechaPredeterminada o hoy
     const ahora = new Date();
-    const horaAhora = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
-    const horaTxt = prompt(
+    const defFecha = fechaPredeterminada || `${ahora.getFullYear()}-${String(ahora.getMonth()+1).padStart(2,'0')}-${String(ahora.getDate()).padStart(2,'0')}`;
+    const fechaTxt = prompt(
       `Fichar ${tipo.toUpperCase()} manual de ${nombre}\n\n` +
-      `Escribe la hora en formato HH:MM (24 h):`,
-      horaAhora
+      `¿En qué día? (YYYY-MM-DD)\n` +
+      `Puedes elegir cualquier día pasado o el actual.`,
+      defFecha
     );
-    if (horaTxt === null) return; // cancelado
+    if (fechaTxt === null) return; // cancelado
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaTxt)) { toast('Fecha inválida (YYYY-MM-DD)'); return; }
+    const [fy, fmo, fd] = fechaTxt.split('-').map(Number);
+    const fechaTest = new Date(fy, fmo - 1, fd);
+    if (isNaN(fechaTest.getTime()) || fechaTest.getFullYear() !== fy) { toast('Fecha inválida'); return; }
+    // No permitir fechas futuras (más allá de hoy)
+    const finHoy = new Date(); finHoy.setHours(23, 59, 59, 999);
+    if (fechaTest > finHoy) { toast('No se puede fichar en el futuro'); return; }
+
+    // 2) Pedir HORA — default = "10:00" si es día pasado, ahora si es hoy
+    const esHoy = fechaTest.toDateString() === ahora.toDateString();
+    const horaDefault = esHoy
+      ? `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`
+      : (tipo === 'entrada' ? '10:00' : '18:00');
+    const horaTxt = prompt(
+      `Fichar ${tipo.toUpperCase()} de ${nombre}\n\n` +
+      `Día: ${fechaTest.toLocaleDateString('es-ES', { weekday:'long', day:'2-digit', month:'long', year:'numeric' })}\n\n` +
+      `Hora en formato HH:MM (24 h):`,
+      horaDefault
+    );
+    if (horaTxt === null) return;
     const m = horaTxt.match(/^(\d{1,2}):(\d{2})$/);
     if (!m) { toast('Hora inválida. Formato: HH:MM'); return; }
     const hh = parseInt(m[1]), mm = parseInt(m[2]);
     if (hh < 0 || hh > 23 || mm < 0 || mm > 59) { toast('Hora fuera de rango'); return; }
 
-    // 2) Motivo opcional
-    const motivo = prompt(`Motivo del fichaje manual (opcional):\n\np.ej. "Sin señal móvil", "App no responde", "GPS bloqueado"…`, '');
-    if (motivo === null) return; // cancelado explícito
+    // 3) Motivo opcional
+    const motivo = prompt(
+      `Motivo del fichaje manual (opcional):\n\n` +
+      `p.ej. "Sin señal móvil", "App no responde", "GPS bloqueado", ` +
+      `"Alta retroactiva", "Olvidó fichar la salida"…`, ''
+    );
+    if (motivo === null) return;
 
-    // 3) Construir hora del día actual
-    const hora = new Date();
-    hora.setHours(hh, mm, 0, 0);
+    // 4) Construir fecha+hora final
+    const hora = new Date(fy, fmo - 1, fd, hh, mm, 0, 0);
+    // Si el usuario elige hoy pero con hora futura, avisamos y bloqueamos
+    if (hora > new Date()) { toast('La hora está en el futuro. Ajusta la hora.'); return; }
 
-    // 4) Buscar puesto del empleado (para asociar al fichaje)
+    // 5) Buscar puesto del empleado (para asociar al fichaje)
     let puestoId = null;
     try {
       const { data: emp } = await window.sb.from('empleados')
@@ -3715,17 +3748,19 @@
       puestoId = emp?.puesto_id || null;
     } catch (_) {}
 
-    // 5) Confirmar
+    // 6) Confirmar
+    const fechaBonita = fechaTest.toLocaleDateString('es-ES', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
     if (!confirm(
       `¿Confirmar fichaje MANUAL?\n\n` +
       `Empleado: ${nombre}\n` +
       `Tipo: ${tipo.toUpperCase()}\n` +
-      `Hora: ${horaTxt} (hoy)\n` +
+      `Día:  ${fechaBonita}\n` +
+      `Hora: ${horaTxt}\n` +
       `${motivo ? 'Motivo: ' + motivo + '\n' : ''}` +
       `\nQuedará marcado como fichaje registrado por administración.`
     )) return;
 
-    // 6) INSERT
+    // 7) INSERT
     try {
       const psSes = window.PS_SESSION || {};
       const { error } = await window.sb.from('fichajes').insert({
@@ -3743,7 +3778,6 @@
       });
       if (error) {
         // Si la BD no tiene las columnas nuevas (origen_manual…), reintentar sin ellas
-        // pero con marca en el motivo dentro del hueco disponible
         if (String(error.message).includes('origen_manual') || String(error.message).includes('column')) {
           const { error: err2 } = await window.sb.from('fichajes').insert({
             empleado_id: empId,
@@ -3758,10 +3792,17 @@
           throw error;
         }
       }
-      toast(`✓ ${tipo === 'entrada' ? 'Entrada' : 'Salida'} de ${nombre} a las ${horaTxt} registrada manualmente`);
+      toast(`✓ ${tipo === 'entrada' ? 'Entrada' : 'Salida'} de ${nombre} el ${fechaTest.toLocaleDateString('es-ES')} a las ${horaTxt} registrada`);
       if (window.renderFicha) renderFicha();
       if (window.renderPosts) renderPosts();
       if (window.renderEstadoEquipo) window.renderEstadoEquipo();
+      if (window.renderHours) renderHours(document.getElementById('hourFilter')?.value || 'all');
+      // Refrescar la lista de fichajes del editor si está abierto
+      const cont = document.getElementById(`fichajesEdit_${empId}`);
+      if (cont && typeof window.cargarFichajesEditables === 'function') {
+        // Determinar el rango actualmente cargado (por defecto 31)
+        window.cargarFichajesEditables(empId, 31);
+      }
     } catch (err) {
       toast('Error: ' + err.message);
     }
@@ -3947,7 +3988,8 @@
             <button class="btn btn-outline btn-sm" id="horasMesRango7">Últimos 7 días</button>
             <button class="btn btn-primary btn-sm" id="horasMesRango31">Mes actual</button>
             <div style="flex:1;"></div>
-            <button class="btn btn-outline btn-sm" onclick="ficharPorEmpleadoDesdeEditor()" title="Añadir un fichaje manual">＋ Añadir fichaje</button>
+            <button class="btn btn-outline btn-sm" onclick="addFichajeDesdeEditor('entrada')" title="Añadir entrada manual" style="color:#059669;border-color:#059669;">＋ Entrada</button>
+            <button class="btn btn-outline btn-sm" onclick="addFichajeDesdeEditor('salida')" title="Añadir salida manual" style="color:#B45309;border-color:#B45309;">＋ Salida</button>
           </div>
           <div style="padding:12px 14px;background:#FFFBEB;border-bottom:1px solid #FDE68A;font-size:12px;color:#78350F;">
             ⚠️ Cada edición o borrado queda registrado en auditoría (fecha + motivo).
@@ -3969,18 +4011,17 @@
     const b31 = modal.querySelector('#horasMesRango31');
     b7.onclick  = () => { cargarFichajesEditables(empId, 7);  b7.className='btn btn-primary btn-sm'; b31.className='btn btn-outline btn-sm'; };
     b31.onclick = () => { cargarFichajesEditables(empId, 31); b31.className='btn btn-primary btn-sm'; b7.className='btn btn-outline btn-sm'; };
-    // Fichar manual desde aquí llama al mismo prompt que usa la ficha
-    window.ficharPorEmpleadoDesdeEditor = async () => {
+    // Añadir fichaje desde el editor de Horas del mes — ya no pide tipo aparte
+    window.addFichajeDesdeEditor = async (tipo) => {
       if (typeof window.ficharPorEmpleado !== 'function') {
         toast('No disponible aquí, hazlo desde la ficha del empleado.'); return;
       }
-      const t = prompt('Tipo de fichaje (entrada / salida):', 'entrada');
-      if (!t) return;
-      const tipo = t.trim().toLowerCase() === 'salida' ? 'salida' : 'entrada';
       await window.ficharPorEmpleado(empId, nombreEmp || 'este empleado', tipo);
       // Refrescar la lista tras crear
       cargarFichajesEditables(empId, 31);
     };
+    // Alias antiguo por compatibilidad (por si algún onclick sigue apuntando aquí)
+    window.ficharPorEmpleadoDesdeEditor = () => window.addFichajeDesdeEditor('entrada');
     // Cargar mes actual por defecto
     cargarFichajesEditables(empId, 31);
   };

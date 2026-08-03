@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-03 (quinta jornada · push local + editor horas + PDF finiquito + import Excel v2 + jornada solo fin de mes)
-**Cache SW actual: `poolsafety-v79`**
+Última actualización: 2026-08-03 (quinta jornada · v79→v80 · fichaje manual con FECHA + tipo)
+**Cache SW actual: `poolsafety-v80`**
 
 ---
 
@@ -351,6 +351,13 @@ Ver commits: SMTP Resend, auto-update PWA, PSHor horarios editables, Correturnos
 **Otros:**
 - ✅ SW `poolsafety-v79`, `ps-notifications.js` añadido al CORE cache.
 - ✅ Se restringe en runtime `editar/borrar fichaje` a dueño (defensa en profundidad además del RLS de la BD).
+
+**Fichaje manual con día elegible (v80):**
+- ✅ `ficharPorEmpleado(empId, nombre, tipo, fechaPredeterminada)` ahora pide FECHA antes que hora (YYYY-MM-DD, default = hoy). Permite meter fichajes de días pasados (útil para altas retroactivas u olvidos de fichaje). Bloquea fechas futuras. Si el día es pasado propone hora sensata (10:00 entrada / 18:00 salida).
+- ✅ Si se invoca sin `tipo` se pide con prompt (soporte para llamadas antiguas del wrapper).
+- ✅ Botones separados "＋ Entrada" (verde) y "＋ Salida" (ámbar) en el editor del modal Horas del mes — ya no hay que teclear el tipo.
+- ✅ Los botones existentes en Ficha > Acciones ("Registrar entrada" / "Registrar salida") pasan el `tipo` y ahora también permiten fecha pasada.
+- ✅ Tras insertar refresca renderFicha + renderPosts + renderEstadoEquipo + renderHours + el editor de fichajes si está abierto.
 
 **Fix panel Documentación (v79) — jornada del mes solo cuando toca:**
 - 🐛 Antes: mostraba "Jornada del mes pendiente" (naranja) para TODOS los empleados durante todo el mes → 40 falsas alertas no accionables (la jornada solo se firma a fin de mes o al dar de baja).
