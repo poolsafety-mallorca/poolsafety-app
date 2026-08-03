@@ -79,17 +79,18 @@ insert into inventario_items (codigo, nombre, seccion, categoria, obligatorio, n
   ('desa-parches-a',   'Parches adulto DESA',                 'desa',     'DESA',         true,  'Decreto 137/2008','par',   2),
   ('desa-parches-p',   'Parches pediátricos DESA',            'desa',     'DESA',         true,  'Decreto 137/2008','par',   1),
   ('desa-bateria',     'Batería DESA de repuesto',            'desa',     'DESA',         true,  'Decreto 137/2008','ud',    1),
-  -- Oxigenoterapia
+  -- Oxigenoterapia (solo lo que realmente usa la empresa — ver sql/09-limpiar-oxigenoterapia.sql)
   ('ox-bala-p',        'Bala de oxígeno 5L (principal)',       'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
-  ('ox-bala-r',        'Bala de oxígeno de repuesto',          'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
   ('ox-regulador',     'Regulador con manómetro',              'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
   ('ox-ambu-a',        'Ambú adulto (bolsa autoinflable)',     'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
   ('ox-ambu-p',        'Ambú pediátrico',                       'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
-  ('ox-mask-a',        'Mascarilla no-rebreather adulto',      'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
   ('ox-mask-p',        'Mascarilla no-rebreather pediátrica',  'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
   ('ox-guedel-a',      'Cánulas Guedel adulto (surtido)',      'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    2),
   ('ox-guedel-p',      'Cánulas Guedel pediátrico',            'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    2),
-  ('ox-aspirador',     'Aspirador de secreciones',             'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1)
+  ('ox-aspirador',     'Aspirador de secreciones',             'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
+  ('ox-manta',         'Manta térmica de emergencia',          'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    2),
+  ('ox-abrebocas',     'Abrebocas',                            'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
+  ('ox-pinza-leng',    'Pinza de lengua',                      'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1)
 on conflict (codigo) do nothing;
 
 -- ---------------------------------------------------------------------------
