@@ -156,10 +156,14 @@ window.PSPdf = (function () {
     if (firma.ip_firma) { doc.text(`IP: ${firma.ip_firma}`, 15, y); y += 4.5; }
 
     // Texto legal completo de cada subdocumento aceptado
+    // REGLA: cada subdoc empieza en HOJA NUEVA (no se cortan por la mitad).
+    // Puede ocupar varias hojas si el texto es largo, y el pie de cada hoja
+    // lleva firma (obligación legal). No mezclamos dos apartados en una hoja.
     const aceptados = firma.aceptados_json || firma.aceptados || {};
-    (subdocs || []).forEach(sub => {
-      y += 5;
-      y = checkPage(doc, y, 30);
+    (subdocs || []).forEach((sub, idx) => {
+      // Nueva página siempre — así ningún apartado se corta por la mitad
+      doc.addPage();
+      y = 20;
       doc.setDrawColor(185, 28, 28);
       doc.setLineWidth(0.4);
       doc.line(15, y, 195, y);
@@ -281,25 +285,42 @@ window.PSPdf = (function () {
       }
     });
 
-    // Firma manuscrita
-    y += 8;
-    y = checkPage(doc, y, 70);
+    // Firma manuscrita — SIEMPRE en hoja propia al final (no compartir hoja con subdoc)
+    doc.addPage();
+    y = 20;
     doc.setDrawColor(185, 28, 28);
     doc.line(15, y, 195, y);
     y += 6;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
+    doc.setFontSize(14);
+    doc.setTextColor(185, 28, 28);
     doc.text('FIRMA MANUSCRITA DEL TRABAJADOR', 15, y);
-    y += 6;
-    if (firma.firma_imagen) {
-      try { doc.addImage(firma.firma_imagen, 'PNG', 15, y, 90, 34); } catch (e) {}
-    }
-    y += 40;
+    y += 8;
+    doc.setTextColor(0, 0, 0);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text('Firmado por: ' + limpiarTexto(firma.firma_nombre || empleado.nombre), 15, y); y += 5;
+    doc.text('Con la firma abajo, el trabajador confirma haber leído y aceptado los apartados marcados', 15, y);
+    y += 5;
+    doc.text('como "ACEPTADO POR EL TRABAJADOR" en las hojas anteriores.', 15, y);
+    y += 10;
+    if (firma.firma_imagen) {
+      try { doc.addImage(firma.firma_imagen, 'PNG', 15, y, 100, 40); } catch (e) {}
+    } else {
+      doc.setDrawColor(180, 180, 180);
+      doc.rect(15, y, 100, 40, 'D');
+    }
+    y += 46;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Firmado por: ' + limpiarTexto(firma.firma_nombre || empleado.nombre), 15, y); y += 6;
+    doc.setFont('helvetica', 'normal');
     doc.text('DNI: ' + (firma.dni || '—'), 15, y); y += 5;
-    doc.text('Fecha y hora: ' + new Date(firma.fecha_firma).toLocaleString('es-ES'), 15, y);
+    doc.text('Fecha y hora: ' + new Date(firma.fecha_firma).toLocaleString('es-ES'), 15, y); y += 5;
+    if (firma.ubicacion_lat) {
+      doc.setFontSize(9); doc.setTextColor(100,100,100);
+      doc.text('Evidencia GPS: ' + (+firma.ubicacion_lat).toFixed(5) + ', ' + (+firma.ubicacion_lng).toFixed(5), 15, y);
+      doc.setTextColor(0,0,0); doc.setFontSize(10);
+    }
 
     // Firma reducida al pie de CADA hoja (obligación legal: cada hoja rubricada)
     // Se omite la última página porque ya lleva la firma grande arriba.

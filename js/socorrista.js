@@ -2548,11 +2548,15 @@
       ${f.campos?.emailPersonal ? `<div class="doc-signed-meta"><b>Email:</b> ${f.campos.emailPersonal} · <b>Tel:</b> ${f.campos.telefonoPersonal}</div>` : ''}
     `;
     const firmaId = f.idBD;
+    const pdfUrl = f.archivoPdfUrl;
     document.getElementById('docViewActions').innerHTML = `
       <button class="btn btn-outline" onclick="closeDocView()">Cerrar</button>
-      ${firmaId ? `<button class="btn btn-primary" onclick="descargarMiKitAlta('${firmaId}')">
+      ${pdfUrl ? `<a class="btn btn-outline" href="${pdfUrl}" target="_blank" style="text-decoration:none;">
+        <svg class="ic ic-16"><use href="#ic-download"/></svg> PDF guardado
+      </a>` : ''}
+      <button class="btn btn-primary" onclick="descargarMiKitAlta('${firmaId || ''}')" style="background:#B91C1C;">
         <svg class="ic ic-16"><use href="#ic-download"/></svg> Descargar PDF firmado
-      </button>` : ''}`;
+      </button>`;
     document.getElementById('docViewModal').classList.add('open');
   }
 
@@ -2560,8 +2564,22 @@
     if (!window.PSPdf || !window.sb) { toast('Sistema no disponible'); return; }
     toast('Generando PDF…');
     try {
-      const { data: firma, error } = await window.sb.from('firmas_documentos').select('*').eq('id', firmaId).single();
-      if (error) throw error;
+      let firma = null;
+      // Si viene id lo usamos; si no, buscamos la firma kit-alta más reciente del empleado
+      if (firmaId) {
+        const { data, error } = await window.sb.from('firmas_documentos').select('*').eq('id', firmaId).single();
+        if (error) throw error;
+        firma = data;
+      } else {
+        const empId = empleadoReal?.id;
+        if (!empId) throw new Error('Tu ficha aún no está cargada. Espera unos segundos y vuelve a intentarlo.');
+        const { data, error } = await window.sb.from('firmas_documentos')
+          .select('*').eq('empleado_id', empId).eq('documento_codigo', 'kit-alta')
+          .order('fecha_firma', { ascending: false }).limit(1);
+        if (error) throw error;
+        if (!data || !data.length) throw new Error('No se encuentra tu firma del Kit Alta en la BD.');
+        firma = data[0];
+      }
       const empData = {
         nombre: empleadoReal?.nombre || me.nombre,
         dni: empleadoReal?.dni || firma.dni,
@@ -2572,7 +2590,7 @@
       const subdocs = (window.PS && PS.kitAltaSubdocs) || [];
       await window.PSPdf.descargar(empData, firma, subdocs, `PoolSafety-KitAlta-${(empData.nombre||'yo').replace(/\s+/g,'_')}.pdf`);
       toast('✓ PDF descargado');
-    } catch (err) { toast('Error: ' + err.message); }
+    } catch (err) { toast('Error: ' + err.message); alert('No se pudo descargar el PDF:\n\n' + err.message); }
   };
 
   window.descargarMiJornada = async function (firmaId, oficial) {
