@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-03 (quinta jornada · v79→v81 · fichaje manual con fecha + mapa real fichaje)
-**Cache SW actual: `poolsafety-v81`**
+Última actualización: 2026-08-03 (quinta jornada · v79→v82 · fecha+mapa+revisión sección+quitar KPIs socorrista)
+**Cache SW actual: `poolsafety-v82`**
 
 ---
 
@@ -351,6 +351,14 @@ Ver commits: SMTP Resend, auto-update PWA, PSHor horarios editables, Correturnos
 **Otros:**
 - ✅ SW `poolsafety-v79`, `ps-notifications.js` añadido al CORE cache.
 - ✅ Se restringe en runtime `editar/borrar fichaje` a dueño (defensa en profundidad además del RLS de la BD).
+
+**Revisión por sección + auto-reset diario + observaciones + limpiar inicio socorrista (v82):**
+- ✅ **Botón único "Guardar revisión de <sección>"** grande al final de cada tab (Botiquín / DESA / Oxigenoterapia) — reemplaza al antiguo "Marcar todo comprobado". Pide observaciones por prompt.
+- ✅ **Estado "revisado hoy" calculado desde `ultima_revision`** (no del boolean `revisado_hoy`). Al llegar el día siguiente los ticks se resetean solos sin cron. El boolean queda como caché opcional.
+- ✅ **UI bloqueada tras guardar**: banner verde con ✅ "<Sección> revisado hoy · última revisión HH:MM · N/N artículos · Mañana volverá a aparecer la revisión pendiente" + botón secundario "Revisar de nuevo ahora" (por si el coord pide segunda comprobación en el mismo turno).
+- ✅ **Observaciones al coord**: si el socorrista escribe algo no vacío, se inserta como `alertas` (tipo='otro', origen='socorrista', criticidad='baja', mensaje `[Revisión BOTIQUÍN] X/Y artículos · Observaciones: ...`). Si están vacías, NO se genera alerta (evita ensuciar el feed del coord con "todo OK" x22 hoteles/día).
+- ✅ Aviso claro si se guarda con revisión parcial (X marcados de Y): "⚠️ Solo has marcado X de Y artículos. Se guardará como revisión igualmente".
+- ✅ **Quitado bloque "Mi mes · Días trabajados / Horas trabajadas"** del inicio del socorrista. Los cálculos de horas siguen usándose para el registro mensual (jornada firmada) y el perfil, solo se ocultó de la pantalla de inicio. Función `renderMetricasMes` sigue existiendo pero no encuentra los DOM ids y retorna sin ruido.
 
 **Mapa real del punto donde ficha el socorrista (v81):**
 - ✅ Placeholder SVG de calles falsas SUSTITUIDO por iframe OpenStreetMap con marcador en las coordenadas EXACTAS del fichaje (`fichajes.gps_lat/gps_lng`). Sin API key, sin CSP problems.

@@ -1045,21 +1045,30 @@
         .select('id, stock, minimo, revisado_hoy, ultima_revision, caducidad, carga_bala, item_id, inventario_items(id, nombre, seccion, categoria, unidad, obligatorio, normativa)')
         .eq('puesto_id', puestoId);
       if (error) throw error;
-      inventarioCache = (data || []).map(r => ({
-        id: r.item_id,
-        rowId: r.id,
-        nombre: r.inventario_items?.nombre || 'Material',
-        seccion: r.inventario_items?.seccion || 'botiquin',
-        categoria: r.inventario_items?.categoria || '',
-        unidad: r.inventario_items?.unidad || 'ud',
-        obligatorio: !!r.inventario_items?.obligatorio,
-        normativa: r.inventario_items?.normativa || '',
-        stock: r.stock || 0,
-        minimo: r.minimo || 1,
-        revisadoHoy: !!r.revisado_hoy,
-        caducidad: r.caducidad || null,
-        cargaBala: r.carga_bala || null
-      }));
+      // "Revisado hoy" se calcula desde ultima_revision (día natural actual).
+      // Así al llegar el día siguiente el estado se resetea SOLO, sin cron.
+      // El boolean revisado_hoy queda como caché opcional pero no manda.
+      const inicioHoy = new Date(); inicioHoy.setHours(0,0,0,0);
+      inventarioCache = (data || []).map(r => {
+        const ur = r.ultima_revision ? new Date(r.ultima_revision) : null;
+        const revisadoHoy = ur ? ur >= inicioHoy : false;
+        return {
+          id: r.item_id,
+          rowId: r.id,
+          nombre: r.inventario_items?.nombre || 'Material',
+          seccion: r.inventario_items?.seccion || 'botiquin',
+          categoria: r.inventario_items?.categoria || '',
+          unidad: r.inventario_items?.unidad || 'ud',
+          obligatorio: !!r.inventario_items?.obligatorio,
+          normativa: r.inventario_items?.normativa || '',
+          stock: r.stock || 0,
+          minimo: r.minimo || 1,
+          revisadoHoy,
+          ultimaRevision: ur,
+          caducidad: r.caducidad || null,
+          cargaBala: r.carga_bala || null
+        };
+      });
     } catch (err) { console.warn('[Inventario BD]', err.message); }
   }
 
@@ -1182,22 +1191,36 @@
 
     const revCount = items.filter(it => it.revisadoHoy).length;
     const totalCount = items.length;
-    const allDone = revCount === totalCount;
+    const allDone = revCount === totalCount && totalCount > 0;
+    // Última revisión de la sección = fecha más reciente entre todos los items
+    const ultimaRevSec = items
+      .map(it => it.ultimaRevision)
+      .filter(Boolean)
+      .sort((a, b) => b - a)[0] || null;
+    const seccionYaRevisadaHoy = allDone && ultimaRevSec;
+    const nombreSeccion = SECCION_INFO[seccionActual]?.titulo || seccionActual;
 
-    inventarioList.innerHTML = itemsHTML + `
-      <div class="card" style="margin-top:16px;padding:14px;background:${allDone?'#ecfdf5':'#f8fafc'};border:2px solid ${allDone?'#10b981':'#cbd5e1'};">
-        <div class="row between" style="align-items:center;">
-          <div>
-            <div style="font-weight:700;font-size:15px;">${revCount} de ${totalCount} revisados</div>
-            <div class="small text-muted">Marca los ticks conforme compruebes cada material</div>
-          </div>
-          <button class="btn ${allDone?'btn-outline':'btn-primary'} btn-lg" id="btnComprobarTodo" style="min-width:160px;">
-            <svg class="ic ic-18"><use href="#${allDone?'ic-check-circle':'ic-check'}"/></svg>
-            ${allDone ? '✓ Todo comprobado' : 'Marcar todo comprobado'}
-          </button>
+    // Bloque final: cambia según si la sección ya está revisada hoy o no
+    inventarioList.innerHTML = itemsHTML + (seccionYaRevisadaHoy ? `
+      <div class="card" style="margin-top:16px;padding:16px;background:#ecfdf5;border:2px solid #10b981;">
+        <div style="text-align:center;">
+          <div style="font-size:36px;line-height:1;">✅</div>
+          <div style="font-weight:800;font-size:16px;margin-top:6px;color:#065F46;">${nombreSeccion} revisado hoy</div>
+          <div class="small" style="color:#047857;margin-top:2px;">Última revisión: ${ultimaRevSec.toLocaleString('es-ES', { hour:'2-digit', minute:'2-digit' })} · ${totalCount}/${totalCount} artículos</div>
+          <div class="small text-muted" style="margin-top:8px;">Mañana volverá a aparecer la revisión pendiente.</div>
+          <button class="btn btn-outline btn-sm" id="btnRevisarOtraVez" style="margin-top:10px;">Revisar de nuevo ahora</button>
         </div>
+      </div>` : `
+      <div class="card" style="margin-top:16px;padding:14px;background:#fffbeb;border:2px solid #F59E0B;">
+        <div style="font-weight:700;font-size:15px;color:#78350F;">Revisión de ${nombreSeccion.toLowerCase()} pendiente</div>
+        <div class="small" style="color:#92400E;margin-top:2px;">${revCount} de ${totalCount} artículos marcados. Marca los ticks conforme compruebes cada material. Cuando termines, pulsa <b>Guardar revisión</b>.</div>
+        <button class="btn btn-primary btn-lg" id="btnGuardarRevision" style="width:100%;margin-top:12px;background:#B91C1C;">
+          <svg class="ic ic-18"><use href="#ic-check-circle"/></svg>
+          Guardar revisión de ${nombreSeccion.toLowerCase()}
+        </button>
+        <div class="small text-muted" style="margin-top:8px;text-align:center;">Se te preguntará por observaciones (opcional) para el coordinador.</div>
       </div>
-    `;
+    `);
 
     // Checkbox revisión diaria (guarda en BD)
     inventarioList.querySelectorAll('.inv-check').forEach(btn => {
@@ -1263,15 +1286,27 @@
       });
     });
 
-    // Botón "Marcar todo comprobado" — marca todos los items de la sección como revisados
-    const btnAll = inventarioList.querySelector('#btnComprobarTodo');
-    if (btnAll) {
-      btnAll.addEventListener('click', async () => {
-        if (allDone) { toast('Ya está todo comprobado ✓'); return; }
-        btnAll.disabled = true;
-        btnAll.innerHTML = '<svg class="ic ic-18"><use href="#ic-signal"/></svg> Guardando…';
+    // ------ Botón "Guardar revisión" de la sección ------
+    // Marca TODOS los items del puesto+sección con ultima_revision = ahora,
+    // registra observaciones (si las hay) como alerta informativa para el coord,
+    // y bloquea el bloque final con "Revisado hoy" hasta el día siguiente.
+    const btnGuardar = inventarioList.querySelector('#btnGuardarRevision');
+    if (btnGuardar) {
+      btnGuardar.addEventListener('click', async () => {
+        const parcial = revCount < totalCount;
+        const nombreLabel = nombreSeccion.toLowerCase();
+        // Preguntar por observaciones (opcional pero recomendado)
+        const obs = prompt(
+          `Guardar revisión de ${nombreLabel}` +
+          (parcial ? `\n\n⚠️ Solo has marcado ${revCount} de ${totalCount} artículos. Se guardará como revisión igualmente. ` : '\n\n') +
+          `Observaciones para el coordinador (opcional):\n\nEj: "Todo correcto", "Falta agua oxigenada", "DESA con batería al 30%", "Ambú desgastado"…`, ''
+        );
+        if (obs === null) return; // cancelado
+        btnGuardar.disabled = true;
+        btnGuardar.innerHTML = '<svg class="ic ic-18"><use href="#ic-signal"/></svg> Guardando revisión…';
         try {
-          const rowIds = items.filter(it => !it.revisadoHoy).map(it => it.rowId);
+          // 1) Sellar ultima_revision de TODOS los items de la sección (aunque no tuvieran tick — la revisión abarca la sección entera)
+          const rowIds = items.map(it => it.rowId);
           if (rowIds.length) {
             const { error } = await window.sb.from('inventario_puesto').update({
               revisado_hoy: true,
@@ -1279,14 +1314,58 @@
             }).in('id', rowIds);
             if (error) throw error;
           }
-          items.forEach(it => { it.revisadoHoy = true; });
-          toast(`✓ ${totalCount} artículos comprobados`);
+          // 2) Registrar alerta informativa SOLO si hay observaciones (para no ensuciar el feed del coord)
+          if (obs.trim()) {
+            try {
+              const psSes = window.PS_SESSION || {};
+              const puestoId = puestoReal?.id || empleadoReal?.puesto_id || null;
+              await window.sb.from('alertas').insert({
+                empleado_id: empleadoReal?.id || null,
+                puesto_id: puestoId,
+                tipo: 'otro',
+                origen: 'socorrista',
+                criticidad: 'baja',
+                mensaje: `[Revisión ${nombreSeccion.toUpperCase()}] ${revCount}/${totalCount} artículos · Observaciones: ${obs.trim()}`,
+                resuelto: false
+              });
+            } catch (aErr) {
+              console.warn('[revisión] no se pudo notificar observaciones al coord:', aErr.message);
+              // No es bloqueante — la revisión ya quedó registrada en inventario_puesto
+            }
+          }
+          // 3) Actualizar cache local: todos revisados hoy
+          const nowD = new Date();
+          items.forEach(it => { it.revisadoHoy = true; it.ultimaRevision = nowD; });
+          toast(`✓ Revisión de ${nombreLabel} guardada`);
           renderInventario();
           renderRevisionSummary();
         } catch (err) {
-          toast('Error: ' + err.message);
-          btnAll.disabled = false;
+          toast('Error guardando la revisión: ' + err.message);
+          btnGuardar.disabled = false;
+          btnGuardar.innerHTML = `<svg class="ic ic-18"><use href="#ic-check-circle"/></svg> Guardar revisión de ${nombreLabel}`;
         }
+      });
+    }
+
+    // Botón "Revisar de nuevo ahora" — desbloquea la sección para forzar otra revisión el mismo día.
+    // Útil si el coord pide una segunda comprobación en el turno, o si se cambió material.
+    const btnOtraVez = inventarioList.querySelector('#btnRevisarOtraVez');
+    if (btnOtraVez) {
+      btnOtraVez.addEventListener('click', async () => {
+        if (!confirm(`¿Volver a revisar ${nombreSeccion.toLowerCase()}? Se resetearán los ticks para esta sección.`)) return;
+        try {
+          const rowIds = items.map(it => it.rowId);
+          if (rowIds.length) {
+            await window.sb.from('inventario_puesto').update({
+              revisado_hoy: false,
+              ultima_revision: null
+            }).in('id', rowIds);
+          }
+          items.forEach(it => { it.revisadoHoy = false; it.ultimaRevision = null; });
+          renderInventario();
+          renderRevisionSummary();
+          toast('Sección desbloqueada — revísala de nuevo');
+        } catch (err) { toast('Error: ' + err.message); }
       });
     }
   }
