@@ -3121,7 +3121,19 @@
 
   /* ---------- PASO 1: Qué ha pasado ---------- */
   function incPasoQue() {
+    const hotelNombre = puestoReal?.nombre || empleadoReal?.puesto?.nombre || null;
+    const hotelZona = puestoReal?.zona || '';
     return `
+      <!-- Hotel autodetectado (no editable — se coge del puesto asignado al socorrista) -->
+      <div style="padding:10px 12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
+        <svg class="ic ic-18" style="color:#1D4ED8;flex-shrink:0;"><use href="#ic-pin"/></svg>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#1E40AF;">Hotel · registrado automáticamente</div>
+          <div style="font-size:14.5px;font-weight:700;color:#111827;margin-top:2px;">${hotelNombre || '⚠️ No tienes hotel asignado — habla con el coordinador'}</div>
+          ${hotelZona ? `<div style="font-size:12px;color:#64748B;">${hotelZona}</div>` : ''}
+        </div>
+      </div>
+
       <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Tipo de incidencia *</label>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:16px;">
         ${window.PSInc.TIPOS_INCIDENTE.map(t => `
@@ -3136,7 +3148,7 @@
       <input type="datetime-local" id="inc_fecha" value="${incState.fecha_incidente.slice(0,16)}"
         style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:14px;" />
 
-      <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Ubicación exacta dentro del hotel</label>
+      <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Zona exacta dentro de <b>${hotelNombre || 'el hotel'}</b></label>
       <input type="text" id="inc_ubicacion" value="${incState.ubicacion_descripcion || ''}"
         placeholder="Ej: Piscina infantil, esquina noreste"
         style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:14px;" />
