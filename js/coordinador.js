@@ -454,6 +454,16 @@
           </div>
         </div>
 
+        ${row.fichaje && row.fichaje.fuera_de_zona ? `
+          <div style="margin-top:10px;padding:12px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;">
+            <div style="font-weight:700;font-size:13px;color:#78350F;margin-bottom:6px;">⚠️ Fichaje registrado fuera del radio del puesto</div>
+            <div style="font-size:12px;color:#92400E;margin-bottom:8px;">Si el motivo es válido (bañista atendido, GPS impreciso, zona ampliada…) puedes marcarlo como correcto para que deje de contar como incidencia.</div>
+            <button class="btn btn-primary btn-sm" onclick="verificarUbicacionFichaje('${row.fichaje.id}')" style="background:#059669;border-color:#059669;">
+              <svg class="ic ic-14"><use href="#ic-check-circle"/></svg>
+              ✓ Ubicación verificada — marcar como correcto
+            </button>
+          </div>` : ''}
+
         <div class="modal-actions">
           <button class="btn btn-outline" onclick="closePostModal()">Cerrar</button>
           <button class="btn btn-primary" onclick="closePostModal(); openTareaModal('${soc.id}')">
@@ -4247,8 +4257,14 @@
                   style="width:30px;height:30px;background:#F0FDF4;color:#166534;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-pin"/></svg>
                 </button>` : '';
+            const botonVerificar = f.fuera_de_zona ? `
+                <button class="btn-icon" title="Marcar ubicación como verificada (dejar de contar como fuera de zona)" onclick="verificarUbicacionFichaje('${f.id}')"
+                  style="width:30px;height:30px;background:#DCFCE7;color:#065F46;border-radius:6px;border:none;cursor:pointer;">
+                  <svg class="ic ic-14"><use href="#ic-check-circle"/></svg>
+                </button>` : '';
             const botones = esAdmin ? `
                 ${botonMapa}
+                ${botonVerificar}
                 <button class="btn-icon" title="Editar hora" onclick="editarFichaje('${f.id}','${empId}',${dias})"
                   style="width:30px;height:30px;background:#EFF6FF;color:#1D4ED8;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-pen"/></svg>
@@ -4256,7 +4272,7 @@
                 <button class="btn-icon" title="Borrar" onclick="borrarFichaje('${f.id}','${empId}',${dias})"
                   style="width:30px;height:30px;background:#FEF2F2;color:#DC2626;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-x"/></svg>
-                </button>` : botonMapa;
+                </button>` : (botonMapa + botonVerificar);
             return `
               <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;margin:4px 0;">
                 <div style="min-width:60px;font-weight:700;font-family:monospace;">${hora}</div>
@@ -4310,6 +4326,57 @@
       radio:     f.puestos ? f.puestos.gps_radio_m : null,
       esManual:  !!f.origen_manual
     });
+  };
+
+  /* --- Verificar ubicación de un fichaje "fuera de zona" ---
+     Admin/coord marca la ubicación como buena (el socorrista fichó fuera del
+     radio pero el motivo era válido: hotel amplió zona, empleado atendía a un
+     bañista, GPS impreciso, etc.). Al confirmar: fuera_de_zona = false y se
+     deja constancia en motivo_manual con quién y cuándo. */
+  window.verificarUbicacionFichaje = async function (fichajeId) {
+    const psSes = window.PS_SESSION || {};
+    if (!['dueno','coordinador'].includes(psSes.rol)) { toast('Solo admin/coord puede verificar ubicaciones'); return; }
+    try {
+      const { data: f, error } = await window.sb.from('fichajes')
+        .select('id, tipo, hora, distancia_m, motivo_manual, empleados(nombre)').eq('id', fichajeId).single();
+      if (error) throw error;
+      const cuando = f.hora ? new Date(f.hora).toLocaleString('es-ES', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+      const nombreEmp = f.empleados?.nombre || 'el empleado';
+      const distTxt = f.distancia_m ? ` (a ${f.distancia_m}m del centro)` : '';
+      const motivo = prompt(
+        `Marcar como UBICACIÓN VERIFICADA el fichaje de ${nombreEmp}\n${f.tipo.toUpperCase()} · ${cuando}${distTxt}\n\n` +
+        `¿Motivo? (opcional, queda registrado):\n\nEj: "Estaba atendiendo a un bañista", "Zona ampliada por el hotel", "GPS impreciso"…`,
+        ''
+      );
+      if (motivo === null) return; // cancelado
+      const marca = `[GPS verificado ${new Date().toLocaleDateString('es-ES')} · ${psSes.rol === 'dueno' ? 'admin' : 'coord'}]` + (motivo.trim() ? ' ' + motivo.trim() : '');
+      const motivoFinal = f.motivo_manual ? (f.motivo_manual + ' · ' + marca) : marca;
+      const { data: upd, error: eUp } = await window.sb.from('fichajes').update({
+        fuera_de_zona: false,
+        motivo_manual: motivoFinal,
+        registrado_por: psSes.userId || null
+      }).eq('id', fichajeId).select();
+      if (eUp) throw eUp;
+      if (!upd || !upd.length) { alert('No se ha podido guardar. Revisa la policy UPDATE de fichajes.'); return; }
+      toast('✓ Ubicación verificada — el fichaje queda como correcto');
+      // Refrescar UI donde corresponda
+      if (window.renderPosts) renderPosts();
+      // Si estaba abierto el modal de puesto, cerrarlo y reabrirlo con datos frescos
+      const modal = document.getElementById('postModal');
+      if (modal && modal.classList.contains('open')) {
+        setTimeout(() => {
+          if (window.closePostModal) window.closePostModal();
+        }, 400);
+      }
+      // Refrescar editor de fichajes si está en pantalla
+      const contEditor = document.querySelector('[id^="fichajesEdit_"]');
+      if (contEditor) {
+        const empId = contEditor.dataset.empid || (contEditor.id.split('fichajesEdit_')[1]);
+        if (empId && typeof window.cargarFichajesEditables === 'function') {
+          window.cargarFichajesEditables(empId, 31);
+        }
+      }
+    } catch (err) { toast('Error: ' + err.message); alert('Error verificando ubicación:\n\n' + err.message); }
   };
 
   window.editarFichaje = async function (fichajeId, empId, dias) {
