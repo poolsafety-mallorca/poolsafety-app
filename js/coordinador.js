@@ -3516,7 +3516,10 @@
         </div>
         <div class="ficha-data-row">
           <div class="ficha-data-label">Email</div>
-          <div class="ficha-data-value"><input type="email" id="ed-email" value="${e.email}" /></div>
+          <div class="ficha-data-value">
+            <input type="email" id="ed-email" value="${e.email}" data-original="${(e.email||'').toLowerCase()}" />
+            <div class="small text-muted mt-1">Si cambias el email, también se cambia el email de login del empleado en Supabase. La app te lo confirma al guardar.</div>
+          </div>
         </div>
         <div class="ficha-data-row">
           <div class="ficha-data-label">Teléfono</div>
@@ -4097,10 +4100,15 @@
   window.guardarFichaDatos = async function () {
     const puestoSel = document.getElementById('ed-puesto');
     const corrChk = document.getElementById('ed-correturnos');
+    const emailInput = document.getElementById('ed-email');
+    const emailNuevo = (emailInput.value || '').trim().toLowerCase();
+    const emailOriginal = (emailInput.dataset.original || '').toLowerCase();
+    const cambiaEmail = emailNuevo && emailOriginal && emailNuevo !== emailOriginal;
+
     const patch = {
       nombre: document.getElementById('ed-nombre').value.trim(),
       dni: document.getElementById('ed-dni').value.trim(),
-      email: document.getElementById('ed-email').value.trim(),
+      email: emailNuevo,
       telefono: document.getElementById('ed-tel').value.trim(),
       direccion: document.getElementById('ed-dir').value.trim(),
       ss: document.getElementById('ed-ss').value.trim(),
@@ -4109,11 +4117,38 @@
       puestoId: puestoSel ? (puestoSel.value || null) : undefined,
       esCorreturnos: corrChk ? corrChk.checked : undefined
     };
+
+    // Si cambia el email, avisar y usar la RPC que actualiza auth.users también
+    if (cambiaEmail) {
+      const psSes = window.PS_SESSION || {};
+      if (psSes.rol !== 'dueno') {
+        alert('Solo el administrador puede cambiar el email de login.\n\nGuardaré el resto de datos pero el email se queda como antes.');
+        patch.email = emailOriginal;
+      } else if (!confirm(`⚠ Vas a cambiar el email de login de este empleado:\n\n${emailOriginal}\n→\n${emailNuevo}\n\nSe cambia también en Supabase Auth para que el empleado pueda entrar con el nuevo email. ¿Continuar?`)) {
+        patch.email = emailOriginal;
+      } else {
+        try {
+          const { data: msg, error } = await window.sb.rpc('admin_cambiar_email', {
+            p_empleado_id: fichaActualId,
+            p_nuevo_email: emailNuevo
+          });
+          if (error) throw error;
+          toast('✓ Email de login cambiado');
+          // No hace falta actualizar empleados.email en el patch, la RPC ya lo hizo
+          delete patch.email;
+        } catch (err) {
+          alert('❌ No se ha podido cambiar el email de login:\n\n' + err.message +
+            '\n\nSi el mensaje dice "function admin_cambiar_email does not exist", ejecuta antes en Supabase el SQL sql/12-cambiar-email-admin.sql.');
+          patch.email = emailOriginal;
+        }
+      }
+    }
+
     try {
       await actualizarEmpleado(fichaActualId, patch);
       renderFicha();
       renderEmpleadosGrid();
-      toast('Ficha actualizada en la BD');
+      toast('Ficha actualizada');
     } catch (err) { /* toast ya mostrado */ }
   };
 
