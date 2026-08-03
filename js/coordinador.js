@@ -464,9 +464,9 @@
     if (!badge || !window.sb) return;
     try {
       const { data, error } = await window.sb.from('alertas')
-        .select('id, tipo, origen, criticidad, mensaje, cantidad_pedida, resuelto, created_at, puesto_id, empleado_id, item_id, puestos(nombre), empleados(nombre), inventario_items(nombre, unidad)')
+        .select('id, tipo, origen, criticidad, mensaje, cantidad_pedida, resuelto, fecha_creacion, puesto_id, empleado_id, item_id, puestos(nombre), empleados(nombre), inventario_items(nombre, unidad)')
         .eq('resuelto', false)
-        .order('created_at', { ascending: false })
+        .order('fecha_creacion', { ascending: false })
         .limit(50);
       if (error) throw error;
       alertasPanelCache = data || [];
@@ -474,7 +474,12 @@
       if (count > 0) { badge.textContent = count > 99 ? '99+' : String(count); badge.style.display = 'inline-block'; }
       else { badge.style.display = 'none'; }
       renderNotifPanel();
-    } catch (_) { badge.style.display = 'none'; }
+    } catch (err) {
+      console.warn('[refrescarCampana]', err.message);
+      badge.style.display = 'none';
+      const cont = document.getElementById('notifPanelList');
+      if (cont) cont.innerHTML = `<div style="padding:20px;text-align:center;color:#DC2626;font-size:13px;">Error cargando alertas: ${err.message}</div>`;
+    }
   }
 
   function renderNotifPanel() {
@@ -490,7 +495,7 @@
       const item = a.inventario_items?.nombre || '';
       const critColor = a.criticidad === 'alta' ? '#DC2626' : a.criticidad === 'media' ? '#D97706' : '#0891B2';
       const critBg = a.criticidad === 'alta' ? '#FEE2E2' : a.criticidad === 'media' ? '#FEF3C7' : '#CFFAFE';
-      const cuando = new Date(a.created_at);
+      const cuando = new Date(a.fecha_creacion);
       const hace = tiempoRelativo(cuando);
       const iconTipo = a.tipo === 'otro' ? 'ic-message-circle' : a.tipo === 'manual' ? 'ic-alert' : 'ic-bell';
       return `
@@ -530,7 +535,13 @@
 
   window.resolverAlerta = async function (id) {
     try {
-      await window.sb.from('alertas').update({ resuelto: true, resuelto_el: new Date().toISOString() }).eq('id', id);
+      const psSes = window.PS_SESSION || {};
+      const { error } = await window.sb.from('alertas').update({
+        resuelto: true,
+        fecha_resolucion: new Date().toISOString(),
+        resuelto_por: psSes.userId || null
+      }).eq('id', id);
+      if (error) throw error;
       alertasPanelCache = alertasPanelCache.filter(a => a.id !== id);
       const badge = document.getElementById('notifCoordBadge');
       if (badge) {
@@ -546,8 +557,14 @@
     if (alertasPanelCache.length === 0) return;
     if (!confirm(`¿Marcar como resueltas las ${alertasPanelCache.length} alertas?`)) return;
     try {
+      const psSes = window.PS_SESSION || {};
       const ids = alertasPanelCache.map(a => a.id);
-      await window.sb.from('alertas').update({ resuelto: true, resuelto_el: new Date().toISOString() }).in('id', ids);
+      const { error } = await window.sb.from('alertas').update({
+        resuelto: true,
+        fecha_resolucion: new Date().toISOString(),
+        resuelto_por: psSes.userId || null
+      }).in('id', ids);
+      if (error) throw error;
       alertasPanelCache = [];
       const badge = document.getElementById('notifCoordBadge');
       if (badge) badge.style.display = 'none';

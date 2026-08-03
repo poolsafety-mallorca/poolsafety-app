@@ -26,10 +26,19 @@ create table if not exists usuarios (
   empresa_id uuid references empresas(id) on delete set null,
   rol text not null check (rol in ('dueno','coordinador','socorrista')),
   email text not null,
+  nombre text,
+  telefono text,
+  disponible boolean default true,   -- toggle Disponible/Libre del coordinador
+  ultimo_login timestamptz,          -- tracking de quién ha entrado a la app
   activo boolean default true,
   created_at timestamptz default now()
 );
 create index if not exists idx_usuarios_empresa on usuarios(empresa_id);
+-- Migración idempotente para BDs existentes:
+alter table usuarios add column if not exists nombre text;
+alter table usuarios add column if not exists telefono text;
+alter table usuarios add column if not exists disponible boolean default true;
+alter table usuarios add column if not exists ultimo_login timestamptz;
 
 -- ---------------------------------------------------------------------------
 -- 3. PUESTOS (hoteles / piscinas / comunidades donde hay socorristas)
@@ -144,9 +153,20 @@ create table if not exists fichajes (
   fuera_de_zona boolean default false,
   distancia_m int,
   observaciones text,
+  -- Fichaje registrado por admin/coord cuando al socorrista le falla la app
+  origen_manual boolean default false,
+  registrado_por uuid references usuarios(id) on delete set null,
+  motivo_manual text,
   created_at timestamptz default now()
 );
 create index if not exists idx_fichajes_empleado on fichajes(empleado_id, hora desc);
+-- Índice para el panel de admin (filtra solo por fecha, sin empleado_id):
+create index if not exists idx_fichajes_hora on fichajes(hora desc);
+create index if not exists idx_fichajes_puesto_hora on fichajes(puesto_id, hora desc);
+-- Migración idempotente para BDs existentes:
+alter table fichajes add column if not exists origen_manual boolean default false;
+alter table fichajes add column if not exists registrado_por uuid references usuarios(id) on delete set null;
+alter table fichajes add column if not exists motivo_manual text;
 
 -- ---------------------------------------------------------------------------
 -- 7. DOCUMENTOS EMPRESA (plantillas base: kit-alta, jornada, finiquito)
@@ -310,6 +330,45 @@ create table if not exists notas (
   leida boolean default false,
   created_at timestamptz default now()
 );
+
+-- ---------------------------------------------------------------------------
+-- 16. TITULACIONES EMPLEADO (DNI, SVB, DEA, socorrismo, PRL, contrato, nómina)
+-- ---------------------------------------------------------------------------
+create table if not exists titulaciones_empleado (
+  id uuid primary key default gen_random_uuid(),
+  empleado_id uuid not null references empleados(id) on delete cascade,
+  tipo text not null,                 -- dni, svb, dea, socorrismo, prl, contrato, nomina, otro
+  numero text,
+  fecha_emision date,
+  fecha_caducidad date,
+  archivo_url text,
+  nombre_archivo text,
+  notas text,
+  subido_por uuid references usuarios(id) on delete set null,
+  created_at timestamptz default now()
+);
+create index if not exists idx_titulaciones_empleado on titulaciones_empleado(empleado_id, tipo);
+create index if not exists idx_titulaciones_caducidad on titulaciones_empleado(fecha_caducidad)
+  where fecha_caducidad is not null;
+
+-- ---------------------------------------------------------------------------
+-- 17. VISITAS HOTELES (registro de visitas del coordinador a cada hotel)
+-- ---------------------------------------------------------------------------
+create table if not exists visitas_hoteles (
+  id uuid primary key default gen_random_uuid(),
+  empresa_id uuid not null references empresas(id) on delete cascade,
+  coordinador_id uuid references usuarios(id) on delete set null,
+  puesto_id uuid references puestos(id) on delete set null,
+  fecha_hora_llegada timestamptz default now(),
+  gps_lat numeric(10,7),
+  gps_lng numeric(10,7),
+  vio_director boolean default false,
+  director_notas text,
+  actividades_realizadas text,
+  nota_para_admin text,
+  created_at timestamptz default now()
+);
+create index if not exists idx_visitas_empresa on visitas_hoteles(empresa_id, fecha_hora_llegada desc);
 
 -- ---------------------------------------------------------------------------
 -- Trigger para actualizar updated_at automáticamente
