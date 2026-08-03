@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-03 (quinta jornada · v79→v80 · fichaje manual con FECHA + tipo)
-**Cache SW actual: `poolsafety-v80`**
+Última actualización: 2026-08-03 (quinta jornada · v79→v81 · fichaje manual con fecha + mapa real fichaje)
+**Cache SW actual: `poolsafety-v81`**
 
 ---
 
@@ -351,6 +351,16 @@ Ver commits: SMTP Resend, auto-update PWA, PSHor horarios editables, Correturnos
 **Otros:**
 - ✅ SW `poolsafety-v79`, `ps-notifications.js` añadido al CORE cache.
 - ✅ Se restringe en runtime `editar/borrar fichaje` a dueño (defensa en profundidad además del RLS de la BD).
+
+**Mapa real del punto donde ficha el socorrista (v81):**
+- ✅ Placeholder SVG de calles falsas SUSTITUIDO por iframe OpenStreetMap con marcador en las coordenadas EXACTAS del fichaje (`fichajes.gps_lat/gps_lng`). Sin API key, sin CSP problems.
+- ✅ Función pura `renderMapaFichaje({puestoLat, puestoLng, fichLat, fichLng, radio, esManual})` reutilizable desde cualquier vista.
+- ✅ En el modal detalle del puesto: mapa aparece automáticamente en el mismo hueco donde antes salía el dibujo genérico. Debajo, coords en texto + botones "Google Maps" (abre app nativa en móvil) y "Ver ampliado" (OSM full).
+- ✅ Cálculo Haversine de distancia entre punto fichado y centro del puesto → mensaje ✓ verde "Dentro del radio" o ⚠ rojo "N m del centro" con contexto del radio permitido.
+- ✅ Botón nuevo 📍 (verde) en cada fila del editor de fichajes (Ficha > Acciones / modal Horas del mes) → toggle inline del mismo mini-mapa. Cache global `window.__fichajesCache` para no refetchear si ya vino en la lista.
+- ✅ Botón 📍 visible también para coord (no solo admin) — ver el mapa es informativo, no destructivo.
+- ✅ Fichajes manuales sin GPS (los que crea el admin desde Registrar entrada/salida) muestran banner azul "sin coordenadas GPS (fichaje manual del admin)" + mapa centrado en el puesto para no dejar el bloque vacío.
+- ✅ SELECTs de `renderPosts` y `cargarFichajesEditables` ahora traen `gps_lat`, `gps_lng` (fichaje) y `puestos.gps_lat/gps_lng/gps_radio_m`.
 
 **Fichaje manual con día elegible (v80):**
 - ✅ `ficharPorEmpleado(empId, nombre, tipo, fechaPredeterminada)` ahora pide FECHA antes que hora (YYYY-MM-DD, default = hoy). Permite meter fichajes de días pasados (útil para altas retroactivas u olvidos de fichaje). Bloquea fechas futuras. Si el día es pasado propone hora sensata (10:00 entrada / 18:00 salida).

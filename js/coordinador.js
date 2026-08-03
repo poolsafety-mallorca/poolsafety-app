@@ -64,7 +64,7 @@
     try {
       // 1. Todos los puestos activos
       const { data: puestos, error: e1 } = await window.sb
-        .from('puestos').select('id, nombre, zona, hora_inicio_default').eq('activo', true).order('nombre');
+        .from('puestos').select('id, nombre, zona, hora_inicio_default, gps_lat, gps_lng, gps_radio_m').eq('activo', true).order('nombre');
       if (e1) throw e1;
 
       // 2. Fichajes de hoy
@@ -73,7 +73,7 @@
       // Enriquecemos con teléfono del empleado (para botón llamar) y marca de fichaje manual
       const { data: fichajes } = await window.sb
         .from('fichajes')
-        .select('id, empleado_id, puesto_id, tipo, hora, gps_ok, fuera_de_zona, distancia_m, origen_manual, motivo_manual, registrado_por, empleados(id, nombre, telefono)')
+        .select('id, empleado_id, puesto_id, tipo, hora, gps_ok, gps_lat, gps_lng, fuera_de_zona, distancia_m, origen_manual, motivo_manual, registrado_por, empleados(id, nombre, telefono)')
         .gte('hora', desde)
         .order('hora', { ascending: false });
 
@@ -268,6 +268,98 @@
       .subscribe();
   } catch (_) { /* si Realtime no está disponible, el interval basta */ }
 
+  /* ---------- Mapa real (OpenStreetMap embed) ----------
+     Muestra el punto EXACTO donde el socorrista fichó (chincheta roja)
+     y opcionalmente el centro del puesto (chincheta azul) para comparar.
+     Usa el iframe de openstreetmap.org (sin API key, sin CSP problems)
+     con un bbox que engloba ambos puntos + margen. Debajo:
+       - Coordenadas del fichaje
+       - "Abrir en Google Maps" (útil en móvil)
+       - "Cómo llegar" desde tu ubicación (útil para el coord)
+  ---------------------------------------------------------- */
+  function renderMapaFichaje({ puestoLat, puestoLng, fichLat, fichLng, radio, esManual }) {
+    // Sin ninguna coordenada válida → placeholder gris
+    if (!fichLat && !puestoLat) {
+      return `
+        <div style="height:150px;background:#F1F5F9;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#94A3B8;font-size:13px;flex-direction:column;gap:6px;">
+          <svg class="ic ic-22"><use href="#ic-pin"/></svg>
+          <div>Sin coordenadas registradas para este fichaje</div>
+        </div>`;
+    }
+
+    // Elegir centro y bbox
+    const pts = [];
+    if (fichLat) pts.push({ lat: fichLat, lng: fichLng, color: 'red', label: 'Fichaje' });
+    if (puestoLat) pts.push({ lat: puestoLat, lng: puestoLng, color: 'blue', label: 'Puesto' });
+
+    const lats = pts.map(p => p.lat);
+    const lngs = pts.map(p => p.lng);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+    // Margen ~ 100m equivalente en grados (aprox 0.001)
+    const marg = Math.max(0.0015, (maxLat - minLat) * 0.6, (maxLng - minLng) * 0.6);
+    const bbox = [minLng - marg, minLat - marg, maxLng + marg, maxLat + marg].join(',');
+
+    // Marker de OSM: solo permite UN marker en el embed. Usamos el del fichaje si hay,
+    // si no el del puesto. Los dos se ven en la capa dibujada con el bbox.
+    const markerPt = fichLat ? { lat: fichLat, lng: fichLng } : { lat: puestoLat, lng: puestoLng };
+    const iframeSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${markerPt.lat},${markerPt.lng}`;
+
+    // Enlaces útiles
+    const gmapUrl = fichLat
+      ? `https://www.google.com/maps?q=${fichLat},${fichLng}`
+      : `https://www.google.com/maps?q=${puestoLat},${puestoLng}`;
+    const osmFullUrl = `https://www.openstreetmap.org/?mlat=${markerPt.lat}&mlon=${markerPt.lng}#map=18/${markerPt.lat}/${markerPt.lng}`;
+
+    // Info: si hay ambos, calcular distancia (Haversine) para saber si el punto fichado está lejos del puesto
+    let distanciaTxt = '';
+    if (fichLat && puestoLat) {
+      const R = 6371000;
+      const toRad = d => d * Math.PI / 180;
+      const dLat = toRad(fichLat - puestoLat);
+      const dLng = toRad(fichLng - puestoLng);
+      const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(puestoLat)) * Math.cos(toRad(fichLat)) * Math.sin(dLng/2) ** 2;
+      const d = 2 * R * Math.asin(Math.sqrt(a));
+      const distancia = Math.round(d);
+      const dentroRadio = radio && distancia <= radio;
+      distanciaTxt = dentroRadio
+        ? `<span style="color:#059669;">✓ Dentro del radio del puesto (${distancia} m del centro)</span>`
+        : `<span style="color:#DC2626;">⚠ ${distancia} m del centro del puesto${radio ? ` (radio permitido: ${radio} m)` : ''}</span>`;
+    }
+
+    const soloPuesto = !fichLat && puestoLat;
+    const banner = soloPuesto
+      ? `<div style="padding:6px 10px;background:#EFF6FF;color:#1E40AF;font-size:11.5px;border-radius:6px;margin-bottom:6px;">Este fichaje no tiene coordenadas GPS${esManual ? ' (fichaje manual del admin)' : ''}. Mostrando el centro del puesto.</div>`
+      : '';
+
+    return `
+      <div style="border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;background:#F1F5F9;">
+        ${banner}
+        <iframe
+          src="${iframeSrc}"
+          style="width:100%;height:220px;border:0;display:block;"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          title="Mapa del fichaje">
+        </iframe>
+        <div style="padding:8px 10px;background:#fff;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;">
+          <div style="min-width:0;flex:1;">
+            ${fichLat ? `<div><b>📍 ${fichLat.toFixed(6)}, ${fichLng.toFixed(6)}</b></div>` : ''}
+            ${distanciaTxt ? `<div style="margin-top:2px;">${distanciaTxt}</div>` : ''}
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <a href="${gmapUrl}" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="font-size:11px;padding:4px 8px;">
+              <svg class="ic ic-14"><use href="#ic-pin"/></svg> Google Maps
+            </a>
+            <a href="${osmFullUrl}" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="font-size:11px;padding:4px 8px;">
+              Ver ampliado
+            </a>
+          </div>
+        </div>
+      </div>`;
+  }
+  window.renderMapaFichaje = renderMapaFichaje;
+
   /* ---------- Modal detalle puesto ---------- */
   window.openPostModal = function (puestoId) {
     const row = postsCache.find(r => r.puesto.id === puestoId);
@@ -287,6 +379,14 @@
       gpsOk: !row.fichaje.fuera_de_zona,
       estado: row.estado
     } : { horaFichaje: null, gpsOk: null, estado: row.estado };
+
+    // ------ Mapa real ------
+    // Prioridad: coords del fichaje > coords del puesto > placeholder.
+    const puestoLat = parseFloat(row.puesto.gps_lat) || null;
+    const puestoLng = parseFloat(row.puesto.gps_lng) || null;
+    const fichLat   = row.fichaje && row.fichaje.gps_lat != null ? parseFloat(row.fichaje.gps_lat) : null;
+    const fichLng   = row.fichaje && row.fichaje.gps_lng != null ? parseFloat(row.fichaje.gps_lng) : null;
+    const mapHtml = renderMapaFichaje({ puestoLat, puestoLng, fichLat, fichLng, radio: row.puesto.gps_radio_m, esManual });
     const info = row.estado === 'ok' ? { cls:'ok', badge:'badge-ok', icon:'ic-check-circle', label:'Fichado' }
                : row.estado === 'fuera' ? { cls:'danger', badge:'badge-danger', icon:'ic-signal', label:'Fuera de zona' }
                : row.estado === 'terminado' ? { cls:'', badge:'badge-neutral', icon:'ic-check', label:'Turno terminado' }
@@ -314,26 +414,7 @@
         </span>
       </div>
 
-      <div class="map-view" style="border-radius: var(--r-3); height: 140px;">
-        <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice">
-          <rect x="10" y="10" width="90" height="60" fill="#E8F0F7" rx="4"/>
-          <rect x="110" y="10" width="70" height="50" fill="#E8F0F7" rx="4"/>
-          <rect x="190" y="10" width="120" height="55" fill="#E8F0F7" rx="4"/>
-          <rect x="320" y="10" width="70" height="65" fill="#E8F0F7" rx="4"/>
-          <rect x="10" y="130" width="140" height="60" fill="#E8F0F7" rx="4"/>
-          <rect x="160" y="120" width="110" height="70" fill="#E8F0F7" rx="4"/>
-          <rect x="280" y="130" width="110" height="60" fill="#E8F0F7" rx="4"/>
-          <path d="M0 80 L400 80" stroke="#fff" stroke-width="10"/>
-          <path d="M0 110 L400 110" stroke="#fff" stroke-width="8"/>
-          <path d="M105 0 L105 200" stroke="#fff" stroke-width="8"/>
-          <path d="M275 0 L275 200" stroke="#fff" stroke-width="8"/>
-        </svg>
-        <div class="map-radius"></div>
-        <svg class="map-pin" viewBox="0 0 32 40">
-          <path d="M16 40 C16 40 2 22 2 14 A14 14 0 0 1 30 14 C30 22 16 40 16 40 Z" fill="#EF4444"/>
-          <circle cx="16" cy="14" r="5" fill="#fff"/>
-        </svg>
-      </div>
+      ${mapHtml}
 
       ${soc ? (() => {
         const tel = (soc.telefono || '').replace(/\s+/g,'');
@@ -3822,12 +3903,15 @@
         desde.setHours(0,0,0,0);
       }
       const { data, error } = await window.sb.from('fichajes')
-        .select('id, tipo, hora, gps_ok, fuera_de_zona, distancia_m, origen_manual, motivo_manual, puesto_id, puestos(nombre)')
+        .select('id, tipo, hora, gps_ok, gps_lat, gps_lng, fuera_de_zona, distancia_m, origen_manual, motivo_manual, puesto_id, puestos(nombre, gps_lat, gps_lng, gps_radio_m)')
         .eq('empleado_id', empId)
         .gte('hora', desde.toISOString())
         .order('hora', { ascending: false });
       if (error) throw error;
       const rows = data || [];
+      // Cache global para verMapaFichajeIndividual (sin tener que refetchear)
+      window.__fichajesCache = window.__fichajesCache || {};
+      rows.forEach(f => { window.__fichajesCache[f.id] = f; });
       if (rows.length === 0) {
         cont.innerHTML = `<div class="text-muted small" style="padding:14px;text-align:center;">Sin fichajes en los últimos ${dias === 31 ? 'del mes' : dias + ' días'}.</div>`;
         return;
@@ -3855,7 +3939,14 @@
             const badgeManual = f.origen_manual
               ? '<span class="badge badge-info" style="margin-left:4px;">📌 manual</span>'
               : '';
+            const tieneGps = f.gps_lat != null && f.gps_lng != null;
+            const botonMapa = tieneGps ? `
+                <button class="btn-icon" title="Ver punto exacto del fichaje en el mapa" onclick="verMapaFichajeIndividual('${f.id}')"
+                  style="width:30px;height:30px;background:#F0FDF4;color:#166534;border-radius:6px;border:none;cursor:pointer;">
+                  <svg class="ic ic-14"><use href="#ic-pin"/></svg>
+                </button>` : '';
             const botones = esAdmin ? `
+                ${botonMapa}
                 <button class="btn-icon" title="Editar hora" onclick="editarFichaje('${f.id}','${empId}',${dias})"
                   style="width:30px;height:30px;background:#EFF6FF;color:#1D4ED8;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-pen"/></svg>
@@ -3863,7 +3954,7 @@
                 <button class="btn-icon" title="Borrar" onclick="borrarFichaje('${f.id}','${empId}',${dias})"
                   style="width:30px;height:30px;background:#FEF2F2;color:#DC2626;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-x"/></svg>
-                </button>` : '';
+                </button>` : botonMapa;
             return `
               <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;margin:4px 0;">
                 <div style="min-width:60px;font-weight:700;font-family:monospace;">${hora}</div>
@@ -3873,6 +3964,7 @@
                 </div>
                 ${botones}
               </div>
+              <div id="mapaFichaje_${f.id}" style="display:none;margin:2px 0 8px;"></div>
             `;
           }).join('')}
         </div>
@@ -3880,6 +3972,42 @@
     } catch (err) {
       cont.innerHTML = `<div class="alert-strip warn" style="margin:6px;">Error: ${err.message}</div>`;
     }
+  };
+
+  // Toggle mini-mapa inline en una fila del editor de fichajes.
+  // Usa cache de cargarFichajesEditables. Si no hay cache (caso raro), refetch.
+  window.verMapaFichajeIndividual = async function (fichajeId) {
+    const cont = document.getElementById(`mapaFichaje_${fichajeId}`);
+    if (!cont) return;
+    // Toggle: si ya está visible, cerrar
+    if (cont.style.display !== 'none' && cont.innerHTML.trim()) {
+      cont.style.display = 'none';
+      cont.innerHTML = '';
+      return;
+    }
+    cont.style.display = 'block';
+    cont.innerHTML = '<div class="text-muted small" style="padding:8px;text-align:center;">Cargando mapa…</div>';
+    let f = (window.__fichajesCache || {})[fichajeId];
+    if (!f) {
+      try {
+        const { data } = await window.sb.from('fichajes')
+          .select('id, tipo, hora, gps_lat, gps_lng, origen_manual, puestos(gps_lat, gps_lng, gps_radio_m)')
+          .eq('id', fichajeId).single();
+        f = data;
+      } catch (err) {
+        cont.innerHTML = `<div class="alert-strip warn">Error cargando el mapa: ${err.message}</div>`;
+        return;
+      }
+    }
+    if (!f) { cont.innerHTML = '<div class="text-muted small" style="padding:8px;">Sin datos.</div>'; return; }
+    cont.innerHTML = renderMapaFichaje({
+      puestoLat: f.puestos ? parseFloat(f.puestos.gps_lat) : null,
+      puestoLng: f.puestos ? parseFloat(f.puestos.gps_lng) : null,
+      fichLat:   f.gps_lat != null ? parseFloat(f.gps_lat) : null,
+      fichLng:   f.gps_lng != null ? parseFloat(f.gps_lng) : null,
+      radio:     f.puestos ? f.puestos.gps_radio_m : null,
+      esManual:  !!f.origen_manual
+    });
   };
 
   window.editarFichaje = async function (fichajeId, empId, dias) {
