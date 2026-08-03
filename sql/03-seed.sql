@@ -74,15 +74,11 @@ insert into inventario_items (codigo, nombre, seccion, categoria, obligatorio, n
   ('bot-collarin',     'Collarín cervical ajustable',         'botiquin', 'Emergencia',   false, 'Recomendado',      'ud',    1),
   ('bot-antinflam',    'Antiinflamatorio tópico',             'botiquin', 'Medicación',   true,  'Decreto 53/1995', 'ud',    1),
   ('bot-medusas',      'Neutralizante picaduras medusas',     'botiquin', 'Medicación',   false, 'Recomendado litoral', 'ud',  1),
-  -- DESA
+  -- DESA (solo lo que realmente usa la empresa — ver sql/08-limpiar-desa.sql)
   ('desa-equipo',      'Desfibrilador DESA',                  'desa',     'DESA',         true,  'Decreto 137/2008','ud',    1),
   ('desa-parches-a',   'Parches adulto DESA',                 'desa',     'DESA',         true,  'Decreto 137/2008','par',   2),
   ('desa-parches-p',   'Parches pediátricos DESA',            'desa',     'DESA',         true,  'Decreto 137/2008','par',   1),
   ('desa-bateria',     'Batería DESA de repuesto',            'desa',     'DESA',         true,  'Decreto 137/2008','ud',    1),
-  ('desa-rasura',      'Rasuradora desechable',                'desa',     'DESA',         true,  'Decreto 137/2008','ud',    2),
-  ('desa-toalla',      'Toalla no conductora / secante',       'desa',     'DESA',         false, 'Recomendado',      'ud',    1),
-  ('desa-rcp-mask',    'Mascarilla RCP con válvula',           'desa',     'DESA',         true,  'Decreto 53/1995', 'ud',    2),
-  ('desa-registro',    'Libro de registro de uso DESA',        'desa',     'DESA',         true,  'Decreto 137/2008','ud',    1),
   -- Oxigenoterapia
   ('ox-bala-p',        'Bala de oxígeno 5L (principal)',       'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
   ('ox-bala-r',        'Bala de oxígeno de repuesto',          'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
