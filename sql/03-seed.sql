@@ -86,7 +86,7 @@ insert into inventario_items (codigo, nombre, seccion, categoria, obligatorio, n
   ('ox-ambu-p',        'Ambú pediátrico',                       'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
   ('ox-mask-p',        'Mascarilla no-rebreather pediátrica',  'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
   ('ox-guedel-a',      'Cánulas Guedel adulto (surtido)',      'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    2),
-  ('ox-guedel-p',      'Cánulas Guedel pediátrico',            'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    2),
+  ('ox-guedel-p',      'Cánulas Guedel pediátrico',            'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
   ('ox-aspirador',     'Aspirador de secreciones',             'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),
   ('ox-manta',         'Manta térmica de emergencia',          'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    2),
   ('ox-abrebocas',     'Abrebocas',                            'oxigeno',  'Oxígeno',      true,  'Decreto 53/1995', 'ud',    1),

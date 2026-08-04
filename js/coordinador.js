@@ -1035,30 +1035,164 @@
       if (rows.length) {
         currentBotPuesto = rows[0].id;
         botiquinPuestoSelect.value = currentBotPuesto;
+        await cargarUnidadesPuesto(currentBotPuesto);
         renderBotiquinAdmin();
       }
     } catch (err) { console.warn('refrescarSelectBotiquin:', err.message); }
   }
   if (botiquinPuestoSelect) {
     refrescarSelectBotiquin();
-    botiquinPuestoSelect.addEventListener('change', e => {
+    botiquinPuestoSelect.addEventListener('change', async e => {
       currentBotPuesto = e.target.value;
+      await cargarUnidadesPuesto(currentBotPuesto);
       renderBotiquinAdmin();
     });
     // Refrescar al entrar en la sección Botiquín
     document.querySelectorAll('[data-view="botiquin"], [data-nav="botiquin"]').forEach(el => {
-      el.addEventListener('click', () => setTimeout(refrescarSelectBotiquin, 100));
+      el.addEventListener('click', async () => {
+        setTimeout(refrescarSelectBotiquin, 100);
+        if (currentBotPuesto) { await cargarUnidadesPuesto(currentBotPuesto); renderUnidadesBar(currentBotSeccion); }
+      });
     });
+    // Y al cargar por primera vez cuando ya haya un puesto seleccionado
+    setTimeout(async () => {
+      if (currentBotPuesto) { await cargarUnidadesPuesto(currentBotPuesto); renderUnidadesBar(currentBotSeccion); }
+    }, 1200);
   }
 
   function itemsPuestoSeccion(puestoId, sec) {
     return PS.inventario.filter(it => it.puestoId === puestoId && it.seccion === sec);
   }
 
+  // ---- Gestor de unidades del hotel (Botiquín 1/2/3, Oxígeno 1/2…) ----
+  // Se pinta encima del listado de items. Al cambiar de puesto/sección se
+  // repinta con las unidades reales de BD. Solo visible para admin/coord.
+  let unidadesPuestoCache = { botiquin: [], desa: [], oxigeno: [] };
+
+  async function cargarUnidadesPuesto(puestoId) {
+    unidadesPuestoCache = { botiquin: [], desa: [], oxigeno: [] };
+    if (!puestoId || !window.sb) return;
+    try {
+      const { data, error } = await window.sb.from('unidades_material')
+        .select('id, seccion, nombre, numero, activo')
+        .eq('puesto_id', puestoId).eq('activo', true)
+        .order('seccion').order('numero');
+      if (error) throw error;
+      (data || []).forEach(u => {
+        if (unidadesPuestoCache[u.seccion]) unidadesPuestoCache[u.seccion].push(u);
+      });
+    } catch (err) { console.warn('[unidades]', err.message); }
+  }
+
+  function renderUnidadesBar(sec) {
+    const cont = document.getElementById('unidadesBar');
+    if (!cont) return;
+    const uds = unidadesPuestoCache[sec] || [];
+    const psSes = window.PS_SESSION || {};
+    const puedeGestionar = psSes.rol === 'dueno';
+    const secLabel = sec === 'botiquin' ? 'botiquines' : sec === 'desa' ? 'DESA' : 'oxígenos';
+    if (uds.length === 0) {
+      cont.innerHTML = puedeGestionar ? `
+        <div style="padding:10px 12px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;font-size:12.5px;color:#78350F;display:flex;gap:8px;align-items:center;">
+          <span>⚠️ Este hotel no tiene unidades de ${secLabel} configuradas.</span>
+          <button class="btn btn-sm btn-primary" style="background:#F59E0B;margin-left:auto;" onclick="crearNuevaUnidad('${sec}')">+ Crear ${sec === 'botiquin' ? 'Botiquín 1' : sec === 'desa' ? 'DESA 1' : 'Oxígeno 1'}</button>
+        </div>` : '';
+      return;
+    }
+    cont.innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;background:#F1F5F9;border-radius:8px;">
+        <span style="font-weight:700;font-size:12px;color:#334155;text-transform:uppercase;letter-spacing:.3px;">Unidades:</span>
+        ${uds.map(u => `
+          <div style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #CBD5E1;padding:4px 8px;border-radius:20px;font-size:12.5px;">
+            <span style="font-weight:600;">${u.nombre}</span>
+            ${puedeGestionar ? `
+              <button title="Renombrar" onclick="renombrarUnidad('${u.id}')" style="background:transparent;border:0;color:#1D4ED8;cursor:pointer;padding:0 2px;font-size:12px;">✏️</button>
+              ${u.numero > 1 ? `<button title="Eliminar unidad" onclick="eliminarUnidad('${u.id}','${u.nombre.replace(/'/g,"\\'")}','${sec}')" style="background:transparent;border:0;color:#DC2626;cursor:pointer;padding:0 2px;font-size:12px;">🗑</button>` : ''}
+            ` : ''}
+          </div>
+        `).join('')}
+        ${puedeGestionar ? `
+          <button class="btn btn-sm" style="background:#059669;color:#fff;border:0;padding:5px 12px;border-radius:16px;font-size:12px;font-weight:700;margin-left:auto;cursor:pointer;" onclick="crearNuevaUnidad('${sec}')">
+            + Añadir ${sec === 'botiquin' ? 'botiquín' : sec === 'desa' ? 'DESA' : 'oxígeno'}
+          </button>` : ''}
+      </div>`;
+  }
+
+  window.crearNuevaUnidad = async function (sec) {
+    const psSes = window.PS_SESSION || {};
+    if (psSes.rol !== 'dueno') { toast('Solo administrador'); return; }
+    if (!currentBotPuesto) { toast('Selecciona antes un hotel'); return; }
+    const defNombre = sec === 'botiquin' ? `Botiquín ${(unidadesPuestoCache.botiquin.length || 0) + 1}`
+                    : sec === 'desa'     ? `DESA ${(unidadesPuestoCache.desa.length || 0) + 1}`
+                                         : `Oxígeno ${(unidadesPuestoCache.oxigeno.length || 0) + 1}`;
+    const nombre = prompt(`Nombre de la nueva unidad:\n\n(Ej: "${defNombre}", "Botiquín piscina infantil", "Oxígeno pool grande"…)`, defNombre);
+    if (!nombre || !nombre.trim()) return;
+    try {
+      // Si es la primera unidad de esta sección, la creamos vacía. Si hay otras, duplicamos.
+      const existentes = unidadesPuestoCache[sec] || [];
+      if (existentes.length === 0) {
+        const { error } = await window.sb.from('unidades_material').insert({
+          puesto_id: currentBotPuesto, seccion: sec, nombre: nombre.trim(), numero: 1
+        });
+        if (error) throw error;
+        toast(`✓ "${nombre}" creado sin material — añade productos con "+ Añadir producto"`);
+      } else {
+        // Duplicar la primera unidad (copia items+minimos, stock=minimo)
+        const { data, error } = await window.sb.rpc('duplicar_unidad_material', {
+          p_puesto_id: currentBotPuesto,
+          p_seccion: sec,
+          p_nuevo_nombre: nombre.trim()
+        });
+        if (error) throw error;
+        toast(`✓ "${nombre}" creado con los mismos productos que la unidad 1`);
+      }
+      await cargarUnidadesPuesto(currentBotPuesto);
+      renderUnidadesBar(currentBotSeccion);
+      renderBotiquinAdmin();
+    } catch (err) { alert('Error creando unidad:\n\n' + err.message + '\n\nSi dice que la función no existe, ejecuta antes sql/14-unidades-material.sql en Supabase.'); }
+  };
+
+  window.renombrarUnidad = async function (unidadId) {
+    const psSes = window.PS_SESSION || {};
+    if (psSes.rol !== 'dueno') { toast('Solo administrador'); return; }
+    const u = Object.values(unidadesPuestoCache).flat().find(x => x.id === unidadId);
+    if (!u) return;
+    const nuevo = prompt(`Nuevo nombre para "${u.nombre}":\n\n(Ej: "Botiquín piscina infantil", "Oxígeno pool grande", "Botiquín zona pool bar"…)`, u.nombre);
+    if (!nuevo || !nuevo.trim() || nuevo.trim() === u.nombre) return;
+    try {
+      const { error } = await window.sb.from('unidades_material')
+        .update({ nombre: nuevo.trim() }).eq('id', unidadId);
+      if (error) throw error;
+      toast('✓ Renombrado');
+      await cargarUnidadesPuesto(currentBotPuesto);
+      renderUnidadesBar(currentBotSeccion);
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  window.eliminarUnidad = async function (unidadId, nombre, sec) {
+    const psSes = window.PS_SESSION || {};
+    if (psSes.rol !== 'dueno') { toast('Solo administrador'); return; }
+    if (!confirm(`⚠ ELIMINAR "${nombre}"?\n\nEsto borra la unidad y TODOS los items+revisiones asociados a ella.\n\nSi solo la quieres esconder temporalmente, mejor renómbrala.\n\n¿Continuar?`)) return;
+    const conf = prompt(`Escribe el nombre para confirmar: ${nombre}`);
+    if ((conf || '').trim().toLowerCase() !== nombre.trim().toLowerCase()) { toast('Cancelado'); return; }
+    try {
+      // Borrar inventario_puesto de esa unidad primero (por si CASCADE no funciona bien)
+      await window.sb.from('inventario_puesto').delete().eq('unidad_id', unidadId);
+      const { error } = await window.sb.from('unidades_material').delete().eq('id', unidadId);
+      if (error) throw error;
+      toast(`✓ ${nombre} eliminado`);
+      await cargarUnidadesPuesto(currentBotPuesto);
+      renderUnidadesBar(currentBotSeccion);
+      renderBotiquinAdmin();
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
   function renderBotiquinAdmin() {
     if (!botiquinAdminList) return;
     const p = PS.puestoById(currentBotPuesto);
     if (botiquinPuestoLabel) botiquinPuestoLabel.textContent = `— ${p.nombre}`;
+    // Pinta la barra de unidades (asíncrono en el arranque, síncrono si cache OK)
+    renderUnidadesBar(currentBotSeccion);
 
     ['botiquin','desa','oxigeno'].forEach(sec => {
       const el = document.getElementById(`admin-cnt-${sec}`);
