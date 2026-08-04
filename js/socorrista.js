@@ -328,8 +328,11 @@
     window.open(url, '_blank');
   };
 
+  // Obtiene GPS con reintento inteligente. Si el primer intento da accuracy
+  // mala (>300m suele ser fallback A-GPS por celda), reintenta 1 vez más y
+  // devuelve el MEJOR de los dos. Reduce mucho los "fuera de zona" fantasma.
   async function obtenerGPS() {
-    return new Promise((resolve, reject) => {
+    const pedir = (timeout) => new Promise((resolve, reject) => {
       if (!navigator.geolocation) return reject(new Error('Tu dispositivo no soporta GPS'));
       navigator.geolocation.getCurrentPosition(
         pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
@@ -340,9 +343,17 @@
           else if (err.code === 3) msg = 'GPS tarda demasiado. Prueba en un sitio más abierto.';
           reject(new Error(msg));
         },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout, maximumAge: 0 }
       );
     });
+    const primero = await pedir(15000);
+    // Si la precisión ya es buena, devolvemos ese
+    if (primero.accuracy <= 300) return primero;
+    // Precisión mala → intentamos uno más, breve, sin bloquear si falla
+    try {
+      const segundo = await pedir(8000);
+      return segundo.accuracy < primero.accuracy ? segundo : primero;
+    } catch (_) { return primero; }
   }
 
   function distanciaMetros(lat1, lng1, lat2, lng2) {
@@ -451,28 +462,141 @@
 
   async function insertarFichaje(tipo) {
     if (!empleadoReal) throw new Error('No tienes ficha de empleado (contacta con el coordinador)');
+    // 1) Determinar el puesto contra el que se ficha:
+    //    - Si el empleado es correturnos o no tiene puesto principal → elegir hotel manualmente
+    //    - Si ya eligió uno hoy (sessionStorage) → usar ese (para que salida coincida con entrada)
+    let puestoDestino = puestoReal;
+    const esCorreturnos = !!empleadoReal.es_correturnos;
+    const hotelHoyKey = 'psHotelHoy_' + empleadoReal.id;
+    const hotelHoyId = sessionStorage.getItem(hotelHoyKey);
+    if (hotelHoyId) {
+      // Ya eligió hotel hoy. Cargar sus datos completos si no es el asignado.
+      if (!puestoDestino || puestoDestino.id !== hotelHoyId) {
+        try {
+          const { data } = await window.sb.from('puestos')
+            .select('id, nombre, zona, direccion, gps_lat, gps_lng, gps_radio_m, hora_inicio_default')
+            .eq('id', hotelHoyId).single();
+          if (data) puestoDestino = data;
+        } catch (_) {}
+      }
+    }
+    // Si no hay puesto (correturnos sin elegir todavía) → pedirle que elija
+    if (!puestoDestino || esCorreturnos && !hotelHoyId) {
+      const gpsPrev = await obtenerGPS().catch(() => null);
+      if (gpsPrev) ultimaPosicion = gpsPrev;
+      const elegido = await elegirHotelParaFichar(gpsPrev);
+      if (!elegido) throw new Error('cancelado');
+      puestoDestino = elegido;
+      sessionStorage.setItem(hotelHoyKey, elegido.id);
+    }
+
     const gps = await obtenerGPS();
     ultimaPosicion = gps;
     let distanciaM = null, gpsOk = null, fueraDeZona = false;
-    if (puestoReal && puestoReal.gps_lat && puestoReal.gps_lng) {
-      distanciaM = distanciaMetros(gps.lat, gps.lng, +puestoReal.gps_lat, +puestoReal.gps_lng);
-      const radio = puestoReal.gps_radio_m || 50;
+    if (puestoDestino && puestoDestino.gps_lat && puestoDestino.gps_lng) {
+      distanciaM = distanciaMetros(gps.lat, gps.lng, +puestoDestino.gps_lat, +puestoDestino.gps_lng);
+      const radio = puestoDestino.gps_radio_m || 50;
       gpsOk = distanciaM <= radio;
       fueraDeZona = !gpsOk;
     }
-    const { error } = await window.sb.from('fichajes').insert({
+    // Intentamos guardar también accuracy_m. Si la columna no existe, hacemos
+    // reintento sin ella (fallback silencioso).
+    const payloadFull = {
       empleado_id: empleadoReal.id,
-      puesto_id: empleadoReal.puesto_id,
+      puesto_id: puestoDestino ? puestoDestino.id : null,
       tipo,
       hora: new Date().toISOString(),
       gps_lat: gps.lat,
       gps_lng: gps.lng,
       gps_ok: gpsOk,
       fuera_de_zona: fueraDeZona,
-      distancia_m: distanciaM
+      distancia_m: distanciaM,
+      accuracy_m: gps.accuracy ? Math.round(gps.accuracy) : null
+    };
+    let { error } = await window.sb.from('fichajes').insert(payloadFull);
+    if (error && /accuracy_m|column/i.test(error.message)) {
+      const { accuracy_m, ...sinAcc } = payloadFull;
+      const { error: e2 } = await window.sb.from('fichajes').insert(sinAcc);
+      if (e2) throw e2;
+    } else if (error) throw error;
+    // Si es salida, limpiamos el hotel elegido para hoy — que mañana pregunte de nuevo
+    if (tipo === 'salida' && esCorreturnos) {
+      // Solo limpiamos si es la ULTIMA salida del día (turno terminado)
+      // Aquí simple: limpiamos siempre en salida y si vuelve a entrar re-elige
+      sessionStorage.removeItem(hotelHoyKey);
+    }
+    return { gps, distanciaM, fueraDeZona, puestoUsado: puestoDestino };
+  }
+
+  // Modal para que el correturnos elija hotel al fichar entrada.
+  // Sugiere el más cercano por GPS y muestra la distancia a cada uno.
+  async function elegirHotelParaFichar(gpsSugerido) {
+    // Traer todos los hoteles activos
+    let hoteles = [];
+    try {
+      const { data } = await window.sb.from('puestos')
+        .select('id, nombre, zona, direccion, gps_lat, gps_lng, gps_radio_m')
+        .eq('activo', true).order('nombre');
+      hoteles = data || [];
+    } catch (_) {}
+    if (!hoteles.length) { alert('No hay hoteles configurados. Avisa al coordinador.'); return null; }
+
+    // Ordenar por distancia si hay GPS
+    if (gpsSugerido) {
+      hoteles.forEach(h => {
+        if (h.gps_lat && h.gps_lng) {
+          h._dist = Math.round(distanciaMetros(gpsSugerido.lat, gpsSugerido.lng, +h.gps_lat, +h.gps_lng));
+        } else {
+          h._dist = 999999;
+        }
+      });
+      hoteles.sort((a, b) => a._dist - b._dist);
+    }
+
+    return new Promise((resolve) => {
+      const modal = document.createElement('div');
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:20000;display:flex;align-items:flex-end;justify-content:center;';
+      modal.innerHTML = `
+        <div style="background:#fff;border-radius:14px 14px 0 0;max-width:520px;width:100%;max-height:85vh;display:flex;flex-direction:column;">
+          <div style="padding:16px 18px;background:#B91C1C;color:#fff;border-radius:14px 14px 0 0;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;opacity:.85;">Correturnos · fichar entrada</div>
+            <div style="font-size:16px;font-weight:800;margin-top:2px;">¿En qué hotel estás hoy?</div>
+            <div style="font-size:12px;opacity:.9;margin-top:2px;">${gpsSugerido ? 'Ordenados por cercanía a tu GPS' : 'Sin GPS · elige a mano'}</div>
+          </div>
+          <div style="padding:8px 12px;overflow-y:auto;flex:1;">
+            ${hoteles.map(h => `
+              <button data-hid="${h.id}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:14px 12px;border:1px solid #E2E8F0;background:#fff;border-radius:10px;margin:6px 0;cursor:pointer;">
+                <div style="width:38px;height:38px;border-radius:50%;background:${h._dist != null && h._dist < 100 ? '#DCFCE7' : '#F1F5F9'};color:${h._dist != null && h._dist < 100 ? '#065F46' : '#64748B'};display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;">
+                  ${h._dist != null && h._dist < 100 ? '📍' : '🏨'}
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:700;font-size:14px;color:#111827;">${h.nombre}</div>
+                  <div style="font-size:12px;color:#64748B;">${h.zona || h.direccion || ''}</div>
+                </div>
+                ${h._dist != null && h._dist < 99999 ? `
+                  <div style="font-size:11.5px;color:${h._dist < 100 ? '#059669' : h._dist < 500 ? '#D97706' : '#94A3B8'};font-weight:700;flex-shrink:0;">
+                    ${h._dist < 1000 ? h._dist + ' m' : (h._dist/1000).toFixed(1) + ' km'}
+                  </div>` : ''}
+              </button>
+            `).join('')}
+          </div>
+          <div style="padding:12px 16px;border-top:1px solid #E2E8F0;">
+            <button id="hotelBoxCancel" style="width:100%;padding:12px;background:#F1F5F9;color:#64748B;border:0;border-radius:8px;font-weight:700;cursor:pointer;">Cancelar</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-hid]');
+        if (b) {
+          const h = hoteles.find(x => x.id === b.dataset.hid);
+          modal.remove();
+          resolve(h || null);
+        } else if (e.target.id === 'hotelBoxCancel' || e.target === modal) {
+          modal.remove();
+          resolve(null);
+        }
+      });
     });
-    if (error) throw error;
-    return { gps, distanciaM, fueraDeZona };
   }
 
   async function doPunchIn() {
@@ -493,7 +617,11 @@
         r.fueraDeZona ? `Fichaje fuera de zona` : 'Dentro del área del puesto',
         r.distanciaM != null ? `${r.distanciaM}m del puesto · precisión ±${Math.round(r.gps.accuracy)}m` : `Precisión ±${Math.round(r.gps.accuracy)}m`);
     } catch (err) {
-      toast('Error: ' + err.message);
+      if (err.message === 'cancelado') {
+        toast('Fichaje cancelado');
+      } else {
+        toast('Error: ' + err.message);
+      }
       btn.disabled = false;
       btn.innerHTML = `<svg class="ic ic-18"><use href="#ic-play"/></svg> Fichar entrada`;
     }
@@ -510,7 +638,11 @@
       renderMetricasMes();
       toast(`✓ Salida registrada · ¡Buen trabajo!${r.fueraDeZona ? ' (fuera de zona)' : ''}`);
     } catch (err) {
-      toast('Error: ' + err.message);
+      if (err.message === 'cancelado') {
+        toast('Fichaje cancelado');
+      } else {
+        toast('Error: ' + err.message);
+      }
       if (btn) { btn.disabled = false; btn.innerHTML = '<svg class="ic ic-18"><use href="#ic-stop"/></svg> Fichar salida'; }
     }
   }

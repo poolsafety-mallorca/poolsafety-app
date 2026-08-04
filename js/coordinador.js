@@ -77,21 +77,34 @@
         .gte('hora', desde)
         .order('hora', { ascending: false });
 
-      // Último fichaje por puesto
-      const ultPorPuesto = {};
+      // Agrupamos fichajes por PUESTO y por EMPLEADO. Un hotel puede tener
+      // varios socorristas trabajando el mismo día (servicios distintos o
+      // turnos diferentes). Guardamos por cada empleado su ÚLTIMO fichaje
+      // del día (para saber si entró, salió, ambos, etc.).
+      const porPuesto = {};
       (fichajes || []).forEach(f => {
-        if (!ultPorPuesto[f.puesto_id]) ultPorPuesto[f.puesto_id] = f;
+        if (!porPuesto[f.puesto_id]) porPuesto[f.puesto_id] = {};
+        // Como los fichajes vienen ordenados DESC por hora, el primero por
+        // (puesto, empleado) es el más reciente para ese empleado.
+        if (!porPuesto[f.puesto_id][f.empleado_id]) {
+          porPuesto[f.puesto_id][f.empleado_id] = f;
+        }
       });
 
-      // 3. Construir cache con estado por puesto
+      // 3. Construir cache: array de fichajes por puesto (uno por empleado).
       postsCache = (puestos || []).map(p => {
-        const f = ultPorPuesto[p.id];
+        const socsMap = porPuesto[p.id] || {};
+        const fichajesPuesto = Object.values(socsMap);
+        // El estado del puesto es el "peor" de los estados de sus socorristas:
+        //   · fuera > ok > terminado > vacante
+        // Así en el panel general una tarjeta se ve roja si al menos uno está fuera.
         let estado = 'vacante';
-        if (f) {
-          if (f.tipo === 'entrada') estado = f.fuera_de_zona ? 'fuera' : 'ok';
-          else if (f.tipo === 'salida') estado = 'terminado';
-        }
-        return { puesto: p, fichaje: f || null, estado };
+        fichajesPuesto.forEach(f => {
+          const s = f.tipo === 'salida' ? 'terminado' : (f.fuera_de_zona ? 'fuera' : 'ok');
+          const rank = { fuera: 3, ok: 2, terminado: 1, vacante: 0 };
+          if (rank[s] > rank[estado]) estado = s;
+        });
+        return { puesto: p, fichajes: fichajesPuesto, estado };
       });
 
       renderPostsFromCache();
@@ -107,7 +120,6 @@
     const q = currentSearch.toLowerCase();
     const filtered = postsCache.filter(r => {
       const p = r.puesto;
-      const soc = r.fichaje && r.fichaje.empleados;
       const matchesFilter = currentFilter === 'todos'
         || (currentFilter === 'ok' && r.estado === 'ok')
         || (currentFilter === 'fuera' && r.estado === 'fuera')
@@ -116,7 +128,7 @@
       const matchesSearch = !q
         || (p.nombre || '').toLowerCase().includes(q)
         || (p.zona || '').toLowerCase().includes(q)
-        || (soc && (soc.nombre || '').toLowerCase().includes(q));
+        || (r.fichajes || []).some(f => (f.empleados?.nombre || '').toLowerCase().includes(q));
       return matchesFilter && matchesSearch;
     });
 
@@ -149,56 +161,14 @@
 
     grid.innerHTML = filtered.map(r => {
       const p = r.puesto;
-      const soc = r.fichaje && r.fichaje.empleados;
-      const info = r.estado === 'ok' ? { cls: 'ok', badge: 'badge-ok', icon: 'ic-check-circle', label: 'Fichado' }
-                 : r.estado === 'fuera' ? { cls: 'danger', badge: 'badge-danger', icon: 'ic-signal', label: 'Fuera de zona' }
+      const fichs = r.fichajes || [];
+      const info = r.estado === 'ok' ? { cls: 'ok', badge: 'badge-ok', icon: 'ic-check-circle', label: fichs.length > 1 ? `${fichs.length} fichados` : 'Fichado' }
+                 : r.estado === 'fuera' ? { cls: 'danger', badge: 'badge-danger', icon: 'ic-signal', label: fichs.length > 1 ? `${fichs.length} · alguno fuera` : 'Fuera de zona' }
                  : r.estado === 'terminado' ? { cls: '', badge: 'badge-neutral', icon: 'ic-check', label: 'Turno terminado' }
                  : { cls: '', badge: 'badge-neutral', icon: 'ic-clock', label: 'Vacante' };
-      const iniciales = soc ? soc.nombre.split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase() : '';
-      const horaTxt = r.fichaje ? new Date(r.fichaje.hora).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '';
       const hIni = (p.hora_inicio_default || '10:00:00').slice(0,5);
-      return `
-        <div class="post ${info.cls}" data-post="${p.id}">
-          <div class="post-top">
-            <div style="min-width:0;">
-              <p class="post-name">${p.nombre}</p>
-              <p class="post-loc">
-                <svg class="ic ic-14"><use href="#ic-pin"/></svg>
-                ${p.zona || '—'} · turno ${hIni}
-              </p>
-            </div>
-            <span class="badge ${info.badge}">
-              <svg class="ic ic-14"><use href="#${info.icon}"/></svg>
-              ${info.label}
-            </span>
-          </div>
-          ${soc ? (() => {
-            const tel = (soc.telefono || '').replace(/\s+/g,'');
-            const telHref = tel ? (tel.startsWith('+') ? tel : (tel.length === 9 ? '+34' + tel : tel)) : '';
-            const esManual = !!r.fichaje.origen_manual;
-            return `
-            <div class="post-worker">
-              <div class="mini-av ${avatarClassFor(r.estado === 'ok' ? 'ok' : '')}">${iniciales}</div>
-              <div style="min-width:0; flex:1;">
-                <div class="post-worker-name">${soc.nombre}${esManual ? ' <span class="small" style="color:#0284C7;font-weight:500;" title="Fichaje registrado manualmente por administración">📌 manual</span>' : ''}</div>
-                <div class="post-time ${r.fichaje.fuera_de_zona ? 'danger' : ''}">
-                  <svg class="ic ic-14"><use href="#ic-clock"/></svg>
-                  ${r.fichaje.tipo === 'entrada' ? 'Fichó entrada' : 'Salió'} a las ${horaTxt}${r.fichaje.fuera_de_zona ? ' · GPS fuera' + (r.fichaje.distancia_m ? ' (' + r.fichaje.distancia_m + 'm)' : '') : ''}
-                </div>
-              </div>
-              ${telHref ? `
-                <a class="btn-icon" href="tel:${telHref}" title="Llamar a ${soc.nombre}" onclick="event.stopPropagation();"
-                   style="width:36px;height:36px;flex-shrink:0;background:${r.fichaje.fuera_de_zona?'#DC2626':'#059669'};color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;text-decoration:none;">
-                  <svg class="ic ic-16"><use href="#ic-phone"/></svg>
-                </a>` : `
-                <button class="btn-icon" title="${soc.nombre} no tiene teléfono en su ficha — añádelo desde Empleados › Datos" onclick="event.stopPropagation();" disabled
-                   style="width:36px;height:36px;flex-shrink:0;background:#e2e8f0;color:#94a3b8;border-radius:50%;display:flex;align-items:center;justify-content:center;border:none;cursor:not-allowed;position:relative;">
-                  <svg class="ic ic-16"><use href="#ic-phone"/></svg>
-                  <span style="position:absolute;top:0;right:0;width:12px;height:2px;background:#dc2626;transform:rotate(-45deg);transform-origin:center;"></span>
-                </button>`}
-            </div>
-            `;
-          })() : `
+      // Renderiza UNA fila por socorrista fichado (puede haber varios en el mismo hotel)
+      const workers = fichs.length === 0 ? `
             <div class="post-worker">
               <div class="mini-av" style="background: var(--ink-200); color: var(--ink-500);">
                 <svg class="ic ic-14"><use href="#ic-user"/></svg>
@@ -207,8 +177,50 @@
                 <div class="post-worker-name" style="color: var(--ink-500);">Sin fichaje hoy</div>
                 <div class="post-time">Puesto vacante</div>
               </div>
+            </div>` : fichs.map(f => {
+              const soc = f.empleados;
+              if (!soc) return '';
+              const iniciales = soc.nombre.split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase();
+              const horaTxt = new Date(f.hora).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+              const tel = (soc.telefono || '').replace(/\s+/g,'');
+              const telHref = tel ? (tel.startsWith('+') ? tel : (tel.length === 9 ? '+34' + tel : tel)) : '';
+              const esManual = !!f.origen_manual;
+              const rowClass = f.fuera_de_zona ? 'danger' : (f.tipo === 'entrada' ? 'ok' : '');
+              return `
+                <div class="post-worker" style="cursor:pointer;" onclick="event.stopPropagation(); verMapaFichajeIndividual('${f.id}')" title="Ver mapa del fichaje">
+                  <div class="mini-av ${avatarClassFor(rowClass)}">${iniciales}</div>
+                  <div style="min-width:0; flex:1;">
+                    <div class="post-worker-name">${soc.nombre}${esManual ? ' <span class="small" style="color:#0284C7;font-weight:500;">📌 manual</span>' : ''}</div>
+                    <div class="post-time ${f.fuera_de_zona ? 'danger' : ''}">
+                      <svg class="ic ic-14"><use href="#ic-clock"/></svg>
+                      ${f.tipo === 'entrada' ? 'Fichó entrada' : 'Salió'} a las ${horaTxt}${f.fuera_de_zona ? ' · GPS fuera' + (f.distancia_m ? ' (' + f.distancia_m + 'm)' : '') : ''}
+                    </div>
+                  </div>
+                  ${telHref ? `
+                    <a class="btn-icon" href="tel:${telHref}" title="Llamar a ${soc.nombre}" onclick="event.stopPropagation();"
+                       style="width:36px;height:36px;flex-shrink:0;background:${f.fuera_de_zona?'#DC2626':'#059669'};color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;text-decoration:none;">
+                      <svg class="ic ic-16"><use href="#ic-phone"/></svg>
+                    </a>` : ''}
+                </div>
+                <div id="mapaFichaje_${f.id}" style="display:none;margin:2px 0 8px;"></div>
+              `;
+            }).join('');
+      return `
+        <div class="post ${info.cls}" data-post="${p.id}">
+          <div class="post-top">
+            <div style="min-width:0;">
+              <p class="post-name">${p.nombre}</p>
+              <p class="post-loc">
+                <svg class="ic ic-14"><use href="#ic-pin"/></svg>
+                ${p.zona || '—'} · turno ${hIni}${fichs.length > 1 ? ' · ' + fichs.length + ' socorristas hoy' : ''}
+              </p>
             </div>
-          `}
+            <span class="badge ${info.badge}">
+              <svg class="ic ic-14"><use href="#${info.icon}"/></svg>
+              ${info.label}
+            </span>
+          </div>
+          ${workers}
         </div>
       `;
     }).join('');
