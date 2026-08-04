@@ -4,7 +4,7 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-04 (v102 · día de arranque real · 27 socorristas fichando + gestor unidades material)
+Última actualización: 2026-08-04 tarde (v102.3 · día de arranque real · 27 socorristas fichando + gestor unidades material)
 **Cache SW actual: `poolsafety-v102`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
@@ -17,11 +17,16 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/09-limpiar-oxigenoterapia.sql` — fuera bala repuesto + mascarilla adulto, dentro manta+abrebocas+pinza lengua
 - ✅ `sql/11-empleados-para-coord.sql` — ficha empleado para coord/dueño (permite firmar Kit Alta)
 - ✅ `sql/12-cambiar-email-admin.sql` — RPC admin_cambiar_email() para cambiar email login sin ir a Auth
+- ✅ `sql/13-accuracy-fichajes.sql` — columna accuracy_m en fichajes
 - ✅ visitas_hoteles (creada manualmente por el usuario en el chat del 2026-08-04)
 - ⏳ `sql/10-asignaciones-temporales.sql` — cobertura del día (feature en curso, no urge)
-- ⏳ `sql/13-accuracy-fichajes.sql` — columna accuracy_m en fichajes (opcional, la app hace fallback)
-- ⏳ `sql/14-unidades-material.sql` — múltiples botiquines/oxígenos por hotel. **Sin este SQL no funciona el selector desplegable de "Botiquín 1/2" ni el gestor ✏️🗑 del admin.** Crea automáticamente unidades extra para 5 hoteles del cliente.
+- ⏳ `sql/14-unidades-material.sql` — múltiples botiquines/oxígenos por hotel. **Sin este SQL no funciona el selector desplegable de "Botiquín 1/2" ni el gestor ✏️🗑 del admin.** Auto-crea unidades extra para: Cala Gran (+B2+O2), Cala Romani (+B2+B3), Ona Luna Park (+B2+O2), Esmeralda Park (+B2+O2), Cala Esmeralda (+B2+O2).
+  - **⚠️ v102.3 arregla 3 bugs del SQL 14**: (a) sustituido `unaccent()` por `translate()` porque la extensión no está instalada en Supabase Free; (b) el check `auth_es_admin()` de la RPC falla al ejecutar desde SQL Editor postgres (auth.uid() es null) → ahora salta el check si no hay sesión; (c) la constraint antigua `UNIQUE(puesto_id, item_id)` bloqueaba duplicar items para Unidad 2 → ampliada a `UNIQUE(puesto_id, item_id, unidad_id)`.
 - ⏳ `sql/15-ajuste-guedel-pediatrica.sql` — Guedel pediátrica a mín 1 (requiere sql/14 previo o usar versión inline)
+
+## 🚨 Bugs conocidos abiertos (no bloquean pero atender)
+- **Fichajes históricos con puesto_id null** de correturnos: si aparecen más, usar SQL de rescate por GPS (docs abajo).
+- **`sql/14` a ejecutar cuanto antes**: en cuanto se ejecute, en los 5 hoteles listados aparecerá el selector desplegable de unidades en el móvil del socorrista.
 
 ---
 

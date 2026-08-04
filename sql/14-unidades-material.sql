@@ -54,6 +54,15 @@ alter publication supabase_realtime add table unidades_material;
 alter table inventario_puesto add column if not exists unidad_id uuid references unidades_material(id) on delete set null;
 create index if not exists inventario_puesto_unidad_idx on inventario_puesto(unidad_id) where unidad_id is not null;
 
+-- 2.5) Cambiar la constraint UNIQUE de (puesto_id, item_id) a
+-- (puesto_id, item_id, unidad_id) para permitir el MISMO item en
+-- distintas unidades del mismo hotel (Botiquín 1, Botiquín 2…).
+alter table inventario_puesto
+  drop constraint if exists inventario_puesto_puesto_id_item_id_key;
+alter table inventario_puesto
+  add constraint inventario_puesto_puesto_item_unidad_key
+  unique (puesto_id, item_id, unidad_id);
+
 -- 3) Backfill: crear "Botiquín 1" / "DESA 1" / "Oxígeno 1" por cada
 --    combinación (puesto, seccion) que YA tenga inventario.
 --    Solo lo hacemos si no existe todavía una unidad #1.
