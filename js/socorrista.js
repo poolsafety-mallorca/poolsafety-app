@@ -490,14 +490,33 @@
       sessionStorage.setItem(hotelHoyKey, elegido.id);
     }
 
-    const gps = await obtenerGPS();
-    ultimaPosicion = gps;
+    // GPS con fallback: si falla (permiso denegado, timeout, sin señal…) NO
+    // bloqueamos el fichaje — sobre todo la SALIDA. El socorrista debe poder
+    // cerrar su turno aunque el GPS esté roto. Se guarda sin coordenadas y
+    // el motivo queda registrado para que el admin lo vea.
+    let gps = null, gpsError = null;
+    try {
+      gps = await obtenerGPS();
+      ultimaPosicion = gps;
+    } catch (err) {
+      gpsError = err.message || 'GPS no disponible';
+      const seguir = confirm(
+        `⚠ No se ha podido obtener tu GPS:\n\n${gpsError}\n\n` +
+        `¿Quieres fichar ${tipo.toUpperCase()} SIN GPS?\n\n` +
+        `Se registrará como fichaje sin ubicación y el coordinador lo verá marcado.`
+      );
+      if (!seguir) throw new Error('cancelado');
+    }
+
     let distanciaM = null, gpsOk = null, fueraDeZona = false;
-    if (puestoDestino && puestoDestino.gps_lat && puestoDestino.gps_lng) {
+    if (gps && puestoDestino && puestoDestino.gps_lat && puestoDestino.gps_lng) {
       distanciaM = distanciaMetros(gps.lat, gps.lng, +puestoDestino.gps_lat, +puestoDestino.gps_lng);
       const radio = puestoDestino.gps_radio_m || 50;
       gpsOk = distanciaM <= radio;
       fueraDeZona = !gpsOk;
+    } else if (!gps) {
+      gpsOk = false;
+      fueraDeZona = true;
     }
     // Intentamos guardar también accuracy_m. Si la columna no existe, hacemos
     // reintento sin ella (fallback silencioso).
@@ -506,12 +525,13 @@
       puesto_id: puestoDestino ? puestoDestino.id : null,
       tipo,
       hora: new Date().toISOString(),
-      gps_lat: gps.lat,
-      gps_lng: gps.lng,
+      gps_lat: gps ? gps.lat : null,
+      gps_lng: gps ? gps.lng : null,
       gps_ok: gpsOk,
       fuera_de_zona: fueraDeZona,
       distancia_m: distanciaM,
-      accuracy_m: gps.accuracy ? Math.round(gps.accuracy) : null
+      accuracy_m: gps && gps.accuracy ? Math.round(gps.accuracy) : null,
+      motivo_manual: gpsError ? `[Sin GPS] ${gpsError}` : null
     };
     let { error } = await window.sb.from('fichajes').insert(payloadFull);
     if (error && /accuracy_m|column/i.test(error.message)) {
