@@ -99,7 +99,10 @@ declare
   v_nueva_id uuid;
   v_siguiente_numero int;
 begin
-  if not auth_es_admin() then raise exception 'Solo admin'; end if;
+  -- Permite ejecutar desde SQL Editor postgres (auth.uid() null) O si es admin
+  if auth.uid() is not null and not auth_es_admin() then
+    raise exception 'Solo admin';
+  end if;
   select coalesce(max(numero),0) + 1 into v_siguiente_numero
     from unidades_material where puesto_id = p_puesto_id and seccion = p_seccion;
   insert into unidades_material (puesto_id, seccion, nombre, numero)
