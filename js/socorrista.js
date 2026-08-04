@@ -1102,6 +1102,31 @@
      · A tiempo → fichó a la hora o antes (o hasta 5 min tarde)
      · Tarde   → fichó con más de 5 min de retraso
      Se muestra el % y motivador según nivel. ---------- */
+  // Helper: dado un array de horarios y un jsDay (0=domingo, 1=lunes, …, 6=sábado),
+  // devuelve el que aplica ese día (o null). Reconoce "Lun-Vie", "L-S",
+  // "Lun-Dom", "Dom", "L,M,X,J,V,S,D", "Sábado", etc.
+  function horarioAplicaEnDia(horario, jsDay) {
+    const NOMBRES = ['dom','lun','mar','mie','jue','vie','sab'];
+    const INIS = ['d','l','m','x','j','v','s'];
+    const raw = (horario.dias || 'lun-vie').toString().toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+    const target = NOMBRES[jsDay];
+    if (raw.includes(target)) return true;
+    const rango = raw.match(/(dom|lun|mar|mie|jue|vie|sab|[dlmxjvs])\s*[-–]\s*(dom|lun|mar|mie|jue|vie|sab|[dlmxjvs])/);
+    if (rango) {
+      const parse = s => s.length === 1 ? INIS.indexOf(s) : NOMBRES.indexOf(s.slice(0,3));
+      const ini = parse(rango[1]), fin = parse(rango[2]);
+      if (ini < 0 || fin < 0) return false;
+      if (ini <= fin) return jsDay >= ini && jsDay <= fin;
+      return jsDay >= ini || jsDay <= fin;
+    }
+    const partes = raw.split(/[,\s\/]+/).filter(Boolean);
+    return partes.some(p =>
+      (p.length === 1 && INIS[jsDay] === p) ||
+      (p.length >= 3 && NOMBRES[jsDay] === p.slice(0,3))
+    );
+  }
+
   async function renderRankingPuntualidad() {
     const card = document.getElementById('rankingCard');
     if (!card || !window.sb) return;
@@ -1111,12 +1136,19 @@
       const hoy = new Date();
       const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
       const hasta = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1).toISOString();
-      // Traemos entradas del mes con el puesto (hora_inicio_default) para poder comparar
-      const { data: fichs } = await window.sb.from('fichajes')
-        .select('hora, tipo, puesto_id, puestos(hora_inicio_default)')
-        .eq('empleado_id', empId).eq('tipo', 'entrada')
-        .gte('hora', desde).lt('hora', hasta).order('hora');
-      const entradas = fichs || [];
+      // Traemos entradas del mes + los horarios del socorrista (para saber la
+      // hora esperada según día de la semana, no el default único del hotel).
+      const [fichsRes, horariosRes] = await Promise.all([
+        window.sb.from('fichajes')
+          .select('hora, tipo, puesto_id, puestos(hora_inicio_default)')
+          .eq('empleado_id', empId).eq('tipo', 'entrada')
+          .gte('hora', desde).lt('hora', hasta).order('hora'),
+        window.sb.from('horarios')
+          .select('puesto_id, hora_inicio, hora_inicio_2, dias, activo, fecha_desde, fecha_hasta')
+          .eq('empleado_id', empId).eq('activo', true)
+      ]);
+      const entradas = fichsRes.data || [];
+      const horariosEmp = horariosRes.data || [];
       const totalEntradas = entradas.length;
       if (totalEntradas === 0) {
         card.style.display = 'none';
@@ -1129,7 +1161,34 @@
       entradas.forEach(f => {
         const d = new Date(f.hora);
         diasSet.add(d.toDateString());
-        const horaTurno = (f.puestos && f.puestos.hora_inicio_default) || null;
+        // 1) Buscar el horario del socorrista para ese día+puesto
+        const jsDay = d.getDay();
+        const candidatos = horariosEmp.filter(h =>
+          h.puesto_id === f.puesto_id && horarioAplicaEnDia(h, jsDay) &&
+          (!h.fecha_desde || new Date(h.fecha_desde) <= d) &&
+          (!h.fecha_hasta || new Date(h.fecha_hasta) >= d)
+        );
+        // 2) Elegir la hora prevista: si hay horario del socorrista, la más cercana
+        //    (por si tiene turno partido: hora_inicio o hora_inicio_2). Si no hay,
+        //    fallback al hora_inicio_default del puesto.
+        let horaTurno = null;
+        if (candidatos.length) {
+          const opciones = [];
+          candidatos.forEach(h => {
+            if (h.hora_inicio) opciones.push(h.hora_inicio);
+            if (h.hora_inicio_2) opciones.push(h.hora_inicio_2);
+          });
+          // Elegir la que esté más cerca de la hora del fichaje
+          let mejor = null, mejorDiff = Infinity;
+          opciones.forEach(hs => {
+            const [oh, om] = hs.split(':').map(Number);
+            const p = new Date(d); p.setHours(oh, om || 0, 0, 0);
+            const diff = Math.abs(d - p);
+            if (diff < mejorDiff) { mejorDiff = diff; mejor = hs; }
+          });
+          horaTurno = mejor;
+        }
+        if (!horaTurno) horaTurno = (f.puestos && f.puestos.hora_inicio_default) || null;
         if (!horaTurno) return; // sin hora prevista no cuenta
         const [th, tm] = horaTurno.split(':').map(Number);
         const previsto = new Date(d); previsto.setHours(th, tm || 0, 0, 0);
