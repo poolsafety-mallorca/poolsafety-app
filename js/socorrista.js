@@ -1338,17 +1338,41 @@
 
   // Cache local del inventario del puesto (cargado de BD)
   let inventarioCache = [];
+  let unidadesCache = {};   // { 'botiquin': [{id, nombre, numero}], 'desa': […], 'oxigeno': […] }
+  let unidadActiva = {};    // { 'botiquin': id | null, 'desa': id, 'oxigeno': id }
+
   async function cargarInventarioBD() {
     const puestoId = puestoReal?.id || empleadoReal?.puesto_id;
     if (!puestoId || !window.sb) return;
     try {
-      const { data, error } = await window.sb.from('inventario_puesto')
-        .select('id, stock, minimo, revisado_hoy, ultima_revision, caducidad, carga_bala, item_id, inventario_items(id, nombre, seccion, categoria, unidad, obligatorio, normativa)')
+      // Con fallback si la columna `unidad_id` aún no existe (BD antigua)
+      let data = null, error = null;
+      const sel1 = await window.sb.from('inventario_puesto')
+        .select('id, stock, minimo, revisado_hoy, ultima_revision, caducidad, carga_bala, item_id, unidad_id, inventario_items(id, nombre, seccion, categoria, unidad, obligatorio, normativa)')
         .eq('puesto_id', puestoId);
+      if (sel1.error && /unidad_id|column/i.test(sel1.error.message)) {
+        // Fallback: sin unidad_id
+        const sel2 = await window.sb.from('inventario_puesto')
+          .select('id, stock, minimo, revisado_hoy, ultima_revision, caducidad, carga_bala, item_id, inventario_items(id, nombre, seccion, categoria, unidad, obligatorio, normativa)')
+          .eq('puesto_id', puestoId);
+        data = sel2.data; error = sel2.error;
+      } else {
+        data = sel1.data; error = sel1.error;
+      }
       if (error) throw error;
-      // "Revisado hoy" se calcula desde ultima_revision (día natural actual).
-      // Así al llegar el día siguiente el estado se resetea SOLO, sin cron.
-      // El boolean revisado_hoy queda como caché opcional pero no manda.
+
+      // Traer también las unidades del puesto (para el selector desplegable)
+      try {
+        const { data: uds } = await window.sb.from('unidades_material')
+          .select('id, seccion, nombre, numero')
+          .eq('puesto_id', puestoId).eq('activo', true)
+          .order('seccion').order('numero');
+        unidadesCache = { botiquin: [], desa: [], oxigeno: [] };
+        (uds || []).forEach(u => {
+          if (unidadesCache[u.seccion]) unidadesCache[u.seccion].push(u);
+        });
+      } catch (_) { unidadesCache = { botiquin: [], desa: [], oxigeno: [] }; }
+
       const inicioHoy = new Date(); inicioHoy.setHours(0,0,0,0);
       inventarioCache = (data || []).map(r => {
         const ur = r.ultima_revision ? new Date(r.ultima_revision) : null;
@@ -1356,6 +1380,7 @@
         return {
           id: r.item_id,
           rowId: r.id,
+          unidadId: r.unidad_id || null,
           nombre: r.inventario_items?.nombre || 'Material',
           seccion: r.inventario_items?.seccion || 'botiquin',
           categoria: r.inventario_items?.categoria || '',
@@ -1370,10 +1395,42 @@
           cargaBala: r.carga_bala || null
         };
       });
+
+      // Inicializar unidad activa por sección → la primera con items no revisados hoy,
+      // o si todas están revisadas la primera a secas.
+      ['botiquin','desa','oxigeno'].forEach(sec => {
+        if (unidadActiva[sec]) return; // respeta la selección del usuario
+        const uds = unidadesCache[sec] || [];
+        if (uds.length === 0) return;
+        // Buscar la primera unidad con items pendientes
+        const pendiente = uds.find(u => {
+          const items = inventarioCache.filter(it => it.seccion === sec && it.unidadId === u.id);
+          return items.length && items.some(it => !it.revisadoHoy);
+        });
+        unidadActiva[sec] = (pendiente || uds[0]).id;
+      });
     } catch (err) { console.warn('[Inventario BD]', err.message); }
   }
 
+  // Items de una sección — si hay unidad activa, filtra por ella.
+  // Compat con BD antigua: items sin unidad_id se muestran siempre en la primera "vista".
   function itemsPorSeccion(sec) {
+    const activaId = unidadActiva[sec];
+    const uds = unidadesCache[sec] || [];
+    // Si no hay unidades cargadas (schema antiguo) o solo hay 1 → devolver todo
+    if (uds.length <= 1 || !activaId) {
+      return inventarioCache.filter(it => it.seccion === sec);
+    }
+    // Filtrar por unidad activa; items sin unidad_id se muestran en la unidad #1
+    const primeraId = uds[0].id;
+    return inventarioCache.filter(it =>
+      it.seccion === sec && (it.unidadId === activaId || (!it.unidadId && activaId === primeraId))
+    );
+  }
+
+  // Todos los items de la sección (sin filtrar por unidad) — usado para calcular
+  // "revisada hoy" globalmente para la home
+  function itemsPorSeccionGlobal(sec) {
     return inventarioCache.filter(it => it.seccion === sec);
   }
 
@@ -1436,8 +1493,36 @@
       invSectionMeta.textContent = `${rev}/${items.length} revisados hoy`;
     }
 
+    // Selector de UNIDAD si el hotel tiene más de una para esta sección
+    // (p.ej. hoteles con 2 botiquines: pool grande vs pool infantil)
+    const unidadesSec = unidadesCache[seccionActual] || [];
+    let selectorHtml = '';
+    if (unidadesSec.length > 1) {
+      const opts = unidadesSec.map(u => {
+        // Marcar cuáles ya están revisadas hoy (checkmark verde en el label)
+        const itemsU = inventarioCache.filter(it => it.seccion === seccionActual && (it.unidadId === u.id || (!it.unidadId && u === unidadesSec[0])));
+        const rev = itemsU.filter(it => it.revisadoHoy).length;
+        const yaOk = itemsU.length > 0 && rev === itemsU.length;
+        const marca = yaOk ? '✓ ' : '';
+        return `<option value="${u.id}" ${unidadActiva[seccionActual] === u.id ? 'selected' : ''}>${marca}${u.nombre} (${rev}/${itemsU.length})</option>`;
+      }).join('');
+      selectorHtml = `
+        <div style="padding:12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;margin-bottom:10px;">
+          <label style="font-weight:700;font-size:12.5px;color:#1E40AF;display:block;margin-bottom:6px;">📋 Elige cuál estás revisando</label>
+          <select id="selectorUnidad" style="width:100%;padding:10px;font-size:14px;border:1px solid #BFDBFE;border-radius:8px;background:#fff;font-weight:600;">
+            ${opts}
+          </select>
+          <div class="small" style="margin-top:4px;color:#1E3A8A;">✓ = ya revisada hoy · aún faltan: ${unidadesSec.filter(u => {
+            const its = inventarioCache.filter(it => it.seccion === seccionActual && (it.unidadId === u.id || (!it.unidadId && u === unidadesSec[0])));
+            return its.length > 0 && its.some(it => !it.revisadoHoy);
+          }).length}</div>
+        </div>`;
+    }
+
     if (items.length === 0) {
-      inventarioList.innerHTML = `<div class="alert-strip warn"><svg class="ic ic-16"><use href="#ic-alert"/></svg>No hay material configurado en esta sección para tu puesto.</div>`;
+      inventarioList.innerHTML = selectorHtml + `<div class="alert-strip warn"><svg class="ic ic-16"><use href="#ic-alert"/></svg>No hay material configurado en esta sección para tu puesto.</div>`;
+      const sel = document.getElementById('selectorUnidad');
+      if (sel) sel.addEventListener('change', e => { unidadActiva[seccionActual] = e.target.value; renderInventario(); });
       return;
     }
 
@@ -1502,7 +1587,7 @@
     const nombreSeccion = SECCION_INFO[seccionActual]?.titulo || seccionActual;
 
     // Bloque final: cambia según si la sección ya está revisada hoy o no
-    inventarioList.innerHTML = itemsHTML + (seccionYaRevisadaHoy ? `
+    inventarioList.innerHTML = selectorHtml + itemsHTML + (seccionYaRevisadaHoy ? `
       <div class="card" style="margin-top:16px;padding:16px;background:#ecfdf5;border:2px solid #10b981;">
         <div style="text-align:center;">
           <div style="font-size:36px;line-height:1;">✅</div>
@@ -1522,6 +1607,10 @@
         <div class="small text-muted" style="margin-top:8px;text-align:center;">Se te preguntará por observaciones (opcional) para el coordinador.</div>
       </div>
     `);
+
+    // Selector de unidad (Botiquín 1 / 2 / 3…)
+    const selUn = document.getElementById('selectorUnidad');
+    if (selUn) selUn.addEventListener('change', e => { unidadActiva[seccionActual] = e.target.value; renderInventario(); });
 
     // Checkbox revisión diaria (guarda en BD)
     inventarioList.querySelectorAll('.inv-check').forEach(btn => {
