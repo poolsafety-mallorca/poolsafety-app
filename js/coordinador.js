@@ -377,27 +377,32 @@
     const row = postsCache.find(r => r.puesto.id === puestoId);
     if (!row) { toast('Puesto no encontrado'); return; }
     const p = { nombre: row.puesto.nombre, zona: row.puesto.zona || '—', hora: (row.puesto.hora_inicio_default || '10:00:00').slice(0,5), duracion: 8 };
-    const soc = row.fichaje && row.fichaje.empleados ? {
-      id: row.fichaje.empleados.id,
-      nombre: row.fichaje.empleados.nombre,
-      iniciales: (row.fichaje.empleados.nombre||'').split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase(),
-      telefono: row.fichaje.empleados.telefono || '',
+    // Compat con la nueva estructura row.fichajes[] (v98). Cogemos como
+    // "fichaje principal" el primero del array — el resto se listan abajo
+    // como "más socorristas en este hotel hoy".
+    const fichs = row.fichajes || (row.fichaje ? [row.fichaje] : []);
+    const principal = fichs[0] || null;
+    const otros = fichs.slice(1);
+    const soc = principal && principal.empleados ? {
+      id: principal.empleados.id,
+      nombre: principal.empleados.nombre,
+      iniciales: (principal.empleados.nombre||'').split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase(),
+      telefono: principal.empleados.telefono || '',
       horasNormales: 0, horasExtra: 0
     } : null;
-    const esManual = row.fichaje && row.fichaje.origen_manual;
-    const motivoManual = row.fichaje && row.fichaje.motivo_manual;
-    const f = row.fichaje ? {
-      horaFichaje: new Date(row.fichaje.hora).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-      gpsOk: !row.fichaje.fuera_de_zona,
+    const esManual = principal && principal.origen_manual;
+    const motivoManual = principal && principal.motivo_manual;
+    const f = principal ? {
+      horaFichaje: new Date(principal.hora).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+      gpsOk: !principal.fuera_de_zona,
       estado: row.estado
     } : { horaFichaje: null, gpsOk: null, estado: row.estado };
 
-    // ------ Mapa real ------
-    // Prioridad: coords del fichaje > coords del puesto > placeholder.
+    // ------ Mapa real del fichaje principal ------
     const puestoLat = parseFloat(row.puesto.gps_lat) || null;
     const puestoLng = parseFloat(row.puesto.gps_lng) || null;
-    const fichLat   = row.fichaje && row.fichaje.gps_lat != null ? parseFloat(row.fichaje.gps_lat) : null;
-    const fichLng   = row.fichaje && row.fichaje.gps_lng != null ? parseFloat(row.fichaje.gps_lng) : null;
+    const fichLat   = principal && principal.gps_lat != null ? parseFloat(principal.gps_lat) : null;
+    const fichLng   = principal && principal.gps_lng != null ? parseFloat(principal.gps_lng) : null;
     const mapHtml = renderMapaFichaje({ puestoLat, puestoLng, fichLat, fichLng, radio: row.puesto.gps_radio_m, esManual });
     const info = row.estado === 'ok' ? { cls:'ok', badge:'badge-ok', icon:'ic-check-circle', label:'Fichado' }
                : row.estado === 'fuera' ? { cls:'danger', badge:'badge-danger', icon:'ic-signal', label:'Fuera de zona' }
@@ -431,16 +436,16 @@
       ${soc ? (() => {
         const tel = (soc.telefono || '').replace(/\s+/g,'');
         const telHref = tel ? (tel.startsWith('+') ? tel : (tel.length === 9 ? '+34' + tel : tel)) : '';
-        const distancia = row.fichaje?.distancia_m;
+        const distancia = principal?.distancia_m;
         return `
         <div class="li" style="margin-top: 14px;">
           <div class="mini-av" style="width:40px; height:40px; font-size:13px;">${soc.iniciales}</div>
           <div class="li-body">
             <div class="li-title">${soc.nombre}</div>
-            <div class="li-sub">${soc.telefono || 'Sin teléfono'}${row.fichaje?.fuera_de_zona && distancia ? ' · a ' + distancia + 'm del puesto' : ''}</div>
+            <div class="li-sub">${soc.telefono || 'Sin teléfono'}${principal?.fuera_de_zona && distancia ? ' · a ' + distancia + 'm del puesto' : ''}</div>
           </div>
           ${telHref ? `
-            <a class="btn btn-primary btn-sm" href="tel:${telHref}" style="text-decoration:none;background:${row.fichaje?.fuera_de_zona ? '#DC2626' : '#059669'};border-color:transparent;">
+            <a class="btn btn-primary btn-sm" href="tel:${telHref}" style="text-decoration:none;background:${principal?.fuera_de_zona ? '#DC2626' : '#059669'};border-color:transparent;">
               <svg class="ic ic-16"><use href="#ic-phone"/></svg> Llamar
             </a>` : `
             <button class="btn btn-outline btn-sm" disabled title="El empleado no tiene teléfono en su ficha">
@@ -466,14 +471,36 @@
           </div>
         </div>
 
-        ${row.fichaje && row.fichaje.fuera_de_zona ? `
+        ${principal && principal.fuera_de_zona ? `
           <div style="margin-top:10px;padding:12px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;">
             <div style="font-weight:700;font-size:13px;color:#78350F;margin-bottom:6px;">⚠️ Fichaje registrado fuera del radio del puesto</div>
             <div style="font-size:12px;color:#92400E;margin-bottom:8px;">Si el motivo es válido (bañista atendido, GPS impreciso, zona ampliada…) puedes marcarlo como correcto para que deje de contar como incidencia.</div>
-            <button class="btn btn-primary btn-sm" onclick="verificarUbicacionFichaje('${row.fichaje.id}')" style="background:#059669;border-color:#059669;">
+            <button class="btn btn-primary btn-sm" onclick="verificarUbicacionFichaje('${principal.id}')" style="background:#059669;border-color:#059669;">
               <svg class="ic ic-14"><use href="#ic-check-circle"/></svg>
               ✓ Ubicación verificada — marcar como correcto
             </button>
+          </div>` : ''}
+        ${otros.length ? `
+          <div style="margin-top:14px;padding:12px;background:#F1F5F9;border-radius:10px;">
+            <div style="font-weight:700;font-size:13px;color:#111827;margin-bottom:8px;">También trabajando aquí hoy · ${otros.length}</div>
+            ${otros.map(o => {
+              const nom = o.empleados?.nombre || '—';
+              const ini = (nom||'').split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase();
+              const h = new Date(o.hora).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+              const badge = o.fuera_de_zona ? 'badge-warn' : (o.tipo === 'entrada' ? 'badge-ok' : 'badge-neutral');
+              const tipo = o.tipo === 'entrada' ? 'Entró' : 'Salió';
+              return `
+                <div style="display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border-radius:8px;margin:6px 0;cursor:pointer;" onclick="verMapaFichajeIndividual('${o.id}')">
+                  <div class="mini-av" style="width:32px;height:32px;font-size:11px;">${ini}</div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:13px;">${nom}</div>
+                    <div style="font-size:11.5px;color:#64748B;">${tipo} a las ${h}${o.fuera_de_zona?' · GPS fuera':''}</div>
+                  </div>
+                  <span class="badge ${badge}" style="font-size:10px;padding:3px 8px;">📍 mapa</span>
+                </div>
+                <div id="mapaFichaje_${o.id}" style="display:none;margin:2px 0 8px;"></div>
+              `;
+            }).join('')}
           </div>` : ''}
 
         <div class="modal-actions">
