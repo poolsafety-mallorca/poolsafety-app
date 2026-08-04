@@ -4,8 +4,24 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-03 (v84 · botón incidencia en tab + mapa real socorrista + 3 tareas diarias)
-**Cache SW actual: `poolsafety-v84`**
+Última actualización: 2026-08-04 (v102 · día de arranque real · 27 socorristas fichando + gestor unidades material)
+**Cache SW actual: `poolsafety-v102`**
+
+## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
+Estado a fecha 2026-08-04. Todos son idempotentes (`create if not exists` / `if not exists`).
+Ejecutar con **Role postgres** en el SQL Editor de Supabase.
+
+- ✅ `sql/06-incidencias.sql` — tabla incidencias + trigger nº parte + RLS + Realtime
+- ✅ `sql/07-fix-ultimo-login.sql` — arregla el bug "Sin entrar" en el panel
+- ✅ `sql/08-limpiar-desa.sql` — DESA solo 4 items reales (Desfib + parches ad+ped + batería)
+- ✅ `sql/09-limpiar-oxigenoterapia.sql` — fuera bala repuesto + mascarilla adulto, dentro manta+abrebocas+pinza lengua
+- ✅ `sql/11-empleados-para-coord.sql` — ficha empleado para coord/dueño (permite firmar Kit Alta)
+- ✅ `sql/12-cambiar-email-admin.sql` — RPC admin_cambiar_email() para cambiar email login sin ir a Auth
+- ✅ visitas_hoteles (creada manualmente por el usuario en el chat del 2026-08-04)
+- ⏳ `sql/10-asignaciones-temporales.sql` — cobertura del día (feature en curso, no urge)
+- ⏳ `sql/13-accuracy-fichajes.sql` — columna accuracy_m en fichajes (opcional, la app hace fallback)
+- ⏳ `sql/14-unidades-material.sql` — múltiples botiquines/oxígenos por hotel. **Sin este SQL no funciona el selector desplegable de "Botiquín 1/2" ni el gestor ✏️🗑 del admin.** Crea automáticamente unidades extra para 5 hoteles del cliente.
+- ⏳ `sql/15-ajuste-guedel-pediatrica.sql` — Guedel pediátrica a mín 1 (requiere sql/14 previo o usar versión inline)
 
 ---
 
@@ -310,6 +326,82 @@ Ver commits: SMTP Resend, auto-update PWA, PSHor horarios editables, Correturnos
 ```
 
 ---
+
+---
+
+### Sesión 2026-08-04 · DÍA DE ARRANQUE REAL · v85 → v102 · 17 versiones en un solo día
+Cliente empezó a fichar con 27 socorristas repartidos por hoteles Inturotel + Gavimar + otros.
+Muchos bugs descubiertos con uso real y arreglados en caliente. Cronología resumida:
+
+**Correturnos + panel multi-socorrista (v98) — el bug crítico del arranque:**
+- ⚠️ **Panel del coord mostraba solo 1 fichaje por hotel**: en Cala Romani entraron 3 socorristas pero solo aparecía 1. Causa: `ultPorPuesto[puesto_id] = f` solo si no existía → descartaba N-1. **Fix**: agrupación por (puesto, empleado); tarjeta lista TODOS los socorristas del hotel + "N socorristas hoy". Estado del puesto = peor estado de sus socorristas.
+- ⚠️ **Correturnos ficha con puesto_id null**: no tenían puesto principal → los fichajes quedaban huérfanos, no aparecían en ningún hotel. **Fix**: `insertarFichaje` ahora abre modal-hotel si el empleado es correturnos o no tiene puesto; lista todos los hoteles ordenados por cercanía GPS (más cerca arriba con "📍 32 m" verde). El hotel elegido se guarda en `sessionStorage.psHotelHoy_<empId>` para que la salida vaya al mismo hotel sin volver a preguntar.
+- ⚠️ **Fichajes NULL de rescate**: para Antonio Gabriel y otros que ficharon con app antigua sin puesto, SQL de rescate que asigna automáticamente el hotel más cercano por GPS (Postgres `power()`). Usado en el chat con éxito.
+
+**GPS accuracy + reintento (v98):**
+- `obtenerGPS()` con reintento inteligente: si primer intento >300m accuracy (síntoma de fallback A-GPS por celda que tira el pin al mar), reintenta 1 vez más y se queda con el mejor. Reduce muchos "fuera de zona" fantasma.
+- Guarda `accuracy_m` en el fichaje (con fallback silencioso si la columna aún no existe).
+
+**Puntualidad por horario del socorrista (v99):**
+- Antes: `renderRankingPuntualidad` comparaba contra `puestos.hora_inicio_default` (único por hotel) → si 2 socorristas entran al mismo hotel a distintas horas, uno salía "tarde" falsamente.
+- Ahora: consulta `horarios` del socorrista y elige la hora prevista según empleado_id + puesto_id + día de la semana. Parser flexible reconoce "Lun-Vie", "L-S", "Lun,Mie,Vie", "Dom", turnos partidos. Fallback a `hora_inicio_default` si no hay horario configurado.
+
+**Ubicación verificada (v92):**
+- Botón verde "✓ Ubicación verificada" en modal del puesto y en editor de fichajes (admin+coord). Un fichaje fuera de zona puede marcarse como correcto (con motivo opcional) → `fuera_de_zona=false` + `motivo_manual` con marca `[GPS verificado DD/MM · admin|coord]`.
+
+**Parte de incidencias digital (v83, v85, v86, v93, v94, v96):**
+- Nueva tabla `incidencias` con RLS + trigger nº parte auto (INC-2026-0001) + Realtime. **`sql/06-incidencias.sql` autosuficiente** (crea auth_es_dueno, etc. si no existen).
+- Botón rojo "Incidencia" en tabbar del socorrista (no en inicio) → wizard 6 pasos: (1) tipo+circunstancias+hotel autodetectado, (2) víctima+menor+familiar, (3) estado+silueta cuerpo, (4) actuación+técnicas+material, (5) derivación+ambulancia, (6) firma canvas.
+- **Silueta anatómica realista**: usa `assets/mapa-dolor.png` (ChatGPT-generated 1536×1024) con `<image>` dentro del SVG + `preserveAspectRatio="none"` para recortar exacto el cuerpo. Coordenadas de zonas en `ZONAS_CUERPO` (~46 zonas cliqueables).
+- **Fix listener duplicado**: `engancharSilueta` usa flag `__psSiluetaBound` para no re-adjuntar listeners en cada render → ahora deja multi-marcar y deseleccionar. Añadido `touchend` explícito con preventDefault para móvil.
+- Material del botiquín → descuenta stock automáticamente via RPC `descontar_material_incidencia` (fallback en cliente).
+- PDF `PSPdf.generarIncidencia` a UNA hoja A4 (layout 2 columnas). Silueta `siluetaParaPDF()` con SVG puro sin PNG (jsPDF no puede embeber imágenes vía svgToPdf).
+- Tab "Incidencias" en admin con Realtime + push local + filtros + CSV export + detalle con silueta + botón descargar PDF.
+
+**Kit Alta para coordinadores (v95):**
+- Los coord/dueño también son trabajadores → deben firmar Kit Alta.
+- `sql/11-empleados-para-coord.sql` crea ficha empleado idempotente para todo dueno/coordinador que no la tenga.
+- `auth-guard.js` auto-crea ficha empleado en cada login si falta (cualquier rol).
+- Banner rojo grande en cabecera del coord si no ha firmado. Botón lleva a `socorrista.html?kit=1&volver=coord`. Tras firmar redirige de vuelta.
+- El PDF del Kit Alta (v89) **cada apartado en HOJA NUEVA** (`doc.addPage()` al inicio) — ya no se corta ningún apartado a la mitad. Firma final SIEMPRE en hoja propia grande con GPS.
+
+**Cambiar email empleado desde admin (v97):**
+- `sql/12-cambiar-email-admin.sql`: RPC `admin_cambiar_email(empleado_id, nuevo_email)` con `security definer`. Valida internamente que el llamador es dueño y sincroniza en cascada auth.users + auth.identities + usuarios + empleados.
+- En la ficha del empleado, al cambiar el email y guardar detecta el cambio y llama a la RPC (con confirm previo). Elimina el paso manual por Supabase Dashboard.
+
+**Múltiples botiquines/oxígenos por hotel (v101 + v102):**
+- Nueva tabla `unidades_material` (puesto_id, seccion, nombre, numero, activo). `inventario_puesto.unidad_id` apunta a la unidad concreta. Backfill: "Botiquín 1 / DESA 1 / Oxígeno 1" para todos los hoteles existentes.
+- RPC `duplicar_unidad_material(puesto_id, seccion, nombre)` copia items+minimos con stock=minimo.
+- `sql/14` auto-crea las unidades pedidas por el cliente:
+  - Cala Gran (Gavimar): +Botiquín 2 +Oxígeno 2
+  - Cala Romani: +Botiquín 2 +Botiquín 3
+  - Ona Luna Park: +Botiquín 2 +Oxígeno 2
+  - Esmeralda Park: +Botiquín 2 +Oxígeno 2
+  - Cala Esmeralda: +Botiquín 2 +Oxígeno 2
+- **Socorrista**: si hay >1 unidad en la sección actual, aparece selector desplegable "📋 Elige cuál estás revisando" con marca ✓ de las ya revisadas hoy. Guardar revisión solo afecta a la unidad activa. La sección se considera revisada cuando TODAS las unidades del hotel están OK.
+- **Admin (v102)**: barra `unidadesBar` encima de la lista de items con chip por cada unidad + ✏️ renombrar (prompt) + 🗑 eliminar (doble confirmación por tecleo) + botón "+ Añadir botiquín/DESA/oxígeno" (usa la RPC).
+- Solo `dueno` puede gestionar unidades.
+
+**Fix Guedel pediátrica (v102 / sql/15):**
+- Baja mínimo a 1 (antes 2) en catálogo y en TODOS los hoteles, incluidas unidades duplicadas. Baja stock si estaba en el default 2.
+
+**Toggle Disponible/Libre en cabecera (v90):**
+- Chip verde 🟢 "Disponible" siempre visible junto al user-chip del dueño/coord (cualquier tab). Un clic → ámbar 🟡 "Libre". Mientras Libre: socorristas no le ven, no le llegan alertas.
+- Panel de notificaciones (campana) responsive: bottom-sheet full-width en móvil ≤720px con top=62px bajo la nav (antes se salía por los lados).
+
+**Push local mejorado (v93):**
+- `PSNotif.notify()` ahora dispara SIEMPRE toast in-app + beep sintético (sine 880+1200 Hz) además de la Notification API nativa. Óscar (coord) con la app abierta ya se entera de las alertas aunque el SO no dispare push (por diseño Notification solo dispara si documento no visible).
+- Banner naranja persistente arriba del dashboard si el permiso del navegador no está concedido y el rol es dueño/coord: "Activa los avisos para no perder alertas" con botón "Activar ahora".
+
+**Filtro Documentación mejorado (v91):**
+- 4 opciones: "Kit Alta pendiente" (default), "Cualquier pendiente", "Todos", "Solo al día". Antes "Solo pendientes" mezclaba kit sin firmar con jornada pendiente y confundía.
+- Badge Kit Alta ✓ ahora muestra la fecha corta ("Kit Alta ✓ · 03 ago") + tooltip con fecha y hora completa.
+
+**Otros arreglos:**
+- **v88**: fix `ultimo_login` con RPC `marcar_ultimo_login()` security definer (arregla "Sin entrar" para todos). Ranking de puntualidad en el inicio del socorrista con card gradient según nivel.
+- **v87**: modal editar coordinador (nombre, email, tel, rol) en Miembros del equipo.
+- **v94**: hotel autodetectado en paso 1 del parte de incidencia (bloque azul con puestoReal).
+- **v100**: fix del mapa "sin coordenadas GPS" en modal openPostModal (usaba row.fichaje singular que dejó de existir con la nueva estructura row.fichajes[]). Lista de "otros socorristas del hotel hoy" con mini-mapa por cada uno.
 
 ---
 

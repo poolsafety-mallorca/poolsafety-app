@@ -140,7 +140,11 @@ begin
   for v_puesto in
     select id, nombre from puestos where activo
   loop
-    v_nombre_norm := lower(unaccent(coalesce(v_puesto.nombre, '')));
+    -- Normaliza el nombre a minúsculas y sin tildes/acentos, sin depender
+    -- de la extensión `unaccent` (que puede no estar instalada en Supabase Free)
+    v_nombre_norm := lower(translate(coalesce(v_puesto.nombre, ''),
+      'áàäâãÁÀÄÂÃéèëêÉÈËÊíìïîÍÌÏÎóòöôõÓÒÖÔÕúùüûÚÙÜÛñÑçÇ',
+      'aaaaaAAAAAeeeeEEEEiiiiIIIIoooooOOOOOuuuuUUUUnNcC'));
     -- Definimos cuántos EXTRA de cada tipo (además de la #1)
     v_extra_botiquines := 0; v_extra_oxigenos := 0;
     if v_nombre_norm ~ 'gavimar.*cala gran' or v_nombre_norm ~ '^cala gran' or v_nombre_norm ~ 'gran$' then
