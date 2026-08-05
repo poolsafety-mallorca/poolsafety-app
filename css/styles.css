@@ -1827,7 +1827,7 @@ img, svg { display: block; max-width: 100%; }
   background-size: cover;
   background-position: center;
 }
-.emp-card-photo.has-photo { background: #ddd; }
+.emp-card-photo.has-photo { background-color: #ddd; }
 .emp-card-name {
   text-align: center;
   font-weight: 700;

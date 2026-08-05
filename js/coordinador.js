@@ -1093,7 +1093,7 @@
     if (!cont) return;
     const uds = unidadesPuestoCache[sec] || [];
     const psSes = window.PS_SESSION || {};
-    const puedeGestionar = psSes.rol === 'dueno';
+    const puedeGestionar = psSes.rol === 'dueno' || psSes.rol === 'coordinador';
     const secLabel = sec === 'botiquin' ? 'botiquines' : sec === 'desa' ? 'DESA' : 'oxígenos';
     if (uds.length === 0) {
       cont.innerHTML = puedeGestionar ? `
@@ -1124,7 +1124,7 @@
 
   window.crearNuevaUnidad = async function (sec) {
     const psSes = window.PS_SESSION || {};
-    if (psSes.rol !== 'dueno') { toast('Solo administrador'); return; }
+    if (psSes.rol !== 'dueno' && psSes.rol !== 'coordinador') { toast('Solo administrador o coordinador'); return; }
     if (!currentBotPuesto) { toast('Selecciona antes un hotel'); return; }
     const defNombre = sec === 'botiquin' ? `Botiquín ${(unidadesPuestoCache.botiquin.length || 0) + 1}`
                     : sec === 'desa'     ? `DESA ${(unidadesPuestoCache.desa.length || 0) + 1}`
@@ -1158,7 +1158,7 @@
 
   window.renombrarUnidad = async function (unidadId) {
     const psSes = window.PS_SESSION || {};
-    if (psSes.rol !== 'dueno') { toast('Solo administrador'); return; }
+    if (psSes.rol !== 'dueno' && psSes.rol !== 'coordinador') { toast('Solo administrador o coordinador'); return; }
     const u = Object.values(unidadesPuestoCache).flat().find(x => x.id === unidadId);
     if (!u) return;
     const nuevo = prompt(`Nuevo nombre para "${u.nombre}":\n\n(Ej: "Botiquín piscina infantil", "Oxígeno pool grande", "Botiquín zona pool bar"…)`, u.nombre);
@@ -1175,7 +1175,7 @@
 
   window.eliminarUnidad = async function (unidadId, nombre, sec) {
     const psSes = window.PS_SESSION || {};
-    if (psSes.rol !== 'dueno') { toast('Solo administrador'); return; }
+    if (psSes.rol !== 'dueno' && psSes.rol !== 'coordinador') { toast('Solo administrador o coordinador'); return; }
     if (!confirm(`⚠ ELIMINAR "${nombre}"?\n\nEsto borra la unidad y TODOS los items+revisiones asociados a ella.\n\nSi solo la quieres esconder temporalmente, mejor renómbrala.\n\n¿Continuar?`)) return;
     const conf = prompt(`Escribe el nombre para confirmar: ${nombre}`);
     if ((conf || '').trim().toLowerCase() !== nombre.trim().toLowerCase()) { toast('Cancelado'); return; }
