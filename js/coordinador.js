@@ -185,15 +185,19 @@
               const tel = (soc.telefono || '').replace(/\s+/g,'');
               const telHref = tel ? (tel.startsWith('+') ? tel : (tel.length === 9 ? '+34' + tel : tel)) : '';
               const esManual = !!f.origen_manual;
-              const rowClass = f.fuera_de_zona ? 'danger' : (f.tipo === 'entrada' ? 'ok' : '');
+              const sinGps = f.gps_lat == null || f.gps_lng == null;
+              const rowClass = (f.fuera_de_zona || sinGps) ? 'danger' : (f.tipo === 'entrada' ? 'ok' : '');
+              const gpsExtra = sinGps
+                ? ' <span class="small" style="color:#DC2626;font-weight:700;background:#FEE2E2;padding:2px 6px;border-radius:10px;">🚫 SIN GPS</span>'
+                : (f.fuera_de_zona ? ' · GPS fuera' + (f.distancia_m ? ' (' + f.distancia_m + 'm)' : '') : '');
               return `
                 <div class="post-worker" style="cursor:pointer;" onclick="event.stopPropagation(); verMapaFichajeIndividual('${f.id}')" title="Ver mapa del fichaje">
                   <div class="mini-av ${avatarClassFor(rowClass)}">${iniciales}</div>
                   <div style="min-width:0; flex:1;">
-                    <div class="post-worker-name">${soc.nombre}${esManual ? ' <span class="small" style="color:#0284C7;font-weight:500;">📌 manual</span>' : ''}</div>
+                    <div class="post-worker-name">${soc.nombre}${esManual ? ' <span class="small" style="color:#0284C7;font-weight:500;">📌 manual</span>' : ''}${sinGps ? gpsExtra : ''}</div>
                     <div class="post-time ${f.fuera_de_zona ? 'danger' : ''}">
                       <svg class="ic ic-14"><use href="#ic-clock"/></svg>
-                      ${f.tipo === 'entrada' ? 'Fichó entrada' : 'Salió'} a las ${horaTxt}${f.fuera_de_zona ? ' · GPS fuera' + (f.distancia_m ? ' (' + f.distancia_m + 'm)' : '') : ''}
+                      ${f.tipo === 'entrada' ? 'Fichó entrada' : 'Salió'} a las ${horaTxt}${sinGps ? '' : (f.fuera_de_zona ? ' · GPS fuera' + (f.distancia_m ? ' (' + f.distancia_m + 'm)' : '') : '')}
                     </div>
                   </div>
                   ${telHref ? `
@@ -4527,9 +4531,12 @@
             const badgeTipo = f.tipo === 'entrada'
               ? '<span class="badge badge-ok"><span class="dot"></span>Entrada</span>'
               : '<span class="badge badge-neutral"><span class="dot"></span>Salida</span>';
-            const badgeGps = f.fuera_de_zona
-              ? `<span class="badge badge-warn" style="margin-left:4px;">GPS fuera${f.distancia_m ? ' (' + f.distancia_m + 'm)' : ''}</span>`
-              : (f.gps_ok === true ? '<span class="badge badge-ok" style="margin-left:4px;">GPS OK</span>' : '');
+            const sinGpsRow = f.gps_lat == null || f.gps_lng == null;
+            const badgeGps = sinGpsRow
+              ? `<span class="badge badge-danger" style="margin-left:4px;background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;">🚫 SIN GPS</span>`
+              : (f.fuera_de_zona
+                  ? `<span class="badge badge-warn" style="margin-left:4px;">GPS fuera${f.distancia_m ? ' (' + f.distancia_m + 'm)' : ''}</span>`
+                  : (f.gps_ok === true ? '<span class="badge badge-ok" style="margin-left:4px;">GPS OK</span>' : ''));
             const badgeManual = f.origen_manual
               ? '<span class="badge badge-info" style="margin-left:4px;">📌 manual</span>'
               : '';

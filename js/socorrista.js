@@ -364,6 +364,63 @@
     return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
   }
 
+  // Diagnóstico de GPS para el propio socorrista (botón en Perfil > Ajustes).
+  // Comprueba el permiso del navegador y hace un fix real. Muestra un modal
+  // con el resultado + instrucciones concretas si el permiso está denegado
+  // o si va a pedirlo cada vez.
+  window.comprobarMiGps = async function () {
+    const sub = document.getElementById('gpsCheckSub');
+    if (sub) sub.textContent = 'Comprobando…';
+    let permiso = 'unknown';
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        const p = await navigator.permissions.query({ name: 'geolocation' });
+        permiso = p.state; // 'granted' | 'denied' | 'prompt'
+      }
+    } catch (_) {}
+
+    const iosSafari = /iP(hone|ad)/.test(navigator.userAgent) && /Safari/.test(navigator.userAgent) && !/CriOS|FxiOS/.test(navigator.userAgent);
+    const instalada = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+    let posGps = null, gpsError = null;
+    try { posGps = await obtenerGPS(); } catch (err) { gpsError = err.message; }
+
+    // Construye el mensaje
+    let icono = '✅', color = '#059669', titulo = 'GPS OK', detalle = '';
+    if (posGps) {
+      icono = posGps.accuracy < 50 ? '✅' : (posGps.accuracy < 200 ? '🟡' : '🟠');
+      titulo = 'GPS funcionando';
+      detalle = `Precisión ±${Math.round(posGps.accuracy)} m\nCoordenadas: ${posGps.lat.toFixed(5)}, ${posGps.lng.toFixed(5)}`;
+      color = posGps.accuracy < 50 ? '#059669' : (posGps.accuracy < 200 ? '#D97706' : '#EA580C');
+    } else {
+      icono = '⚠️'; color = '#DC2626';
+      titulo = 'GPS no disponible';
+      detalle = gpsError || 'Sin señal';
+    }
+
+    let consejos = '';
+    if (permiso === 'denied') {
+      consejos = iosSafari
+        ? '\n\n📱 iPhone/Safari:\n1. Ajustes → Safari → Ubicación → Permitir\n2. Cierra Safari y vuelve a abrirlo\n3. En la web, vuelve a intentarlo'
+        : '\n\n🌐 Navegador:\n1. Icono candado ⓘ junto a la URL → Ubicación → Permitir\n2. Refresca la página';
+    } else if (permiso === 'prompt') {
+      consejos = iosSafari
+        ? '\n\n⚠️ Safari te va a preguntar CADA VEZ. Solución:\n1. Instala la app en el escritorio (botón Compartir → Añadir a pantalla de inicio)\n2. Abre siempre desde el icono, no desde el navegador\n3. Al abrir la primera vez pulsa "Permitir mientras uso la app"'
+        : '\n\n⚠️ El navegador te va a pedir permiso cada vez. Solución:\n1. La próxima vez que pregunte, dale "Permitir mientras uso el sitio"\n2. Si te ha preguntado hoy y le diste bloquear, revierte:\n   Icono candado ⓘ → Ubicación → Preguntar / Permitir';
+    } else if (permiso === 'granted' && !instalada && iosSafari) {
+      consejos = '\n\n💡 Consejo: instala la app en el escritorio (Compartir → Añadir a pantalla de inicio) para que no vuelva a pedirte el permiso.';
+    }
+
+    alert(`${icono} ${titulo}\n\n${detalle}${consejos}`);
+
+    if (sub) {
+      if (posGps && permiso !== 'prompt') sub.textContent = `✓ GPS OK · precisión ±${Math.round(posGps.accuracy)} m`;
+      else if (permiso === 'denied') sub.textContent = '✗ Permiso GPS bloqueado — revisa ajustes del navegador';
+      else if (permiso === 'prompt') sub.textContent = '⚠ Va a pedir permiso cada vez — instala la app';
+      else sub.textContent = '⚠ Sin señal GPS ahora mismo';
+    }
+  };
+
   function actualizarGpsChip(estado, texto, meta) {
     if (!gpsChip) return;
     gpsChip.className = 'gps-chip ' + (estado || '');
