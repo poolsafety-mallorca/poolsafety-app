@@ -450,7 +450,7 @@
             </button>
             <button class="btn btn-primary" onclick="openNuevaVisita()" style="background: linear-gradient(135deg, #10B981, #22D3EE);">
               <svg class="ic ic-16"><use href="#ic-pin"/></svg>
-              Visita a hotel
+              Entrada a hotel
             </button>
           </div>
         </div>
@@ -1445,8 +1445,8 @@ socorrista,Ana López,ana@ejemplo.com"></textarea>
   <div class="modal">
     <div class="modal-head">
       <div>
-        <h3>Visita a hotel</h3>
-        <p class="small text-muted mt-1" style="margin:4px 0 0;">Captura hora y GPS automáticamente al pulsar "Registrar llegada".</p>
+        <h3>Registrar entrada al hotel</h3>
+        <p class="small text-muted mt-1" style="margin:4px 0 0;">Captura hora y GPS de tu llegada. Al irte pulsa "Registrar salida" en el timeline para cerrar la visita.</p>
       </div>
       <button class="modal-close" onclick="closeVisitaModal()">
         <svg class="ic ic-16"><use href="#ic-x"/></svg>
@@ -1481,8 +1481,8 @@ socorrista,Ana López,ana@ejemplo.com"></textarea>
       <textarea id="visDirNotas" placeholder="Solo si has visto al director"></textarea>
     </div>
     <div class="field">
-      <label>Qué he realizado en el hotel *</label>
-      <textarea id="visActividades" placeholder="p.ej. Revisar botiquín, comprobar DESA, formación al socorrista, incidencia con cliente…"></textarea>
+      <label>Qué vengo a hacer aquí (opcional)</label>
+      <textarea id="visActividades" placeholder="Puedes rellenarlo ahora o dejarlo para cuando cierres la visita al irte"></textarea>
     </div>
     <div class="field">
       <label>Nota para Adam (opcional)</label>
@@ -1490,9 +1490,9 @@ socorrista,Ana López,ana@ejemplo.com"></textarea>
     </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeVisitaModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="guardarVisita()">
+      <button class="btn btn-primary" onclick="guardarVisita()" style="background:#059669;">
         <svg class="ic ic-16"><use href="#ic-check"/></svg>
-        Guardar visita
+        Registrar entrada
       </button>
     </div>
   </div>

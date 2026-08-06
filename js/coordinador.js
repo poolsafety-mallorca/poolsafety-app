@@ -5642,7 +5642,15 @@
         .eq('empresa_id', psSes.empresa_id)
         .order('fecha_hora_llegada', { ascending: false })
         .limit(200);
-      if (r2.error) throw r2.error;
+      if (r2.error) {
+        // Si falla porque no existe fecha_hora_salida (sql/17 no ejecutado)
+        // seguimos igual con select * — pero avisamos por consola
+        if (/fecha_hora_salida/i.test(r2.error.message)) {
+          console.warn('[Coord] sql/17 no ejecutado — no verás duración de visitas hasta ejecutarlo');
+        } else {
+          throw r2.error;
+        }
+      }
       vis = r2.data || [];
     } catch (e) {
       const msg = `<div class="coord-empty">Error cargando: ${e.message}</div>`;
@@ -5725,12 +5733,31 @@
         const gps = (i.gps_lat && i.gps_lng)
           ? `<a href="https://www.google.com/maps?q=${i.gps_lat},${i.gps_lng}" target="_blank" style="text-decoration:none;color:inherit;"><svg class="ic ic-14"><use href="#ic-pin"/></svg>${(+i.gps_lat).toFixed(4)}, ${(+i.gps_lng).toFixed(4)}</a>`
           : '<span><svg class="ic ic-14"><use href="#ic-pin"/></svg>sin GPS</span>';
+        // ¿Visita abierta o cerrada? Mostrar duración o badge EN CURSO
+        const abierta = !i.fecha_hora_salida;
+        let duracionTxt = '';
+        let estadoBadge = '';
+        if (abierta) {
+          const minsAbierta = Math.round((Date.now() - new Date(i.fecha_hora_llegada).getTime()) / 60000);
+          duracionTxt = minsAbierta > 60 ? `${Math.floor(minsAbierta/60)}h ${minsAbierta%60}m` : `${minsAbierta} min`;
+          estadoBadge = `<span class="badge small" style="background:#DCFCE7;color:#065F46;border:1px solid #86EFAC;"><span class="dot" style="background:#10B981;"></span>EN CURSO · ${duracionTxt}</span>`;
+        } else {
+          const mins = Math.round((new Date(i.fecha_hora_salida).getTime() - new Date(i.fecha_hora_llegada).getTime()) / 60000);
+          duracionTxt = mins > 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins} min`;
+          const horaSal = new Date(i.fecha_hora_salida).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+          estadoBadge = `<span class="badge small" style="background:#F1F5F9;color:#334155;"><span class="dot" style="background:#64748B;"></span>${hora} → ${horaSal} · ${duracionTxt}</span>`;
+        }
+        // Botón cerrar visita — solo en vista self (el propio coord) y solo si abierta
+        const btnCerrar = (!opts.admin && abierta && i.coordinador_id === (window.PS_SESSION || {}).userId)
+          ? `<button class="btn btn-sm" onclick="cerrarVisitaHotel('${i.id}','${escapeHtml(hotel).replace(/'/g,"\\'")}')" style="background:#DC2626;color:#fff;border:0;padding:6px 12px;border-radius:8px;font-weight:700;cursor:pointer;margin-top:8px;">🚪 Registrar salida del hotel</button>`
+          : '';
         return `
-          <div class="coord-item visita ${claseNota}">
+          <div class="coord-item visita ${claseNota}" ${abierta ? 'style="border-left:3px solid #10B981;background:#F0FDF4;"' : ''}>
             <div class="coord-item-head">
               <div class="coord-item-title">📍 Visita a ${escapeHtml(hotel)}</div>
-              <div class="coord-item-time">${fecha} · ${hora}</div>
+              <div class="coord-item-time">${fecha} · entrada ${hora}</div>
             </div>
+            <div style="margin:4px 0 6px;">${estadoBadge}</div>
             ${i.actividades_realizadas ? `<div class="coord-item-body"><b>Realizado:</b> ${escapeHtml(i.actividades_realizadas)}</div>` : ''}
             ${(i.vio_director && i.director_notas) ? `<div class="coord-item-body" style="margin-top:4px;"><b>Director:</b> ${escapeHtml(i.director_notas)}</div>` : ''}
             <div class="coord-item-meta">
@@ -5739,6 +5766,7 @@
               ${dirBadge}
             </div>
             ${(i.nota_para_admin || '').trim() ? `<div class="coord-nota-box">${escapeHtml(i.nota_para_admin)}</div>` : ''}
+            ${btnCerrar}
           </div>`;
       }
     }).join('');
@@ -5822,7 +5850,6 @@
     if (!lastVisitaCapture) { toast('Pulsa Capturar primero para registrar hora y GPS'); return; }
     const hotelId = document.getElementById('visHotel').value;
     const acts = document.getElementById('visActividades').value.trim();
-    if (!acts) { toast('Describe qué has realizado en el hotel'); return; }
     const psSes = window.PS_SESSION || {};
     try {
       const { error } = await window.sb.from('visitas_hoteles').insert({
@@ -5834,16 +5861,51 @@
         gps_lng: lastVisitaCapture.lng,
         vio_director: document.getElementById('visVioDirector').checked,
         director_notas: document.getElementById('visDirNotas').value.trim() || null,
-        actividades_realizadas: acts,
+        actividades_realizadas: acts || null,
         nota_para_admin: document.getElementById('visNotaAdmin').value.trim() || null
       });
       if (error) throw error;
       ['visActividades','visDirNotas','visNotaAdmin'].forEach(id => document.getElementById(id).value = '');
       document.getElementById('visVioDirector').checked = false;
       closeVisitaModal();
-      toast('Visita registrada');
+      toast('✓ Entrada al hotel registrada — al irte pulsa "Registrar salida" en el timeline');
       cargarCoordinacion();
     } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  // Cierra una visita abierta: captura hora + GPS de salida, pide actividades
+  // realizadas y nota opcional para el admin. Calcula duración implícitamente.
+  window.cerrarVisitaHotel = async function (visitaId, hotelNombre) {
+    if (!confirm(`¿Registrar SALIDA del hotel ${hotelNombre}?\n\nSe capturará hora y GPS de tu salida.`)) return;
+    // 1) Capturar hora + GPS de salida
+    const ahora = new Date();
+    let latSal = null, lngSal = null;
+    try {
+      if (navigator.geolocation) {
+        const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000 }));
+        latSal = pos.coords.latitude; lngSal = pos.coords.longitude;
+      }
+    } catch (_) { /* Sin GPS también se guarda la salida — no bloqueamos */ }
+    // 2) Pedir actividades + nota
+    const acts = prompt('¿Qué has hecho en el hotel?\n(Reunión con director, revisar botiquines, entregar material, formar socorrista…)');
+    if (acts === null) return; // Cancelado
+    const nota = prompt('¿Alguna nota para Adán? (opcional — dejar en blanco si no hace falta)') || '';
+    // 3) UPDATE
+    try {
+      const patch = {
+        fecha_hora_salida: ahora.toISOString(),
+        gps_lat_salida: latSal,
+        gps_lng_salida: lngSal
+      };
+      if (acts.trim()) patch.actividades_realizadas = acts.trim();
+      if (nota.trim()) patch.nota_para_admin = nota.trim();
+      const { error, data } = await window.sb.from('visitas_hoteles')
+        .update(patch).eq('id', visitaId).select();
+      if (error) throw error;
+      if (!data || !data.length) throw new Error('No se actualizó ninguna fila. ¿Ejecutaste sql/17?');
+      toast('✓ Salida registrada. El admin verá cuánto has estado.');
+      cargarCoordinacion();
+    } catch (err) { alert('Error cerrando visita:\n\n' + err.message); }
   };
 
   /* ==========================================================================
