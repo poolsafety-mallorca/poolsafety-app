@@ -51,6 +51,31 @@
     return estado === 'ok' ? 'sky' : estado === 'tarde' ? 'amber' : '';
   }
 
+  // ¿Aplica un horario a un día concreto de la semana?
+  // Copia de la función del socorrista.js. Acepta "lun-vie", "L-S",
+  // "lun,mie,vie", "dom", turnos partidos, etc.
+  function horarioAplicaEnDiaCoord(horario, jsDay) {
+    const NOMBRES = ['dom','lun','mar','mie','jue','vie','sab'];
+    const INIS = ['d','l','m','x','j','v','s'];
+    const raw = (horario.dias || 'lun-vie').toString().toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+    const target = NOMBRES[jsDay];
+    if (raw.includes(target)) return true;
+    const rango = raw.match(/(dom|lun|mar|mie|jue|vie|sab|[dlmxjvs])\s*[-–]\s*(dom|lun|mar|mie|jue|vie|sab|[dlmxjvs])/);
+    if (rango) {
+      const parse = s => s.length === 1 ? INIS.indexOf(s) : NOMBRES.indexOf(s.slice(0,3));
+      const ini = parse(rango[1]), fin = parse(rango[2]);
+      if (ini < 0 || fin < 0) return false;
+      if (ini <= fin) return jsDay >= ini && jsDay <= fin;
+      return jsDay >= ini || jsDay <= fin;
+    }
+    const partes = raw.split(/[,\s\/]+/).filter(Boolean);
+    return partes.some(p =>
+      (p.length === 1 && INIS[jsDay] === p) ||
+      (p.length >= 3 && NOMBRES[jsDay] === p.slice(0,3))
+    );
+  }
+
   // Cache local para la vista Puestos en vivo (BD real)
   let postsCache = []; // [{ puesto, fichaje, socorrista, estado }]
 
@@ -77,6 +102,57 @@
         .gte('hora', desde)
         .order('hora', { ascending: false });
 
+      // 2b. Horarios de los empleados que han fichado hoy (para saber si
+      // llegaron tarde según su turno real, no el default único del hotel).
+      const empleadosHoy = [...new Set((fichajes || []).map(f => f.empleado_id))];
+      let horariosMap = {};
+      if (empleadosHoy.length) {
+        const { data: horarios } = await window.sb
+          .from('horarios')
+          .select('empleado_id, puesto_id, hora_inicio, hora_inicio_2, dias, activo, fecha_desde, fecha_hasta')
+          .in('empleado_id', empleadosHoy).eq('activo', true);
+        (horarios || []).forEach(h => {
+          const k = h.empleado_id;
+          (horariosMap[k] = horariosMap[k] || []).push(h);
+        });
+      }
+
+      // Marca en cada fichaje si llegó tarde (>5min del turno previsto)
+      const TOL_MIN = 5;
+      (fichajes || []).forEach(f => {
+        if (f.tipo !== 'entrada') return;
+        const d = new Date(f.hora);
+        const jsDay = d.getDay();
+        const cand = (horariosMap[f.empleado_id] || []).filter(h =>
+          h.puesto_id === f.puesto_id && horarioAplicaEnDiaCoord(h, jsDay) &&
+          (!h.fecha_desde || new Date(h.fecha_desde) <= d) &&
+          (!h.fecha_hasta || new Date(h.fecha_hasta) >= d)
+        );
+        let horaTurno = null;
+        if (cand.length) {
+          const opciones = [];
+          cand.forEach(h => { if (h.hora_inicio) opciones.push(h.hora_inicio); if (h.hora_inicio_2) opciones.push(h.hora_inicio_2); });
+          let mejor = null, mejorDiff = Infinity;
+          opciones.forEach(hs => {
+            const [oh, om] = hs.split(':').map(Number);
+            const p = new Date(d); p.setHours(oh, om || 0, 0, 0);
+            const diff = Math.abs(d - p);
+            if (diff < mejorDiff) { mejorDiff = diff; mejor = hs; }
+          });
+          horaTurno = mejor;
+        }
+        if (!horaTurno) {
+          const puestoRef = (puestos || []).find(p => p.id === f.puesto_id);
+          horaTurno = puestoRef && puestoRef.hora_inicio_default;
+        }
+        if (!horaTurno) return;
+        const [th, tm] = String(horaTurno).split(':').map(Number);
+        const previsto = new Date(d); previsto.setHours(th, tm || 0, 0, 0);
+        const retrasoMin = Math.round((d - previsto) / 60000);
+        f._retrasoMin = retrasoMin;
+        f._llegoTarde = retrasoMin > TOL_MIN;
+      });
+
       // Agrupamos fichajes por PUESTO y por EMPLEADO. Un hotel puede tener
       // varios socorristas trabajando el mismo día (servicios distintos o
       // turnos diferentes). Guardamos por cada empleado su ÚLTIMO fichaje
@@ -88,6 +164,13 @@
         // (puesto, empleado) es el más reciente para ese empleado.
         if (!porPuesto[f.puesto_id][f.empleado_id]) {
           porPuesto[f.puesto_id][f.empleado_id] = f;
+        } else {
+          // Preservar el flag _llegoTarde del fichaje de entrada aunque
+          // ahora esté guardado el de salida (para que la tarjeta lo muestre)
+          if (f._llegoTarde && !porPuesto[f.puesto_id][f.empleado_id]._llegoTardeEntrada) {
+            porPuesto[f.puesto_id][f.empleado_id]._llegoTardeEntrada = true;
+            porPuesto[f.puesto_id][f.empleado_id]._retrasoEntradaMin = f._retrasoMin;
+          }
         }
       });
 
@@ -96,12 +179,15 @@
         const socsMap = porPuesto[p.id] || {};
         const fichajesPuesto = Object.values(socsMap);
         // El estado del puesto es el "peor" de los estados de sus socorristas:
-        //   · fuera > ok > terminado > vacante
+        //   · fuera > tarde > ok > terminado > vacante
         // Así en el panel general una tarjeta se ve roja si al menos uno está fuera.
         let estado = 'vacante';
         fichajesPuesto.forEach(f => {
-          const s = f.tipo === 'salida' ? 'terminado' : (f.fuera_de_zona ? 'fuera' : 'ok');
-          const rank = { fuera: 3, ok: 2, terminado: 1, vacante: 0 };
+          const llegoTarde = f._llegoTarde || f._llegoTardeEntrada;
+          const s = f.tipo === 'salida'
+            ? (llegoTarde ? 'tarde' : 'terminado')
+            : (f.fuera_de_zona ? 'fuera' : (llegoTarde ? 'tarde' : 'ok'));
+          const rank = { fuera: 4, tarde: 3, ok: 2, terminado: 1, vacante: 0 };
           if (rank[s] > rank[estado]) estado = s;
         });
         return { puesto: p, fichajes: fichajesPuesto, estado };
@@ -122,6 +208,7 @@
       const p = r.puesto;
       const matchesFilter = currentFilter === 'todos'
         || (currentFilter === 'ok' && r.estado === 'ok')
+        || (currentFilter === 'tarde' && r.estado === 'tarde')
         || (currentFilter === 'fuera' && r.estado === 'fuera')
         || (currentFilter === 'pendiente' && (r.estado === 'vacante' || r.estado === 'terminado'))
         || (currentFilter === 'vacante' && r.estado === 'vacante');
@@ -132,13 +219,13 @@
       return matchesFilter && matchesSearch;
     });
 
-    // Actualiza contadores en chips
-    const c = { todos: postsCache.length, ok: 0, fuera: 0, vacante: 0, terminado: 0 };
+    // Actualiza contadores en chips (incluido tarde real)
+    const c = { todos: postsCache.length, ok: 0, tarde: 0, fuera: 0, vacante: 0, terminado: 0 };
     postsCache.forEach(r => { c[r.estado] = (c[r.estado] || 0) + 1; });
     const chips = document.querySelectorAll('#filterChips .chip .count');
     if (chips[0]) chips[0].textContent = c.todos;
     if (chips[1]) chips[1].textContent = c.ok;
-    if (chips[2]) chips[2].textContent = 0; // Tarde — no tenemos lógica todavía
+    if (chips[2]) chips[2].textContent = c.tarde;
     if (chips[3]) chips[3].textContent = c.fuera;
     if (chips[4]) chips[4].textContent = c.vacante + c.terminado;
     if (chips[5]) chips[5].textContent = c.vacante;
@@ -146,7 +233,7 @@
     // Actualiza los KPIs de arriba con datos reales
     const kpiOk = document.getElementById('kpiOk');
     if (kpiOk) kpiOk.innerHTML = `${c.ok}<span class="of">/ ${c.todos}</span>`;
-    const kpiTarde = document.getElementById('kpiTarde'); if (kpiTarde) kpiTarde.textContent = 0;
+    const kpiTarde = document.getElementById('kpiTarde'); if (kpiTarde) kpiTarde.textContent = c.tarde;
     const kpiFuera = document.getElementById('kpiFuera'); if (kpiFuera) kpiFuera.textContent = c.fuera;
     const kpiPend = document.getElementById('kpiPend');   if (kpiPend)  kpiPend.textContent  = c.vacante;
 
@@ -163,6 +250,7 @@
       const p = r.puesto;
       const fichs = r.fichajes || [];
       const info = r.estado === 'ok' ? { cls: 'ok', badge: 'badge-ok', icon: 'ic-check-circle', label: fichs.length > 1 ? `${fichs.length} fichados` : 'Fichado' }
+                 : r.estado === 'tarde' ? { cls: 'warn', badge: 'badge-warn', icon: 'ic-clock', label: fichs.length > 1 ? `${fichs.length} · alguno tarde` : 'Llegó tarde' }
                  : r.estado === 'fuera' ? { cls: 'danger', badge: 'badge-danger', icon: 'ic-signal', label: fichs.length > 1 ? `${fichs.length} · alguno fuera` : 'Fuera de zona' }
                  : r.estado === 'terminado' ? { cls: '', badge: 'badge-neutral', icon: 'ic-check', label: 'Turno terminado' }
                  : { cls: '', badge: 'badge-neutral', icon: 'ic-clock', label: 'Vacante' };
@@ -186,16 +274,21 @@
               const telHref = tel ? (tel.startsWith('+') ? tel : (tel.length === 9 ? '+34' + tel : tel)) : '';
               const esManual = !!f.origen_manual;
               const sinGps = f.gps_lat == null || f.gps_lng == null;
-              const rowClass = (f.fuera_de_zona || sinGps) ? 'danger' : (f.tipo === 'entrada' ? 'ok' : '');
+              const llegoTarde = f._llegoTarde || f._llegoTardeEntrada;
+              const retrasoMin = f._retrasoMin || f._retrasoEntradaMin;
+              const rowClass = (f.fuera_de_zona || sinGps) ? 'danger' : (llegoTarde ? 'warn' : (f.tipo === 'entrada' ? 'ok' : ''));
               const gpsExtra = sinGps
                 ? ' <span class="small" style="color:#DC2626;font-weight:700;background:#FEE2E2;padding:2px 6px;border-radius:10px;">🚫 SIN GPS</span>'
                 : (f.fuera_de_zona ? ' · GPS fuera' + (f.distancia_m ? ' (' + f.distancia_m + 'm)' : '') : '');
+              const tardeExtra = llegoTarde
+                ? ` <span class="small" style="color:#92400E;font-weight:700;background:#FEF3C7;padding:2px 6px;border-radius:10px;">⏰ ${retrasoMin}m tarde</span>`
+                : '';
               return `
                 <div class="post-worker" style="cursor:pointer;" onclick="event.stopPropagation(); verMapaFichajeIndividual('${f.id}')" title="Ver mapa del fichaje">
                   <div class="mini-av ${avatarClassFor(rowClass)}">${iniciales}</div>
                   <div style="min-width:0; flex:1;">
-                    <div class="post-worker-name">${soc.nombre}${esManual ? ' <span class="small" style="color:#0284C7;font-weight:500;">📌 manual</span>' : ''}${sinGps ? gpsExtra : ''}</div>
-                    <div class="post-time ${f.fuera_de_zona ? 'danger' : ''}">
+                    <div class="post-worker-name">${soc.nombre}${esManual ? ' <span class="small" style="color:#0284C7;font-weight:500;">📌 manual</span>' : ''}${sinGps ? gpsExtra : ''}${tardeExtra}</div>
+                    <div class="post-time ${f.fuera_de_zona ? 'danger' : (llegoTarde ? 'warn' : '')}">
                       <svg class="ic ic-14"><use href="#ic-clock"/></svg>
                       ${f.tipo === 'entrada' ? 'Fichó entrada' : 'Salió'} a las ${horaTxt}${sinGps ? '' : (f.fuera_de_zona ? ' · GPS fuera' + (f.distancia_m ? ' (' + f.distancia_m + 'm)' : '') : '')}
                     </div>
