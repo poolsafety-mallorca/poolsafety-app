@@ -1051,6 +1051,53 @@ window.PSPdf = (function () {
     }
     doc.setTextColor(0, 0, 0);
 
+    // Segunda firma (cliente/familiar/hotel/otro testigo) - si existe
+    const TIPO_TXT = {
+      victima:  'PERSONA ATENDIDA',
+      familiar: 'FAMILIAR / ACOMPAÑANTE',
+      hotel:    'RESPONSABLE DEL HOTEL',
+      otro:     'TESTIGO'
+    };
+    if (inc.firma_testigo_tipo && inc.firma_testigo_tipo !== 'ninguno') {
+      let yT = yFirma + 55;
+      if (yT + 45 > pageH - 12) { doc.addPage(); yT = 20; }
+      doc.setDrawColor(200, 200, 200);
+      doc.line(COL_L, yT - 2, 210 - COL_L, yT - 2);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(14, 116, 144);
+      doc.text('SEGUNDA FIRMA · ' + (TIPO_TXT[inc.firma_testigo_tipo] || 'TESTIGO'), COL_L, yT + 4);
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
+      doc.text('Firma añadida como testigo del parte. Refuerza el valor probatorio del documento.', COL_L, yT + 8);
+      const tX = COL_L, tY = yT + 12, tW = 80, tH = 32;
+      if (inc.firma_testigo_imagen) {
+        try { doc.addImage(inc.firma_testigo_imagen, 'PNG', tX, tY, tW, tH); } catch (_) {}
+      } else {
+        doc.setDrawColor(180, 180, 180); doc.rect(tX, tY, tW, tH, 'D');
+      }
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold'); doc.text('Fdo:', tX + tW + 4, tY + 4);
+      doc.setFont('helvetica', 'normal'); doc.text(limpiarTexto(inc.firma_testigo_nombre || '—'), tX + tW + 14, tY + 4);
+      if (inc.firma_testigo_dni) {
+        doc.setFont('helvetica', 'bold'); doc.text('DNI:', tX + tW + 4, tY + 9);
+        doc.setFont('helvetica', 'normal'); doc.text(inc.firma_testigo_dni, tX + tW + 14, tY + 9);
+      }
+      if (inc.firma_testigo_relacion) {
+        doc.setFont('helvetica', 'bold'); doc.text('Rol:', tX + tW + 4, tY + 14);
+        doc.setFont('helvetica', 'normal'); doc.text(limpiarTexto(inc.firma_testigo_relacion), tX + tW + 14, tY + 14);
+      }
+    } else if (inc.firma_testigo_tipo === 'ninguno' && inc.firma_testigo_motivo_ausencia) {
+      let yT = yFirma + 55;
+      if (yT + 20 > pageH - 12) { doc.addPage(); yT = 20; }
+      doc.setDrawColor(200, 200, 200);
+      doc.line(COL_L, yT - 2, 210 - COL_L, yT - 2);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(180, 30, 30);
+      doc.text('SIN SEGUNDA FIRMA · JUSTIFICACIÓN', COL_L, yT + 4);
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+      const lines = doc.splitTextToSize(limpiarTexto(inc.firma_testigo_motivo_ausencia), 180);
+      doc.text(lines, COL_L, yT + 10);
+    }
+
     // Footer mini
     doc.setFontSize(6.5); doc.setTextColor(150, 150, 150);
     doc.text(`${EMPRESA.razonSocial} · Documento generado por PoolSafety el ${new Date().toLocaleString('es-ES')}`, 105, pageH - 6, { align: 'center' });

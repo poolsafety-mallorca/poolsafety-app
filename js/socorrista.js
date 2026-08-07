@@ -3404,12 +3404,13 @@
      genera PDF, sube a Storage, guarda url en archivo_pdf_url.
      ========================================================================== */
   const INC_PASOS = [
-    { titulo: 'Paso 1 de 6 · Qué ha pasado' },
-    { titulo: 'Paso 2 de 6 · Datos de la víctima' },
-    { titulo: 'Paso 3 de 6 · Estado y zonas afectadas' },
-    { titulo: 'Paso 4 de 6 · Actuación y material usado' },
-    { titulo: 'Paso 5 de 6 · Derivación / traslado' },
-    { titulo: 'Paso 6 de 6 · Firma del socorrista' }
+    { titulo: 'Paso 1 de 7 · Qué ha pasado' },
+    { titulo: 'Paso 2 de 7 · Datos de la víctima' },
+    { titulo: 'Paso 3 de 7 · Estado y zonas afectadas' },
+    { titulo: 'Paso 4 de 7 · Actuación y material usado' },
+    { titulo: 'Paso 5 de 7 · Derivación / traslado' },
+    { titulo: 'Paso 6 de 7 · Firma del cliente o testigo' },
+    { titulo: 'Paso 7 de 7 · Firma del socorrista' }
   ];
   let incState = null; // objeto con todos los datos del parte en curso
   let incPasoActual = 0;
@@ -3448,7 +3449,14 @@
       firma_dni: '',
       firma_imagen: null,
       firma_gps_lat: null,
-      firma_gps_lng: null
+      firma_gps_lng: null,
+      // Segunda firma — cliente atendido / familiar / hotel / otro testigo
+      firma_testigo_tipo: '',           // 'victima' | 'familiar' | 'hotel' | 'otro' | 'ninguno'
+      firma_testigo_nombre: '',
+      firma_testigo_dni: '',
+      firma_testigo_relacion: '',
+      firma_testigo_imagen: null,
+      firma_testigo_motivo_ausencia: ''
     };
   }
 
@@ -3475,7 +3483,7 @@
     document.getElementById('incTituloPaso').textContent = INC_PASOS[incPasoActual].titulo;
     document.getElementById('incProgressBar').style.width = ((incPasoActual + 1) / INC_PASOS.length * 100).toFixed(0) + '%';
     const body = document.getElementById('incBody');
-    const paso = [incPasoQue, incPasoVictima, incPasoEstado, incPasoActuacion, incPasoDerivacion, incPasoFirma][incPasoActual];
+    const paso = [incPasoQue, incPasoVictima, incPasoEstado, incPasoActuacion, incPasoDerivacion, incPasoFirmaTestigo, incPasoFirma][incPasoActual];
     body.innerHTML = paso();
     incBindPaso();
     document.getElementById('incBtnPrev').style.visibility = incPasoActual === 0 ? 'hidden' : 'visible';
@@ -3715,6 +3723,70 @@
   }
 
   /* ---------- PASO 6: Firma ---------- */
+  // Segunda firma: cliente atendido / familiar / responsable hotel / otro
+  // testigo. Refuerza el valor probatorio del parte. Puede saltarse indicando
+  // por qué no hay firma (víctima inconsciente y sin acompañantes, traslado
+  // urgente, etc.).
+  function incPasoFirmaTestigo() {
+    const tipo = incState.firma_testigo_tipo || '';
+    const opciones = [
+      { v: 'victima',  txt: 'La persona atendida firma',              sub: 'Recomendado si está consciente y puede firmar', color: '#059669' },
+      { v: 'familiar', txt: 'Firma un familiar / acompañante',        sub: 'Cónyuge, hijo/a, amigo, tutor de un menor…',    color: '#2563EB' },
+      { v: 'hotel',    txt: 'Firma responsable del hotel / recepción', sub: 'Director, jefe de recepción, encargado de turno', color: '#7C3AED' },
+      { v: 'otro',     txt: 'Firma otro testigo',                     sub: 'Bañista, otro socorrista, personal externo…',    color: '#0891B2' },
+      { v: 'ninguno',  txt: 'No hay firma posible (justificar abajo)', sub: 'Víctima inconsciente sin acompañantes, traslado urgente…', color: '#DC2626' }
+    ];
+    return `
+      <div style="padding:12px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;margin-bottom:16px;">
+        <div style="font-weight:700;font-size:13.5px;color:#78350F;">Segunda firma como testigo</div>
+        <div style="font-size:12.5px;color:#78350F;margin-top:4px;">
+          Refuerza legalmente el parte. Preferentemente firma la propia persona atendida; si no puede, un familiar o responsable del hotel.
+        </div>
+      </div>
+
+      <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">¿Quién firma?</label>
+      <div style="display:grid;gap:8px;margin-bottom:16px;">
+        ${opciones.map(o => `
+          <label style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:2px solid ${tipo===o.v?o.color:'#E2E8F0'};background:${tipo===o.v?o.color+'15':'#fff'};border-radius:10px;cursor:pointer;">
+            <input type="radio" name="inc_test_tipo" value="${o.v}" ${tipo===o.v?'checked':''} style="margin-top:2px;" />
+            <div style="flex:1;">
+              <div style="font-weight:700;font-size:13.5px;color:${tipo===o.v?o.color:'#111827'};">${o.txt}</div>
+              <div style="font-size:12px;color:#64748B;margin-top:2px;">${o.sub}</div>
+            </div>
+          </label>
+        `).join('')}
+      </div>
+
+      <div id="inc_test_bloque_datos" style="display:${(tipo && tipo!=='ninguno')?'block':'none'};">
+        <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Nombre y apellidos del firmante *</label>
+        <input type="text" id="inc_test_nombre" value="${incState.firma_testigo_nombre || ''}"
+          placeholder="${tipo==='victima' ? (incState.victima_nombre || 'Nombre de la persona atendida') : 'Nombre completo del firmante'}"
+          style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:10px;" />
+
+        <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">DNI / pasaporte (opcional)</label>
+        <input type="text" id="inc_test_dni" value="${incState.firma_testigo_dni || ''}"
+          style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:10px;" />
+
+        <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">${tipo==='familiar' ? 'Relación con la víctima *' : tipo==='hotel' ? 'Cargo / puesto en el hotel *' : tipo==='otro' ? 'Rol / relación con lo sucedido' : 'Aclaración (opcional)'}</label>
+        <input type="text" id="inc_test_relacion" value="${incState.firma_testigo_relacion || ''}"
+          placeholder="${tipo==='familiar' ? 'p.ej. Esposa, Padre, Tutor legal' : tipo==='hotel' ? 'p.ej. Director, Jefa de recepción' : tipo==='otro' ? 'p.ej. Bañista testigo, formador externo' : ''}"
+          style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:14px;" />
+
+        <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Firma dentro del recuadro</label>
+        <div style="border:2px dashed #0EA5E9;border-radius:10px;background:#fff;padding:6px;">
+          <canvas id="inc_test_canvas" width="560" height="180" style="width:100%;height:180px;background:#fff;touch-action:none;display:block;"></canvas>
+        </div>
+        <button type="button" onclick="incLimpiarFirmaTestigo()" class="btn btn-outline btn-sm" style="margin-top:8px;">↺ Limpiar firma</button>
+      </div>
+
+      <div id="inc_test_bloque_ausencia" style="display:${tipo==='ninguno'?'block':'none'};">
+        <label class="field-label" style="font-weight:700;display:block;margin-bottom:6px;">Motivo por el que nadie puede firmar *</label>
+        <textarea id="inc_test_motivo" rows="3" placeholder="Ej: La víctima estaba inconsciente y fue trasladada en ambulancia sin acompañantes. La recepción del hotel estaba cerrada."
+          style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;resize:vertical;">${incState.firma_testigo_motivo_ausencia || ''}</textarea>
+      </div>
+    `;
+  }
+
   function incPasoFirma() {
     return `
       <div style="padding:12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;margin-bottom:16px;">
@@ -3822,7 +3894,33 @@
         incState.derivacion = r.value; incRender();
       }));
     } else if (incPasoActual === 5) {
-      // Canvas firma
+      // Radio elegir quién firma como testigo
+      document.querySelectorAll('input[name="inc_test_tipo"]').forEach(r => r.addEventListener('change', () => {
+        // Guardar lo tecleado del bloque actual antes de re-render
+        const nomEl = document.getElementById('inc_test_nombre');
+        const dniEl = document.getElementById('inc_test_dni');
+        const relEl = document.getElementById('inc_test_relacion');
+        const motEl = document.getElementById('inc_test_motivo');
+        if (nomEl) incState.firma_testigo_nombre = nomEl.value.trim();
+        if (dniEl) incState.firma_testigo_dni = dniEl.value.trim();
+        if (relEl) incState.firma_testigo_relacion = relEl.value.trim();
+        if (motEl) incState.firma_testigo_motivo_ausencia = motEl.value.trim();
+        incState.firma_testigo_tipo = r.value;
+        // Autocompletar nombre víctima si eligió "víctima firma"
+        if (r.value === 'victima' && !incState.firma_testigo_nombre && incState.victima_nombre) {
+          incState.firma_testigo_nombre = incState.victima_nombre;
+        }
+        if (r.value === 'victima' && !incState.firma_testigo_dni && incState.victima_dni) {
+          incState.firma_testigo_dni = incState.victima_dni;
+        }
+        incRender();
+      }));
+      // Canvas firma testigo (si hay bloque visible)
+      if (incState.firma_testigo_tipo && incState.firma_testigo_tipo !== 'ninguno') {
+        setTimeout(incInitCanvasTestigo, 50);
+      }
+    } else if (incPasoActual === 6) {
+      // Canvas firma socorrista
       setTimeout(incInitCanvasFirma, 50);
     }
   }
@@ -3874,6 +3972,54 @@
     incState.firma_imagen = null;
   };
 
+  // Canvas del testigo (paso 6). Mismo comportamiento que el del socorrista
+  // pero con su propio ctx y bandera.
+  let incTestCanvasCtx = null, incTestFirmaVacia = true;
+  function incInitCanvasTestigo() {
+    const canvas = document.getElementById('inc_test_canvas');
+    if (!canvas) return;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = canvas.offsetWidth * ratio;
+    canvas.height = 180 * ratio;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(ratio, ratio);
+    ctx.strokeStyle = '#0EA5E9'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+    incTestCanvasCtx = ctx;
+    incTestFirmaVacia = !incState.firma_testigo_imagen;
+    if (incState.firma_testigo_imagen) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, canvas.offsetWidth, 180);
+      img.src = incState.firma_testigo_imagen;
+    }
+    let dib = false, lastX = 0, lastY = 0;
+    const start = (x, y) => { dib = true; lastX = x; lastY = y; incTestFirmaVacia = false; };
+    const move  = (x, y) => {
+      if (!dib) return;
+      ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(x, y); ctx.stroke();
+      lastX = x; lastY = y;
+    };
+    const end = () => { dib = false; };
+    const pos = (e) => {
+      const r = canvas.getBoundingClientRect();
+      const t = e.touches ? e.touches[0] : e;
+      return [t.clientX - r.left, t.clientY - r.top];
+    };
+    canvas.addEventListener('mousedown', e => { const [x,y] = pos(e); start(x,y); });
+    canvas.addEventListener('mousemove', e => { const [x,y] = pos(e); move(x,y); });
+    canvas.addEventListener('mouseup',   end);
+    canvas.addEventListener('mouseleave', end);
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); const [x,y] = pos(e); start(x,y); });
+    canvas.addEventListener('touchmove',  e => { e.preventDefault(); const [x,y] = pos(e); move(x,y); });
+    canvas.addEventListener('touchend',   e => { e.preventDefault(); end(); });
+  }
+  window.incLimpiarFirmaTestigo = function () {
+    const canvas = document.getElementById('inc_test_canvas');
+    if (!canvas || !incTestCanvasCtx) return;
+    incTestCanvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+    incTestFirmaVacia = true;
+    incState.firma_testigo_imagen = null;
+  };
+
   /* ---------- Guardar valores del paso actual en incState ---------- */
   function incGuardarPasoActual({ validar } = {}) {
     if (incPasoActual === 0) {
@@ -3914,6 +4060,27 @@
       incState.hospital = document.getElementById('inc_hospital')?.value.trim() || '';
       if (validar && !incState.derivacion) { toast('Elige cómo termina la atención'); return false; }
     } else if (incPasoActual === 5) {
+      // Paso segunda firma (cliente / familiar / hotel / otro / ninguno)
+      incState.firma_testigo_nombre = document.getElementById('inc_test_nombre')?.value.trim() || '';
+      incState.firma_testigo_dni = document.getElementById('inc_test_dni')?.value.trim() || '';
+      incState.firma_testigo_relacion = document.getElementById('inc_test_relacion')?.value.trim() || '';
+      incState.firma_testigo_motivo_ausencia = document.getElementById('inc_test_motivo')?.value.trim() || '';
+      const canvasT = document.getElementById('inc_test_canvas');
+      if (canvasT && !incTestFirmaVacia) incState.firma_testigo_imagen = canvasT.toDataURL('image/png');
+      if (validar) {
+        if (!incState.firma_testigo_tipo) { toast('Elige quién firma (o "No hay firma posible" si nadie puede)'); return false; }
+        if (incState.firma_testigo_tipo === 'ninguno') {
+          if (!incState.firma_testigo_motivo_ausencia) { toast('Explica por qué nadie ha podido firmar'); return false; }
+        } else {
+          if (!incState.firma_testigo_nombre) { toast('Escribe el nombre del firmante'); return false; }
+          if ((incState.firma_testigo_tipo === 'familiar' || incState.firma_testigo_tipo === 'hotel') && !incState.firma_testigo_relacion) {
+            toast(incState.firma_testigo_tipo === 'familiar' ? 'Indica la relación con la víctima' : 'Indica el cargo en el hotel');
+            return false;
+          }
+          if (incTestFirmaVacia || !incState.firma_testigo_imagen) { toast('Firma en el recuadro'); return false; }
+        }
+      }
+    } else if (incPasoActual === 6) {
       incState.firma_nombre = document.getElementById('inc_firm_nombre')?.value.trim() || '';
       incState.firma_dni = document.getElementById('inc_firm_dni')?.value.trim() || '';
       const canvas = document.getElementById('inc_canvas');
@@ -3998,10 +4165,26 @@
         firma_imagen: incState.firma_imagen,
         firma_gps_lat: ultimaPosicion?.lat || null,
         firma_gps_lng: ultimaPosicion?.lng || null,
+        firma_testigo_tipo: incState.firma_testigo_tipo || null,
+        firma_testigo_nombre: incState.firma_testigo_nombre || null,
+        firma_testigo_dni: incState.firma_testigo_dni || null,
+        firma_testigo_relacion: incState.firma_testigo_relacion || null,
+        firma_testigo_imagen: incState.firma_testigo_imagen || null,
+        firma_testigo_motivo_ausencia: incState.firma_testigo_motivo_ausencia || null,
         dispositivo: 'móvil socorrista',
         estado: 'firmada'
       };
-      const { data: ins, error } = await window.sb.from('incidencias').insert(payload).select().single();
+      // Fallback: si las columnas nuevas no existen aún (sql/18 sin ejecutar),
+      // reintentamos sin ellas para no bloquear el parte entero.
+      let ins, error;
+      const primerTry = await window.sb.from('incidencias').insert(payload).select().single();
+      ins = primerTry.data; error = primerTry.error;
+      if (error && /firma_testigo_/i.test(error.message)) {
+        console.warn('[incidencia] sql/18 no ejecutado — guardo sin segunda firma');
+        Object.keys(payload).forEach(k => { if (k.startsWith('firma_testigo_')) delete payload[k]; });
+        const segundoTry = await window.sb.from('incidencias').insert(payload).select().single();
+        ins = segundoTry.data; error = segundoTry.error;
+      }
       if (error) throw error;
 
       // Descontar material del stock (via RPC si existe, si no update en cliente)
