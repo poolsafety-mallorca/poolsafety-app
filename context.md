@@ -4,29 +4,30 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-04 tarde (v102.3 · día de arranque real · 27 socorristas fichando + gestor unidades material)
-**Cache SW actual: `poolsafety-v102`**
+Última actualización: 2026-08-07 (v108 · sesión 6ª · hotfix salida sin GPS + radio 100m + visitas entrada/salida + tarde real + 2ª firma incidencia)
+**Cache SW actual: `poolsafety-v108`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
-Estado a fecha 2026-08-04. Todos son idempotentes (`create if not exists` / `if not exists`).
+Estado a fecha 2026-08-07. Todos son idempotentes (`create if not exists` / `if not exists`).
 Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 
 - ✅ `sql/06-incidencias.sql` — tabla incidencias + trigger nº parte + RLS + Realtime
 - ✅ `sql/07-fix-ultimo-login.sql` — arregla el bug "Sin entrar" en el panel
-- ✅ `sql/08-limpiar-desa.sql` — DESA solo 4 items reales (Desfib + parches ad+ped + batería)
-- ✅ `sql/09-limpiar-oxigenoterapia.sql` — fuera bala repuesto + mascarilla adulto, dentro manta+abrebocas+pinza lengua
-- ✅ `sql/11-empleados-para-coord.sql` — ficha empleado para coord/dueño (permite firmar Kit Alta)
-- ✅ `sql/12-cambiar-email-admin.sql` — RPC admin_cambiar_email() para cambiar email login sin ir a Auth
+- ✅ `sql/08-limpiar-desa.sql` — DESA solo 4 items reales
+- ✅ `sql/09-limpiar-oxigenoterapia.sql` — limpieza oxigenoterapia
+- ✅ `sql/11-empleados-para-coord.sql` — ficha empleado para coord/dueño
+- ✅ `sql/12-cambiar-email-admin.sql` — RPC admin_cambiar_email()
 - ✅ `sql/13-accuracy-fichajes.sql` — columna accuracy_m en fichajes
-- ✅ visitas_hoteles (creada manualmente por el usuario en el chat del 2026-08-04)
+- ✅ `sql/14-unidades-material.sql` — múltiples botiquines por hotel (ejecutado 2026-08-07)
+- ✅ `sql/15-ajuste-guedel-pediatrica.sql` — Guedel pediátrica mín 1 (ejecutado 2026-08-07)
 - ⏳ `sql/10-asignaciones-temporales.sql` — cobertura del día (feature en curso, no urge)
-- ⏳ `sql/14-unidades-material.sql` — múltiples botiquines/oxígenos por hotel. **Sin este SQL no funciona el selector desplegable de "Botiquín 1/2" ni el gestor ✏️🗑 del admin.** Auto-crea unidades extra para: Cala Gran (+B2+O2), Cala Romani (+B2+B3), Ona Luna Park (+B2+O2), Esmeralda Park (+B2+O2), Cala Esmeralda (+B2+O2).
-  - **⚠️ v102.3 arregla 3 bugs del SQL 14**: (a) sustituido `unaccent()` por `translate()` porque la extensión no está instalada en Supabase Free; (b) el check `auth_es_admin()` de la RPC falla al ejecutar desde SQL Editor postgres (auth.uid() es null) → ahora salta el check si no hay sesión; (c) la constraint antigua `UNIQUE(puesto_id, item_id)` bloqueaba duplicar items para Unidad 2 → ampliada a `UNIQUE(puesto_id, item_id, unidad_id)`.
-- ⏳ `sql/15-ajuste-guedel-pediatrica.sql` — Guedel pediátrica a mín 1 (requiere sql/14 previo o usar versión inline)
+- ⏳ `sql/16-ampliar-radio-gps.sql` — sube gps_radio_m a 100m en todos los hoteles activos EXCEPTO los que están exactamente a 30m. Reduce muchos falsos "fuera de zona". Si Hotel Ankaa (Artá) o Carrossa siguen dando problemas, subir esos a 150m con update manual.
+- ⏳ `sql/17-visitas-entrada-salida.sql` — añade `fecha_hora_salida`, `gps_lat_salida`, `gps_lng_salida` a `visitas_hoteles` + índice. Sin él el botón "Registrar salida del hotel" da error.
+- ⏳ `sql/18-incidencia-firma-testigo.sql` — añade 6 columnas a `incidencias` para segunda firma (tipo, nombre, dni, relacion, imagen, motivo_ausencia). Sin él el paso 6 del wizard funciona pero la segunda firma se descarta silenciosamente (fallback con warning en consola).
 
 ## 🚨 Bugs conocidos abiertos (no bloquean pero atender)
 - **Fichajes históricos con puesto_id null** de correturnos: si aparecen más, usar SQL de rescate por GPS (docs abajo).
-- **`sql/14` a ejecutar cuanto antes**: en cuanto se ejecute, en los 5 hoteles listados aparecerá el selector desplegable de unidades en el móvil del socorrista.
+- **Hotel de Artá con GPS impreciso**: puede necesitar radio 150m manual o corregir coords GPS del pin del hotel desde admin.
 
 ---
 
@@ -494,6 +495,55 @@ Muchos bugs descubiertos con uso real y arreglados en caliente. Cronología resu
 - ✅ Botón nuevo "Solicitar firma" (color ámbar) por fila cuando toca firmar jornada, invoca `solicitarRegistroMensual`.
 - ✅ Banner explicativo del panel reescrito: "Kit Alta: una sola vez. Jornada del mes: último día del mes o baja."
 - ✅ Empleados en salida (finiquito-pendiente / baja) muestran badge "Firmar jornada de baja" para diferenciar del cierre mensual ordinario.
+
+---
+
+### Sesión 2026-08-07 · sexta jornada · v103→v108 · GPS, visitas, tarde y 2ª firma
+
+**HOTFIX v103 — Fichar salida sin GPS (bloqueante en producción):**
+Alba Gil llevaba desde las 7 de la tarde sin poder fichar salida porque Safari le pedía permiso GPS y ella lo tenía denegado. `insertarFichaje()` hacía `throw` si `obtenerGPS()` fallaba y el turno quedaba abierto. Ahora si el GPS falla aparece un `confirm()` con el motivo real ("Has bloqueado el permiso…") y la opción de fichar SIN GPS. Se guarda con `gps_lat/lng = null`, `gps_ok = false`, `fuera_de_zona = true`, `motivo_manual = '[Sin GPS] …'`. El coord ve el fichaje marcado con el motivo (badge rojo "🚫 SIN GPS" bien visible tanto en panel de puestos como en editor de fichajes).
+
+**v104 — GPS radio 100m + botón Comprobar GPS:**
+- `sql/16-ampliar-radio-gps.sql` sube gps_radio_m a 100m en todos los hoteles activos EXCEPTO los que están exactamente a 30m (respeta lo que pidió el cliente). Reduce falsos "fuera de zona" causados por precisión GPS típica del móvil (±30-80m interior).
+- Nuevo botón **"Comprobar mi GPS"** en Perfil > Ajustes del socorrista. Diagnostica el estado del permiso (`navigator.permissions.query`) y muestra instrucciones específicas iOS/Android para: (a) permiso denegado, (b) permiso "prompt" que va a preguntar cada vez, (c) recomendación de instalar PWA cuando Safari va a resetear el permiso al cerrar.
+- Aclaración importante: **el permiso "para siempre" no lo puede forzar la app**. Es decisión del navegador. Safari en iOS resetea el permiso al cerrar la pestaña salvo que la app esté instalada como PWA (Compartir → Añadir a pantalla de inicio). Se recomienda propagarlo a los socorristas por WhatsApp.
+
+**v105 — Coord gestiona unidades material + foto empleado centrada:**
+- Los coordinadores ya pueden ✏️ renombrar, 🗑 eliminar y ➕ añadir botiquines/DESAs/oxígenos igual que el dueño. La RLS de BD ya lo permitía (`auth_es_admin()` cubre ambos roles); solo faltaba quitar el check `rol === 'dueno'` de 4 puntos del JS.
+- Bug foto perfil empleado descentrada en ficha admin: `.emp-card-photo.has-photo { background: #ddd; }` reseteaba con el shorthand el `background-size: cover` y `background-position: center` de la clase base. Se veía el recorte superior-izquierdo (fondo/hombro) en vez de la cara. Cambiado a `background-color: #ddd`.
+
+**v106 — Visitas coord con entrada + salida + duración visible:**
+- `sql/17-visitas-entrada-salida.sql` añade a `visitas_hoteles`: `fecha_hora_salida`, `gps_lat_salida`, `gps_lng_salida` + índice de visitas abiertas.
+- El modal "Visita a hotel" pasa a llamarse **"Registrar entrada al hotel"** y ya no exige rellenar actividades (se rellenan al cerrar la visita).
+- Cada visita abierta aparece con borde verde + badge **"🟢 EN CURSO · Xm"** con cronómetro en tiempo real y botón rojo **"🚪 Registrar salida del hotel"** en el timeline del propio coord.
+- Al cerrar: captura hora + GPS de salida, prompt "¿qué has hecho?" (actividades_realizadas), prompt "¿nota para Adam?" (opcional).
+- Timeline admin muestra visitas cerradas como `10:23 → 11:45 · 1h 22m` — hora entrada, hora salida y duración total para ver de un vistazo cuánto tiempo estuvo cada coord en cada hotel.
+
+**v107 — Detección real de fichajes tarde en admin:**
+- Bug histórico: chip "Tarde" y KPI "Tarde" del panel de puestos estaban **hardcodeados a 0** (`coordinador.js:141,149` con comentario "no tenemos lógica todavía"). Por eso Alba Gil llegó 10 min tarde y aparecía 0 en el panel.
+- Ahora `renderPosts` trae los horarios activos de todos los empleados que han fichado hoy y calcula la hora prevista de cada entrada según su turno real (soporta turnos partidos: elige la hora más cercana al fichaje). Fallback al `hora_inicio_default` del hotel si no hay horario configurado.
+- Tolerancia 5 min. A partir de eso el fichaje recibe `_llegoTarde + _retrasoMin`.
+- Estado del puesto añade nivel `tarde` entre `fuera` y `ok`. Chip y KPI cuentan puestos con socorrista tarde. Cada fila de socorrista muestra badge amarillo **"⏰ 10m tarde"**. Filtro "Tarde" ya funciona.
+- Requisito: el socorrista debe tener horario configurado en tabla `horarios` para que se compare contra su hora real. Sin horario cae al default del hotel.
+
+**v108 — Segunda firma testigo en parte de incidencia:**
+- `sql/18-incidencia-firma-testigo.sql` añade 6 columnas a `incidencias`: `firma_testigo_tipo`, `firma_testigo_nombre`, `firma_testigo_dni`, `firma_testigo_relacion`, `firma_testigo_imagen` (base64), `firma_testigo_motivo_ausencia`.
+- El wizard del parte pasa de 6 → **7 pasos**. Nuevo **Paso 6 · Firma del cliente o testigo** con selector radio de 5 opciones:
+  - 🟢 La persona atendida firma (recomendado) — autocompleta nombre+DNI de la víctima
+  - 🔵 Firma familiar/acompañante (pide relación: esposa, tutor legal…)
+  - 🟣 Firma responsable hotel/recepción (pide cargo)
+  - 🔵 Firma otro testigo (rol opcional)
+  - 🔴 No hay firma posible → justificación obligatoria
+- Segunda canvas independiente con su propio ctx y limpiar.
+- Fallback en insert: si sql/18 no está ejecutado, reintenta sin las columnas para no bloquear el parte (warning en consola).
+- PDF: nuevo bloque "SEGUNDA FIRMA · [ROL]" debajo de la firma del socorrista con firma + nombre + DNI + rol. Si no hay firma, bloque "SIN SEGUNDA FIRMA · JUSTIFICACIÓN" con el motivo. Refuerza el valor probatorio del parte para reclamaciones o inspección.
+
+**Aprendizajes de esta sesión:**
+1. **GPS != cobertura móvil**. GPS es satélite. A-GPS necesita datos para acelerar el fix inicial pero el GPS puro funciona sin cobertura. Las causas reales de que falle en navegador: permiso denegado (código 1, más común), ubicación OFF en iOS/Android, interior de edificio sin ventanas, modo ahorro batería agresivo.
+2. **Safari iOS resetea permisos al cerrar**. La única forma de que se guarden es instalar como PWA (Compartir → Añadir a pantalla de inicio). Recomendar propagarlo a plantilla.
+3. **Fichaje de salida NUNCA debe bloquearse**. Es más importante que el socorrista pueda cerrar turno (aunque sea sin GPS) que la evidencia GPS. Guardar sin coords y marcar el motivo.
+4. **Chip/KPI con `= 0` hardcodeado** era un TODO histórico que se pasó por alto. Grep periódico de `= 0;` en render funcs para detectar deudas técnicas.
+5. **Radios GPS por defecto de 50m son muy justos**. La precisión típica del GPS móvil en piscina (con sombra de edificios) es 30-80m. 100m es un buen valor general; algunos hoteles necesitarán 150m.
 
 ---
 
