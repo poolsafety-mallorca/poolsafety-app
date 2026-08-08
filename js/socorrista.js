@@ -3364,9 +3364,17 @@
         .order('rol', { ascending: true })
         .order('nombre', { ascending: true });
       if (error) throw error;
-      const rows = (data || []).filter(u => u.disponible !== false); // si viene false explicito no lo mostramos
+      // Regla: preferimos siempre los COORDINADORES disponibles.
+      // Solo si no hay ningún coord disponible, mostramos al administrador
+      // como fallback para que el socorrista siempre tenga a quién contactar.
+      const activos = (data || []).filter(u => u.disponible !== false);
+      const coords = activos.filter(u => u.rol === 'coordinador');
+      const admins = activos.filter(u => u.rol === 'dueno');
+      const rows = coords.length > 0 ? coords : admins;
+      const fallbackAdmin = coords.length === 0 && admins.length > 0;
+
       if (rows.length === 0) {
-        cont.innerHTML = '<div class="li"><div class="li-body"><div class="li-title text-muted">Ningún coordinador disponible ahora mismo</div><div class="li-sub">Vuelve a intentarlo más tarde</div></div></div>';
+        cont.innerHTML = '<div class="li"><div class="li-body"><div class="li-title text-muted">No hay coordinadores ni administración disponibles ahora</div><div class="li-sub">Vuelve a intentarlo más tarde</div></div></div>';
         return;
       }
       // Botón general "Enviar mensaje a coordinador" arriba de la lista
@@ -3374,7 +3382,12 @@
         <svg class="ic ic-16"><use href="#ic-message"/></svg>
         Enviar mensaje al coordinador
       </button>`;
-      cont.innerHTML = btnMsg + rows.map(u => {
+      // Aviso ámbar si estamos cayendo al admin porque no hay coord disponible
+      const avisoFallback = fallbackAdmin ? `
+        <div style="padding:10px 12px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;font-size:12.5px;color:#78350F;margin-bottom:10px;">
+          ⚠️ Ningún coordinador está disponible ahora — te mostramos administración como alternativa.
+        </div>` : '';
+      cont.innerHTML = btnMsg + avisoFallback + rows.map(u => {
         const rolLabel = u.rol === 'dueno' ? 'Administrador' : 'Coordinador';
         const iniciales = (u.nombre || u.email).split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase();
         const tel = u.telefono ? u.telefono.replace(/\s/g,'') : '';
