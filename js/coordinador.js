@@ -39,11 +39,12 @@
 
   function estadoInfo(estado) {
     switch (estado) {
-      case 'ok':        return { cls: 'ok',       label: 'Fichado',        badge: 'badge-ok',     icon: 'ic-check-circle' };
-      case 'tarde':     return { cls: 'tarde',    label: 'Tarde',          badge: 'badge-warn',   icon: 'ic-clock' };
-      case 'fuera':     return { cls: 'fuera',    label: 'Fuera de zona',  badge: 'badge-danger', icon: 'ic-signal' };
-      case 'pendiente': return { cls: 'pendiente',label: 'Sin fichar',     badge: 'badge-danger', icon: 'ic-alert-circle' };
-      case 'vacante':   return { cls: 'vacante',  label: 'Vacante',        badge: 'badge-neutral',icon: 'ic-user' };
+      case 'ok':          return { cls: 'ok',       label: 'Fichado',        badge: 'badge-ok',     icon: 'ic-check-circle' };
+      case 'tarde':       return { cls: 'tarde',    label: 'Tarde',          badge: 'badge-warn',   icon: 'ic-clock' };
+      case 'fuera':       return { cls: 'fuera',    label: 'Fuera de zona',  badge: 'badge-danger', icon: 'ic-signal' };
+      case 'pendiente':   return { cls: 'pendiente',label: 'Sin fichar',     badge: 'badge-danger', icon: 'ic-alert-circle' };
+      case 'vacante':     return { cls: 'vacante',  label: 'Vacante',        badge: 'badge-neutral',icon: 'ic-user' };
+      case 'sin_servicio':return { cls: '',         label: 'Sin servicio hoy',badge: 'badge-neutral',icon: 'ic-clock' };
     }
   }
 
@@ -174,13 +175,31 @@
         }
       });
 
+      // 2c. Horarios activos por puesto — para saber qué hoteles TIENEN
+      // servicio hoy. Si un hotel no tiene ningún horario activo para HOY
+      // y no hay fichajes, se marca "sin servicio hoy" en vez de vacante.
+      const hoyDay = hoy.getDay();
+      let horariosPorPuesto = {};
+      try {
+        const { data: allHors } = await window.sb.from('horarios')
+          .select('puesto_id, dias, fecha_desde, fecha_hasta, activo')
+          .eq('activo', true);
+        (allHors || []).forEach(h => {
+          const aplica = horarioAplicaEnDiaCoord(h, hoyDay) &&
+            (!h.fecha_desde || new Date(h.fecha_desde) <= hoy) &&
+            (!h.fecha_hasta || new Date(h.fecha_hasta) >= hoy);
+          if (aplica) horariosPorPuesto[h.puesto_id] = true;
+        });
+      } catch (_) {}
+
       // 3. Construir cache: array de fichajes por puesto (uno por empleado).
       postsCache = (puestos || []).map(p => {
         const socsMap = porPuesto[p.id] || {};
         const fichajesPuesto = Object.values(socsMap);
+        const tieneServicioHoy = !!horariosPorPuesto[p.id];
         // El estado del puesto es el "peor" de los estados de sus socorristas:
         //   · fuera > tarde > ok > terminado > vacante
-        // Así en el panel general una tarjeta se ve roja si al menos uno está fuera.
+        // Si no hay servicio hoy y tampoco fichajes → 'sin_servicio'
         let estado = 'vacante';
         fichajesPuesto.forEach(f => {
           const llegoTarde = f._llegoTarde || f._llegoTardeEntrada;
@@ -190,7 +209,8 @@
           const rank = { fuera: 4, tarde: 3, ok: 2, terminado: 1, vacante: 0 };
           if (rank[s] > rank[estado]) estado = s;
         });
-        return { puesto: p, fichajes: fichajesPuesto, estado };
+        if (estado === 'vacante' && !tieneServicioHoy) estado = 'sin_servicio';
+        return { puesto: p, fichajes: fichajesPuesto, estado, tieneServicioHoy };
       });
 
       renderPostsFromCache();
@@ -206,8 +226,12 @@
     const q = currentSearch.toLowerCase();
     const filtered = postsCache.filter(r => {
       const p = r.puesto;
-      const matchesFilter = currentFilter === 'todos'
-        || (currentFilter === 'ok' && r.estado === 'ok')
+      // Por defecto ocultamos los "sin servicio hoy" (no interesan al coord
+      // porque hoy no toca cubrirlos). El chip "Todos" también los oculta
+      // para que la vista general sea limpia. Solo aparecen si el buscador
+      // los busca por nombre.
+      const matchesFilter = currentFilter === 'todos' ? r.estado !== 'sin_servicio'
+        : (currentFilter === 'ok' && r.estado === 'ok')
         || (currentFilter === 'tarde' && r.estado === 'tarde')
         || (currentFilter === 'fuera' && r.estado === 'fuera')
         || (currentFilter === 'pendiente' && (r.estado === 'vacante' || r.estado === 'terminado'))
@@ -219,11 +243,15 @@
       return matchesFilter && matchesSearch;
     });
 
-    // Actualiza contadores en chips (incluido tarde real)
-    const c = { todos: postsCache.length, ok: 0, tarde: 0, fuera: 0, vacante: 0, terminado: 0 };
+    // Actualiza contadores en chips (incluido tarde real y sin_servicio)
+    const c = { todos: postsCache.length, ok: 0, tarde: 0, fuera: 0, vacante: 0, terminado: 0, sin_servicio: 0 };
     postsCache.forEach(r => { c[r.estado] = (c[r.estado] || 0) + 1; });
+    // Los hoteles "sin servicio hoy" NO cuentan en el total operativo:
+    // se restan del "todos" para que 3/8 no se convierta en 3/23 lleno de
+    // hoteles cerrados.
+    const totalOperativo = c.todos - c.sin_servicio;
     const chips = document.querySelectorAll('#filterChips .chip .count');
-    if (chips[0]) chips[0].textContent = c.todos;
+    if (chips[0]) chips[0].textContent = totalOperativo;
     if (chips[1]) chips[1].textContent = c.ok;
     if (chips[2]) chips[2].textContent = c.tarde;
     if (chips[3]) chips[3].textContent = c.fuera;
@@ -232,7 +260,7 @@
 
     // Actualiza los KPIs de arriba con datos reales
     const kpiOk = document.getElementById('kpiOk');
-    if (kpiOk) kpiOk.innerHTML = `${c.ok}<span class="of">/ ${c.todos}</span>`;
+    if (kpiOk) kpiOk.innerHTML = `${c.ok}<span class="of">/ ${totalOperativo}</span>`;
     const kpiTarde = document.getElementById('kpiTarde'); if (kpiTarde) kpiTarde.textContent = c.tarde;
     const kpiFuera = document.getElementById('kpiFuera'); if (kpiFuera) kpiFuera.textContent = c.fuera;
     const kpiPend = document.getElementById('kpiPend');   if (kpiPend)  kpiPend.textContent  = c.vacante;
@@ -253,6 +281,7 @@
                  : r.estado === 'tarde' ? { cls: 'warn', badge: 'badge-warn', icon: 'ic-clock', label: fichs.length > 1 ? `${fichs.length} · alguno tarde` : 'Llegó tarde' }
                  : r.estado === 'fuera' ? { cls: 'danger', badge: 'badge-danger', icon: 'ic-signal', label: fichs.length > 1 ? `${fichs.length} · alguno fuera` : 'Fuera de zona' }
                  : r.estado === 'terminado' ? { cls: '', badge: 'badge-neutral', icon: 'ic-check', label: 'Turno terminado' }
+                 : r.estado === 'sin_servicio' ? { cls: '', badge: 'badge-neutral', icon: 'ic-clock', label: 'Sin servicio hoy' }
                  : { cls: '', badge: 'badge-neutral', icon: 'ic-clock', label: 'Vacante' };
       const hIni = (p.hora_inicio_default || '10:00:00').slice(0,5);
       // Renderiza UNA fila por socorrista fichado (puede haber varios en el mismo hotel)

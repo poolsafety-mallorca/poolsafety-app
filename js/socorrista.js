@@ -605,8 +605,10 @@
     return { gps, distanciaM, fueraDeZona, puestoUsado: puestoDestino };
   }
 
-  // Modal para que el correturnos elija hotel al fichar entrada.
-  // Sugiere el más cercano por GPS y muestra la distancia a cada uno.
+  // Modal para elegir el hotel donde fichar. Prioriza el hotel del horario
+  // del socorrista para HOY (badge verde "📅 TU HORARIO"), luego el resto
+  // por cercanía GPS. Si elige un hotel que NO está en su horario de hoy,
+  // pide confirmación para evitar que el puesto asignado quede vacante.
   async function elegirHotelParaFichar(gpsSugerido) {
     // Traer todos los hoteles activos
     let hoteles = [];
@@ -618,44 +620,81 @@
     } catch (_) {}
     if (!hoteles.length) { alert('No hay hoteles configurados. Avisa al coordinador.'); return null; }
 
-    // Ordenar por distancia si hay GPS
-    if (gpsSugerido) {
-      hoteles.forEach(h => {
-        if (h.gps_lat && h.gps_lng) {
-          h._dist = Math.round(distanciaMetros(gpsSugerido.lat, gpsSugerido.lng, +h.gps_lat, +h.gps_lng));
-        } else {
-          h._dist = 999999;
-        }
-      });
-      hoteles.sort((a, b) => a._dist - b._dist);
-    }
+    // Cargar horarios activos del socorrista y marcar los que aplican HOY
+    let horariosHoy = []; // [{ puesto_id, hora_inicio, hora_inicio_2 }]
+    try {
+      if (empleadoReal?.id) {
+        const { data: hs } = await window.sb.from('horarios')
+          .select('puesto_id, hora_inicio, hora_inicio_2, dias, fecha_desde, fecha_hasta')
+          .eq('empleado_id', empleadoReal.id).eq('activo', true);
+        const hoy = new Date();
+        const jsDay = hoy.getDay();
+        horariosHoy = (hs || []).filter(h =>
+          horarioAplicaEnDia(h, jsDay) &&
+          (!h.fecha_desde || new Date(h.fecha_desde) <= hoy) &&
+          (!h.fecha_hasta || new Date(h.fecha_hasta) >= hoy)
+        );
+      }
+    } catch (_) {}
+    const horarioPorPuesto = {};
+    horariosHoy.forEach(h => {
+      const horaTxt = [h.hora_inicio, h.hora_inicio_2].filter(Boolean).map(t => t.slice(0,5)).join(' + ');
+      horarioPorPuesto[h.puesto_id] = horaTxt || '';
+    });
+
+    // Añadir _dist a cada hotel y marcar los del horario
+    hoteles.forEach(h => {
+      h._horarioHoy = !!horarioPorPuesto[h.id];
+      h._horaTxt = horarioPorPuesto[h.id] || '';
+      if (gpsSugerido && h.gps_lat && h.gps_lng) {
+        h._dist = Math.round(distanciaMetros(gpsSugerido.lat, gpsSugerido.lng, +h.gps_lat, +h.gps_lng));
+      } else {
+        h._dist = 999999;
+      }
+    });
+
+    // Ordenar: primero los del horario hoy, luego el resto por distancia
+    hoteles.sort((a, b) => {
+      if (a._horarioHoy !== b._horarioHoy) return a._horarioHoy ? -1 : 1;
+      return a._dist - b._dist;
+    });
 
     return new Promise((resolve) => {
       const modal = document.createElement('div');
       modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:20000;display:flex;align-items:flex-end;justify-content:center;';
+      const tieneHorarioHoy = hoteles.some(h => h._horarioHoy);
       modal.innerHTML = `
         <div style="background:#fff;border-radius:14px 14px 0 0;max-width:520px;width:100%;max-height:85vh;display:flex;flex-direction:column;">
           <div style="padding:16px 18px;background:#B91C1C;color:#fff;border-radius:14px 14px 0 0;">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;opacity:.85;">Correturnos · fichar entrada</div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;opacity:.85;">Fichar entrada</div>
             <div style="font-size:16px;font-weight:800;margin-top:2px;">¿En qué hotel estás hoy?</div>
-            <div style="font-size:12px;opacity:.9;margin-top:2px;">${gpsSugerido ? 'Ordenados por cercanía a tu GPS' : 'Sin GPS · elige a mano'}</div>
+            <div style="font-size:12px;opacity:.9;margin-top:2px;">${tieneHorarioHoy ? 'Los primeros son los que tienes en tu horario de hoy' : (gpsSugerido ? 'Ordenados por cercanía a tu GPS' : 'Sin GPS · elige a mano')}</div>
           </div>
           <div style="padding:8px 12px;overflow-y:auto;flex:1;">
-            ${hoteles.map(h => `
-              <button data-hid="${h.id}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:14px 12px;border:1px solid #E2E8F0;background:#fff;border-radius:10px;margin:6px 0;cursor:pointer;">
-                <div style="width:38px;height:38px;border-radius:50%;background:${h._dist != null && h._dist < 100 ? '#DCFCE7' : '#F1F5F9'};color:${h._dist != null && h._dist < 100 ? '#065F46' : '#64748B'};display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;">
-                  ${h._dist != null && h._dist < 100 ? '📍' : '🏨'}
+            ${hoteles.map(h => {
+              const esHorario = h._horarioHoy;
+              const cerca = h._dist != null && h._dist < 100;
+              const bgIcon = esHorario ? '#DCFCE7' : (cerca ? '#DCFCE7' : '#F1F5F9');
+              const colorIcon = esHorario ? '#065F46' : (cerca ? '#065F46' : '#64748B');
+              const icono = esHorario ? '📅' : (cerca ? '📍' : '🏨');
+              const borde = esHorario ? '2px solid #059669' : '1px solid #E2E8F0';
+              const fondo = esHorario ? '#F0FDF4' : '#fff';
+              return `
+              <button data-hid="${h.id}" data-horario="${esHorario ? '1' : '0'}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:14px 12px;border:${borde};background:${fondo};border-radius:10px;margin:6px 0;cursor:pointer;">
+                <div style="width:38px;height:38px;border-radius:50%;background:${bgIcon};color:${colorIcon};display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;">
+                  ${icono}
                 </div>
                 <div style="flex:1;min-width:0;">
                   <div style="font-weight:700;font-size:14px;color:#111827;">${h.nombre}</div>
                   <div style="font-size:12px;color:#64748B;">${h.zona || h.direccion || ''}</div>
+                  ${esHorario ? `<div style="font-size:11.5px;color:#059669;font-weight:700;margin-top:2px;">📅 TU HORARIO HOY${h._horaTxt ? ' · ' + h._horaTxt : ''}</div>` : ''}
                 </div>
                 ${h._dist != null && h._dist < 99999 ? `
-                  <div style="font-size:11.5px;color:${h._dist < 100 ? '#059669' : h._dist < 500 ? '#D97706' : '#94A3B8'};font-weight:700;flex-shrink:0;">
+                  <div style="font-size:11.5px;color:${cerca ? '#059669' : h._dist < 500 ? '#D97706' : '#94A3B8'};font-weight:700;flex-shrink:0;">
                     ${h._dist < 1000 ? h._dist + ' m' : (h._dist/1000).toFixed(1) + ' km'}
                   </div>` : ''}
-              </button>
-            `).join('')}
+              </button>`;
+            }).join('')}
           </div>
           <div style="padding:12px 16px;border-top:1px solid #E2E8F0;">
             <button id="hotelBoxCancel" style="width:100%;padding:12px;background:#F1F5F9;color:#64748B;border:0;border-radius:8px;font-weight:700;cursor:pointer;">Cancelar</button>
@@ -666,6 +705,14 @@
         const b = e.target.closest('button[data-hid]');
         if (b) {
           const h = hoteles.find(x => x.id === b.dataset.hid);
+          const eraHorario = b.dataset.horario === '1';
+          // Si tiene horario hoy y elige uno que NO está en su horario, confirmar
+          if (tieneHorarioHoy && !eraHorario && h) {
+            const hotelesHorarioNombres = hoteles.filter(x => x._horarioHoy).map(x => x.nombre).join(', ');
+            if (!confirm(`⚠️ Hoy tienes asignado: ${hotelesHorarioNombres}\n\nHas elegido: ${h.nombre}\n\nSi fichas aquí, el puesto asignado quedará vacante en el panel del coordinador.\n\n¿Estás seguro de que estás en ${h.nombre}?`)) {
+              return; // no cerrar el modal
+            }
+          }
           modal.remove();
           resolve(h || null);
         } else if (e.target.id === 'hotelBoxCancel' || e.target === modal) {
