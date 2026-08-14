@@ -28,12 +28,12 @@ create table if not exists revisiones_diarias (
   created_at timestamptz default now()
 );
 
--- Índices útiles: filtro por hotel/fecha y filtro por día actual
+-- Índices útiles: filtro por hotel/fecha y por empresa/fecha
+-- Nota: NO se puede usar un índice parcial con `current_date` porque
+-- Postgres exige funciones IMMUTABLE en el WHERE (current_date es STABLE).
+-- Los dos índices completos cubren bien las consultas del panel.
 create index if not exists idx_revdiarias_puesto_fecha
   on revisiones_diarias(puesto_id, fecha desc);
-create index if not exists idx_revdiarias_hoy
-  on revisiones_diarias(fecha)
-  where fecha >= (current_date - interval '30 days');
 create index if not exists idx_revdiarias_empresa_fecha
   on revisiones_diarias(empresa_id, fecha desc);
 
