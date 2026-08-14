@@ -190,6 +190,11 @@
         <svg class="ic ic-16"><use href="#ic-medkit"/></svg>
         Botiquín + DESA
       </button>
+      <button class="dash-menu-item" data-section="revisiones">
+        <svg class="ic ic-16"><use href="#ic-check-circle"/></svg>
+        Revisiones diarias
+        <span class="menu-badge" id="menuBadgeRev" style="display:none;background:#DC2626;"></span>
+      </button>
       <button class="dash-menu-item" data-section="horas">
         <svg class="ic ic-16"><use href="#ic-bar-chart"/></svg>
         Horas del mes
@@ -816,6 +821,42 @@
         </div>
       </section>
     </div><!-- /panel incidencias -->
+
+    <!-- ============ PANEL: REVISIONES DIARIAS ============ -->
+    <div class="tab-panel hidden" data-panel="revisiones">
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title-wrap">
+            <div class="kpi-icon" style="width:30px;height:30px;background:linear-gradient(135deg,#10B981,#22D3EE);color:#fff;">
+              <svg class="ic ic-16"><use href="#ic-check-circle"/></svg>
+            </div>
+            <h3 class="panel-title">Revisiones diarias · botiquín / DESA / oxígeno</h3>
+            <span class="panel-count" id="revPanelCount">—</span>
+          </div>
+          <div class="row gap-2" style="flex-wrap:wrap;">
+            <input type="date" id="revFechaFiltro" style="padding:6px 10px;border-radius:6px;border:1px solid var(--line);font-size:13px;" />
+            <button class="btn btn-outline btn-sm" onclick="cargarRevisionesDiarias()">
+              <svg class="ic ic-14"><use href="#ic-refresh"/></svg> Actualizar
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="exportarRevisionesCSV()" id="btnExportRevCSV">
+              <svg class="ic ic-14"><use href="#ic-download"/></svg> Exportar CSV
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="exportarRevisionesPDF()" id="btnExportRevPDF">
+              <svg class="ic ic-14"><use href="#ic-file-text"/></svg> Descargar PDF
+            </button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="norma-banner" style="margin-bottom:14px;">
+            <svg class="ic ic-14"><use href="#ic-shield"/></svg>
+            <span>Quién ha revisado hoy los botiquines/DESAs/oxígenos de cada hotel. En rojo los hoteles pendientes de revisar, en verde los que ya están al día. Solo admin puede descargar CSV/PDF.</span>
+          </div>
+          <div id="revisionesTablas">
+            <div class="text-muted small" style="padding:30px;text-align:center;">Cargando revisiones…</div>
+          </div>
+        </div>
+      </section>
+    </div><!-- /panel revisiones -->
 
   </div>
 </div>

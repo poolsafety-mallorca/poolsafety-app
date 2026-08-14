@@ -1828,7 +1828,34 @@
             }).in('id', rowIds);
             if (error) throw error;
           }
-          // 2) Registrar alerta informativa SOLO si hay observaciones (para no ensuciar el feed del coord)
+          // 2) Auditar la revisión en revisiones_diarias (quién, cuándo,
+          // en qué hotel y unidad, cuántos items ok/total, observaciones).
+          // Fallback silencioso si la tabla no existe todavía (sql/20).
+          try {
+            const puestoIdRev = puestoReal?.id || empleadoReal?.puesto_id || null;
+            const unidadIdRev = unidadActiva[seccionActual] || null;
+            const empresaIdRev = empleadoReal?.empresa_id || (window.PS_SESSION || {}).empresaId || null;
+            if (puestoIdRev && empresaIdRev) {
+              const { error: revErr } = await window.sb.from('revisiones_diarias').insert({
+                empresa_id: empresaIdRev,
+                puesto_id: puestoIdRev,
+                unidad_id: unidadIdRev,
+                seccion: seccionActual,
+                empleado_id: empleadoReal?.id || null,
+                empleado_nombre: empleadoReal?.nombre || null,
+                items_ok: revCount,
+                items_total: totalCount,
+                parcial: revCount < totalCount,
+                observaciones: obs.trim() || null
+              });
+              if (revErr) {
+                console.warn('[revisión] no se auditó en revisiones_diarias:', revErr.message);
+              }
+            }
+          } catch (auditErr) {
+            console.warn('[revisión] auditoría falló (no bloquea):', auditErr.message);
+          }
+          // 3) Registrar alerta informativa SOLO si hay observaciones (para no ensuciar el feed del coord)
           if (obs.trim()) {
             try {
               const psSes = window.PS_SESSION || {};

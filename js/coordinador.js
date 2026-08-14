@@ -2347,6 +2347,50 @@
         });
       }
 
+      // ========== BLOQUE REVISIONES DIARIAS ==========
+      // Añade al parte quién ha revisado botiquín/DESA/oxígeno hoy y
+      // qué hoteles quedaron pendientes. Fallback silencioso si la
+      // tabla no existe (sql/20 no ejecutado).
+      try {
+        const { data: revs } = await window.sb.from('revisiones_diarias')
+          .select('puesto_id, seccion, empleado_nombre, fecha, items_ok, items_total, parcial, observaciones')
+          .gte('fecha', desde).lt('fecha', hasta)
+          .order('fecha');
+        if (revs) {
+          filas.push([]);
+          filas.push(['REVISIONES DIARIAS · botiquín / DESA / oxígeno']);
+          filas.push(['Hotel', 'Sección', 'Revisado por', 'Hora', 'Items OK', 'Items total', 'Parcial', 'Observaciones']);
+          const secLabel = { botiquin: 'Botiquín', desa: 'DESA', oxigeno: 'Oxigenoterapia' };
+          // Cruzar con puestos activos para detectar hoteles sin revisar
+          const revsPorHotelSec = {};
+          revs.forEach(r => {
+            const k = r.puesto_id + '|' + r.seccion;
+            (revsPorHotelSec[k] = revsPorHotelSec[k] || []).push(r);
+            const p = puestos.find(x => x.id === r.puesto_id) || {};
+            filas.push([
+              p.nombre || '—',
+              secLabel[r.seccion] || r.seccion,
+              r.empleado_nombre || '—',
+              new Date(r.fecha).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+              r.items_ok ?? '',
+              r.items_total ?? '',
+              r.parcial ? 'sí' : 'no',
+              (r.observaciones || '').replace(/[\r\n;]/g, ' ')
+            ]);
+          });
+          // Pendientes: hoteles activos sin revisión hoy en ninguna sección
+          filas.push([]);
+          filas.push(['HOTELES SIN REVISIÓN HOY']);
+          puestos.forEach(p => {
+            ['botiquin','desa','oxigeno'].forEach(sec => {
+              if (!revsPorHotelSec[p.id + '|' + sec]) {
+                filas.push([p.nombre, secLabel[sec], '(pendiente)', '', '', '', '', '']);
+              }
+            });
+          });
+        }
+      } catch (_) { /* sql/20 no ejecutado */ }
+
       const csv = '﻿' + filas.map(r => r.map(c => {
         const v = String(c ?? '');
         return v.includes(';') || v.includes('"') || v.includes('\n') ? '"' + v.replace(/"/g,'""') + '"' : v;
@@ -6918,4 +6962,350 @@
     if (window.cargarEmpleadosDB) cargarEmpleadosDB();
     if (window.renderEquipoBlock) renderEquipoBlock();
   };
+
+  /* ==========================================================================
+     PANEL REVISIONES DIARIAS · quién ha revisado botiquín/DESA/oxígeno hoy
+     Admin (dueno) puede exportar CSV y PDF; coord solo lee.
+     Requiere sql/20-revisiones-diarias.sql ejecutado.
+     ========================================================================== */
+  let revisionesCache = { fecha: null, filas: [], porHotel: {} };
+
+  window.cargarRevisionesDiarias = async function () {
+    const cont = document.getElementById('revisionesTablas');
+    if (!cont || !window.sb) return;
+    cont.innerHTML = '<div class="text-muted small" style="padding:30px;text-align:center;">Cargando revisiones…</div>';
+
+    const psSes = window.PS_SESSION || {};
+    const empresaId = psSes.empresa_id || psSes.empresaId;
+    // Fecha filtro (por defecto hoy)
+    const fechaInp = document.getElementById('revFechaFiltro');
+    const fechaSel = fechaInp?.value || new Date().toISOString().slice(0,10);
+    if (fechaInp && !fechaInp.value) fechaInp.value = fechaSel;
+    const desde = new Date(fechaSel + 'T00:00:00').toISOString();
+    const hasta = new Date(new Date(fechaSel + 'T00:00:00').getTime() + 86400000).toISOString();
+
+    try {
+      // 1) Puestos activos con las secciones que tienen (botiquin/desa/oxigeno)
+      const { data: puestos } = await window.sb.from('puestos')
+        .select('id, nombre, zona, tiene_botiquin, tiene_desa, tiene_oxigeno')
+        .eq('activo', true).order('nombre');
+
+      // 2) Unidades por puesto (para saber cuántos botiquines/DESAs/oxígenos hay)
+      const { data: unidades } = await window.sb.from('unidades_material')
+        .select('id, puesto_id, seccion, nombre, numero')
+        .eq('activo', true);
+      const unidadesPorPuesto = {};
+      (unidades || []).forEach(u => {
+        const k = u.puesto_id + '|' + u.seccion;
+        (unidadesPorPuesto[k] = unidadesPorPuesto[k] || []).push(u);
+      });
+
+      // 3) Revisiones del día
+      let revs = [];
+      try {
+        const { data, error } = await window.sb.from('revisiones_diarias')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .gte('fecha', desde).lt('fecha', hasta)
+          .order('fecha', { ascending: false });
+        if (error) throw error;
+        revs = data || [];
+      } catch (e) {
+        if (/revisiones_diarias/i.test(e.message) || /relation.*does not exist/i.test(e.message)) {
+          cont.innerHTML = `<div style="padding:20px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;color:#78350F;">
+            <b>⚠️ SQL pendiente:</b> ejecuta <code>sql/20-revisiones-diarias.sql</code> en Supabase para que este panel funcione.
+          </div>`;
+          return;
+        }
+        throw e;
+      }
+
+      // 4) Estructura: para cada (puesto, seccion) → { unidadesEsperadas, revisadas: [rev...] }
+      const porHotelSec = {};
+      (puestos || []).forEach(p => {
+        ['botiquin','desa','oxigeno'].forEach(sec => {
+          const tienePropiedad = sec === 'botiquin' ? p.tiene_botiquin : sec === 'desa' ? p.tiene_desa : p.tiene_oxigeno;
+          if (tienePropiedad === false) return; // hotel no tiene esa sección
+          const uds = unidadesPorPuesto[p.id + '|' + sec] || [];
+          if (uds.length === 0 && tienePropiedad === null) return; // ni unidad ni flag → no aplica
+          const revsSec = revs.filter(r => r.puesto_id === p.id && r.seccion === sec);
+          const k = p.id + '|' + sec;
+          porHotelSec[k] = {
+            puesto: p, seccion: sec, unidades: uds,
+            revisiones: revsSec,
+            unidadesRevisadas: new Set(revsSec.map(r => r.unidad_id).filter(Boolean)),
+            estado: revsSec.length === 0 ? 'pendiente' :
+                    (uds.length && revsSec.filter(r => r.unidad_id).length >= uds.length ? 'completo' : 'parcial')
+          };
+        });
+      });
+
+      revisionesCache = { fecha: fechaSel, filas: revs, porHotelSec, puestos: puestos || [] };
+      renderRevisionesTablas();
+
+      // Actualiza badge en el menú (nº de hoteles pendientes)
+      const hoyStr = new Date().toISOString().slice(0,10);
+      if (fechaSel === hoyStr) {
+        const pendientes = Object.values(porHotelSec).filter(x => x.estado === 'pendiente').length;
+        const badge = document.getElementById('menuBadgeRev');
+        if (badge) {
+          if (pendientes > 0) {
+            badge.style.display = 'inline-block';
+            badge.textContent = pendientes;
+          } else {
+            badge.style.display = 'none';
+          }
+        }
+      }
+    } catch (err) {
+      cont.innerHTML = `<div style="padding:20px;color:#DC2626;">Error cargando revisiones: ${err.message}</div>`;
+    }
+  };
+
+  function renderRevisionesTablas() {
+    const cont = document.getElementById('revisionesTablas');
+    if (!cont) return;
+    const { porHotelSec, puestos, fecha, filas } = revisionesCache;
+
+    const hoyStr = new Date().toISOString().slice(0,10);
+    const esHoy = fecha === hoyStr;
+
+    // Contadores globales
+    let totales = { completo: 0, parcial: 0, pendiente: 0 };
+    Object.values(porHotelSec || {}).forEach(x => { totales[x.estado] = (totales[x.estado]||0)+1; });
+    const total = totales.completo + totales.parcial + totales.pendiente;
+
+    // Panel resumen arriba
+    const resumenHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px;">
+        <div style="padding:12px;border-radius:10px;background:#F0FDF4;border:1px solid #86EFAC;">
+          <div style="font-size:11px;font-weight:700;color:#065F46;text-transform:uppercase;">✅ Completas</div>
+          <div style="font-size:22px;font-weight:800;color:#065F46;margin-top:2px;">${totales.completo}<span style="font-size:14px;font-weight:400;color:#059669;"> / ${total}</span></div>
+        </div>
+        <div style="padding:12px;border-radius:10px;background:#FEF3C7;border:1px solid #F59E0B;">
+          <div style="font-size:11px;font-weight:700;color:#78350F;text-transform:uppercase;">⚠ Parciales</div>
+          <div style="font-size:22px;font-weight:800;color:#78350F;margin-top:2px;">${totales.parcial}</div>
+        </div>
+        <div style="padding:12px;border-radius:10px;background:#FEE2E2;border:1px solid #DC2626;">
+          <div style="font-size:11px;font-weight:700;color:#7F1D1D;text-transform:uppercase;">✗ Pendientes</div>
+          <div style="font-size:22px;font-weight:800;color:#7F1D1D;margin-top:2px;">${totales.pendiente}</div>
+        </div>
+        <div style="padding:12px;border-radius:10px;background:#F1F5F9;border:1px solid #CBD5E1;">
+          <div style="font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;">Fecha</div>
+          <div style="font-size:18px;font-weight:800;color:#334155;margin-top:2px;">${new Date(fecha + 'T00:00:00').toLocaleDateString('es-ES', { weekday:'short', day:'2-digit', month:'short' })}</div>
+        </div>
+      </div>`;
+
+    // Tabla por sección
+    const SEC_LABELS = { botiquin: '🩹 Botiquín', desa: '⚡ DESA', oxigeno: '💨 Oxigenoterapia' };
+    const html = ['botiquin','desa','oxigeno'].map(sec => {
+      const filasSec = Object.values(porHotelSec || {})
+        .filter(x => x.seccion === sec)
+        .sort((a,b) => a.puesto.nombre.localeCompare(b.puesto.nombre));
+      if (filasSec.length === 0) return '';
+      return `
+        <div style="margin-bottom:24px;">
+          <h4 style="margin:0 0 10px;font-size:15px;color:#111827;">${SEC_LABELS[sec]} <span style="font-size:12px;color:#64748B;font-weight:400;">— ${filasSec.length} hoteles</span></h4>
+          <div style="overflow-x:auto;border:1px solid #E2E8F0;border-radius:10px;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+              <thead style="background:#F8FAFC;">
+                <tr>
+                  <th style="text-align:left;padding:8px 10px;font-weight:700;">Hotel</th>
+                  <th style="text-align:left;padding:8px 10px;font-weight:700;">Estado</th>
+                  <th style="text-align:left;padding:8px 10px;font-weight:700;">Unidades</th>
+                  <th style="text-align:left;padding:8px 10px;font-weight:700;">Revisado por</th>
+                  <th style="text-align:left;padding:8px 10px;font-weight:700;">Hora</th>
+                  <th style="text-align:left;padding:8px 10px;font-weight:700;">Observaciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filasSec.map(f => {
+                  const badgeColor = f.estado === 'completo' ? 'background:#DCFCE7;color:#065F46;'
+                                   : f.estado === 'parcial'  ? 'background:#FEF3C7;color:#78350F;'
+                                                             : 'background:#FEE2E2;color:#7F1D1D;';
+                  const badgeText = f.estado === 'completo' ? '✅ Completa' : f.estado === 'parcial' ? '⚠ Parcial' : '✗ Pendiente';
+                  const revList = f.revisiones.length === 0 ? '<span class="text-muted">—</span>' : f.revisiones.map(r => escHtml(r.empleado_nombre || '—')).join('<br>');
+                  const horaList = f.revisiones.length === 0 ? '<span class="text-muted">—</span>' : f.revisiones.map(r => new Date(r.fecha).toLocaleTimeString('es-ES', { hour:'2-digit', minute:'2-digit' })).join('<br>');
+                  const obsList = f.revisiones.filter(r => r.observaciones).map(r => `<div style="background:#FEF9C3;padding:4px 6px;border-radius:4px;margin:2px 0;font-size:12px;">${escHtml(r.observaciones)}</div>`).join('') || '<span class="text-muted">—</span>';
+                  const udsTxt = f.unidades.length === 0
+                    ? '<span class="text-muted">1</span>'
+                    : `${f.revisiones.filter(r => r.unidad_id).length}/${f.unidades.length} unidades`;
+                  return `
+                    <tr style="border-top:1px solid #F1F5F9;">
+                      <td style="padding:8px 10px;font-weight:600;">${escHtml(f.puesto.nombre)}${f.puesto.zona ? `<div style="font-size:11px;color:#64748B;font-weight:400;">${escHtml(f.puesto.zona)}</div>` : ''}</td>
+                      <td style="padding:8px 10px;"><span class="badge" style="${badgeColor}padding:3px 8px;border-radius:8px;font-size:11.5px;font-weight:700;">${badgeText}</span></td>
+                      <td style="padding:8px 10px;">${udsTxt}</td>
+                      <td style="padding:8px 10px;">${revList}</td>
+                      <td style="padding:8px 10px;font-family:monospace;">${horaList}</td>
+                      <td style="padding:8px 10px;">${obsList}</td>
+                    </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    }).filter(Boolean).join('');
+
+    cont.innerHTML = resumenHTML + (html || '<div class="text-muted" style="padding:20px;text-align:center;">Ningún hotel activo tiene botiquín/DESA/oxígeno configurado.</div>');
+
+    // Contador en la cabecera del panel
+    const panelCount = document.getElementById('revPanelCount');
+    if (panelCount) panelCount.textContent = `${totales.completo}/${total} completas · ${filas.length} revisiones`;
+
+    // Bloquear botones de export para coord (solo dueno los usa)
+    const rolAct = ((window.PS_SESSION || {}).rol || rol);
+    ['btnExportRevCSV','btnExportRevPDF'].forEach(id => {
+      const b = document.getElementById(id);
+      if (b) b.style.display = rolAct === 'dueno' ? '' : 'none';
+    });
+  }
+
+  function escHtml(s) {
+    return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // Al cambiar la fecha
+  document.addEventListener('DOMContentLoaded', () => {
+    const inp = document.getElementById('revFechaFiltro');
+    if (inp) inp.addEventListener('change', () => cargarRevisionesDiarias());
+  });
+  setTimeout(() => {
+    const inp = document.getElementById('revFechaFiltro');
+    if (inp && !inp._psBound) {
+      inp._psBound = true;
+      inp.addEventListener('change', () => cargarRevisionesDiarias());
+    }
+  }, 1500);
+
+  // Precarga en background (para que el badge del menú se actualice al entrar)
+  setTimeout(() => { cargarRevisionesDiarias(); }, 2500);
+  document.addEventListener('ps-session-updated', () => setTimeout(cargarRevisionesDiarias, 800));
+
+  // Al abrir la sección desde el menú, refrescar
+  document.querySelectorAll('[data-section="revisiones"]').forEach(el => {
+    el.addEventListener('click', () => setTimeout(cargarRevisionesDiarias, 100));
+  });
+
+  window.exportarRevisionesCSV = function () {
+    const rolAct = ((window.PS_SESSION || {}).rol || rol);
+    if (rolAct !== 'dueno') { toast('Solo el administrador puede exportar'); return; }
+    const { porHotelSec, fecha } = revisionesCache;
+    if (!porHotelSec) { toast('No hay datos que exportar'); return; }
+    const filas = [['Hotel','Zona','Sección','Estado','Unidades','Revisado por','Hora','Items OK','Items total','Observaciones']];
+    Object.values(porHotelSec).forEach(f => {
+      const seccionTxt = f.seccion === 'botiquin' ? 'Botiquín' : f.seccion === 'desa' ? 'DESA' : 'Oxigenoterapia';
+      const estadoTxt = f.estado === 'completo' ? 'Completa' : f.estado === 'parcial' ? 'Parcial' : 'Pendiente';
+      const uds = f.unidades.length === 0 ? '1' : `${f.revisiones.filter(r=>r.unidad_id).length}/${f.unidades.length}`;
+      if (f.revisiones.length === 0) {
+        filas.push([f.puesto.nombre, f.puesto.zona||'', seccionTxt, estadoTxt, uds, '(sin revisar)', '', '', '', '']);
+      } else {
+        f.revisiones.forEach(r => {
+          filas.push([
+            f.puesto.nombre, f.puesto.zona||'', seccionTxt, estadoTxt, uds,
+            r.empleado_nombre || '', new Date(r.fecha).toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'}),
+            r.items_ok ?? '', r.items_total ?? '', (r.observaciones||'').replace(/[\r\n;]/g,' ')
+          ]);
+        });
+      }
+    });
+    const csv = filas.map(row => row.map(c => `"${String(c ?? '').replace(/"/g,'""')}"`).join(';')).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `PoolSafety-revisiones-${fecha}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('✓ CSV descargado');
+  };
+
+  window.exportarRevisionesPDF = async function () {
+    const rolAct = ((window.PS_SESSION || {}).rol || rol);
+    if (rolAct !== 'dueno') { toast('Solo el administrador puede exportar'); return; }
+    if (!window.jspdf) { toast('Espera unos segundos a que cargue el generador de PDF…'); return; }
+    const { porHotelSec, fecha } = revisionesCache;
+    if (!porHotelSec) { toast('No hay datos que exportar'); return; }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:'mm', format:'a4' });
+    doc.setFont('helvetica','bold'); doc.setFontSize(14);
+    doc.setTextColor(185,28,28);
+    doc.text('PoolSafety · Revisiones diarias', 15, 18);
+    doc.setFontSize(10); doc.setTextColor(0,0,0); doc.setFont('helvetica','normal');
+    doc.text(`Fecha: ${new Date(fecha + 'T00:00:00').toLocaleDateString('es-ES', { weekday:'long', day:'2-digit', month:'long', year:'numeric' })}`, 15, 25);
+
+    // Resumen totales
+    let totales = { completo:0, parcial:0, pendiente:0 };
+    Object.values(porHotelSec).forEach(x => { totales[x.estado] = (totales[x.estado]||0)+1; });
+    const total = totales.completo + totales.parcial + totales.pendiente;
+    doc.setFontSize(9);
+    doc.text(`Completas: ${totales.completo}/${total}   ·   Parciales: ${totales.parcial}   ·   Pendientes: ${totales.pendiente}`, 15, 31);
+
+    let y = 40;
+    const SEC_LABELS = { botiquin: 'BOTIQUIN', desa: 'DESA', oxigeno: 'OXIGENOTERAPIA' };
+    ['botiquin','desa','oxigeno'].forEach(sec => {
+      const filas = Object.values(porHotelSec).filter(x => x.seccion === sec).sort((a,b) => a.puesto.nombre.localeCompare(b.puesto.nombre));
+      if (filas.length === 0) return;
+      if (y > 270) { doc.addPage(); y = 20; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(30,64,175);
+      doc.text(SEC_LABELS[sec] + ` (${filas.length} hoteles)`, 15, y); y += 6;
+      doc.setTextColor(0,0,0);
+
+      // Cabecera tabla
+      doc.setFillColor(240,240,240); doc.rect(15, y-4, 180, 6, 'F');
+      doc.setFontSize(8); doc.setFont('helvetica','bold');
+      doc.text('Hotel', 16, y);
+      doc.text('Estado', 80, y);
+      doc.text('Revisado por', 105, y);
+      doc.text('Hora', 145, y);
+      doc.text('Uds', 165, y);
+      doc.text('Obs', 178, y);
+      y += 4;
+      doc.setFont('helvetica','normal');
+
+      filas.forEach(f => {
+        if (y > 285) { doc.addPage(); y = 20; }
+        const nombre = (f.puesto.nombre || '').substring(0,32);
+        const est = f.estado === 'completo' ? 'Completa' : f.estado === 'parcial' ? 'Parcial' : 'PENDIENTE';
+        const revs = f.revisiones;
+        const revBy = revs.length ? (revs[0].empleado_nombre || '—').substring(0,24) : '(sin revisar)';
+        const revHora = revs.length ? new Date(revs[0].fecha).toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'}) : '—';
+        const udsTxt = f.unidades.length === 0 ? '1' : `${revs.filter(r=>r.unidad_id).length}/${f.unidades.length}`;
+        const hasObs = revs.some(r => r.observaciones) ? '✔' : '';
+
+        if (f.estado === 'pendiente') { doc.setTextColor(180,30,30); doc.setFont('helvetica','bold'); }
+        else if (f.estado === 'parcial') { doc.setTextColor(180,100,20); }
+        else { doc.setTextColor(0,120,0); }
+        doc.text(nombre, 16, y);
+        doc.text(est, 80, y);
+        doc.setTextColor(0,0,0); doc.setFont('helvetica','normal');
+        doc.text(revBy, 105, y);
+        doc.text(revHora, 145, y);
+        doc.text(udsTxt, 165, y);
+        doc.text(hasObs, 180, y);
+        y += 5;
+
+        // Observaciones debajo
+        revs.filter(r => r.observaciones).forEach(r => {
+          const lines = doc.splitTextToSize('  » ' + r.observaciones, 175);
+          if (y + lines.length * 4 > 285) { doc.addPage(); y = 20; }
+          doc.setFontSize(7.5); doc.setTextColor(120,80,0);
+          doc.text(lines, 18, y);
+          y += lines.length * 3.5;
+          doc.setFontSize(8); doc.setTextColor(0,0,0);
+        });
+      });
+      y += 8;
+    });
+
+    // Footer
+    const pages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7); doc.setTextColor(150,150,150);
+      doc.text(`Pool Safety Des Llevant · Revisiones ${fecha} · Página ${i}/${pages}`, 105, 292, { align:'center' });
+    }
+    doc.save(`PoolSafety-revisiones-${fecha}.pdf`);
+    toast('✓ PDF descargado');
+  };
+
 })();
