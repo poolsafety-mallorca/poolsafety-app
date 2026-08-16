@@ -328,6 +328,31 @@
     window.open(url, '_blank');
   };
 
+  // Correturnos / socorristas sin puesto fijo: cuando ficharon entrada eligen
+  // hotel via elegirHotelParaFichar y ese ID se guarda en sessionStorage.
+  // Esta función lo lee al arrancar y sobrescribe puestoReal para que botiquín,
+  // reporte de material, alertas y contactar coord operen sobre el hotel real
+  // del día — no sobre el "Sin puesto" que traía la ficha.
+  async function hidratarHotelHoy() {
+    if (!empleadoReal || !window.sb) return;
+    const key = 'psHotelHoy_' + empleadoReal.id;
+    const hotelId = sessionStorage.getItem(key);
+    if (!hotelId) return;
+    // Si ya coincide con puestoReal, nada que hacer
+    if (puestoReal && puestoReal.id === hotelId) return;
+    try {
+      const { data } = await window.sb.from('puestos')
+        .select('id, nombre, zona, direccion, gps_lat, gps_lng, gps_radio_m, hora_inicio_default, hora_fin_default, tiene_botiquin, tiene_desa, tiene_oxigeno')
+        .eq('id', hotelId).single();
+      if (data) {
+        puestoReal = data;
+        console.log('[hotel-hoy] cargado desde sessionStorage:', data.nombre);
+      }
+    } catch (err) {
+      console.warn('[hotel-hoy] no se pudo cargar:', err.message);
+    }
+  }
+
   // Obtiene GPS con reintento inteligente. Si el primer intento da accuracy
   // mala (>300m suele ser fallback A-GPS por celda), reintenta 1 vez más y
   // devuelve el MEJOR de los dos. Reduce mucho los "fuera de zona" fantasma.
@@ -545,6 +570,15 @@
       if (!elegido) throw new Error('cancelado');
       puestoDestino = elegido;
       sessionStorage.setItem(hotelHoyKey, elegido.id);
+      // Sobrescribir puestoReal para que botiquín/reporte material del día
+      // funcionen contra el hotel elegido y no contra "Sin puesto".
+      puestoReal = elegido;
+      try {
+        aplicarPuestoEnUI && aplicarPuestoEnUI();
+        // Recargar inventario del nuevo hotel para que Botiquín funcione
+        if (typeof cargarInventarioBD === 'function') await cargarInventarioBD();
+        if (typeof renderInventario === 'function') renderInventario();
+      } catch (_) {}
     }
 
     // GPS con fallback: si falla (permiso denegado, timeout, sin señal…) NO
@@ -795,6 +829,10 @@
       mostrarPantallaFiniquito(empleadoReal);
       return; // no seguimos con GPS, fichaje, etc.
     }
+    // Correturnos / sin puesto fijo: si ya eligió hotel HOY al fichar,
+    // cargar ese hotel como puestoReal para que botiquín, reporte de
+    // material y contactar coord funcionen para el hotel real.
+    await hidratarHotelHoy();
     aplicarPuestoEnUI();
     await cargarFichajesHoyDeBd();
     checkGpsPasivo();
