@@ -572,6 +572,23 @@
           </div>
         </div>
 
+        <!-- Importador cuadrante semanal formato Pool Safety -->
+        <div style="margin-top:14px;padding:14px;background:linear-gradient(135deg,#FEF2F2,#FEE2E2);border:1px solid #B91C1C;border-radius:12px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="flex:1;">
+              <div style="font-weight:800;font-size:14.5px;color:#7F1D1D;">🗓 Cuadrante semanal (formato Pool Safety)</div>
+              <div style="font-size:12.5px;color:#7F1D1D;margin-top:4px;">
+                Sube el Excel de siempre — una hoja por semana con hoteles en filas y días en columnas.
+                El sistema detecta socorristas, hoteles y turnos automáticamente y los aplica a cada persona.
+              </div>
+            </div>
+            <button class="btn btn-primary" onclick="PSCuadrante.openModal()" style="background:#B91C1C;flex-shrink:0;">
+              <svg class="ic ic-16"><use href="#ic-download"/></svg>
+              Subir cuadrante
+            </button>
+          </div>
+        </div>
+
         <!-- Preview extraído -->
         <div id="horarioPreview" style="display:none;"></div>
       </div>
@@ -1561,6 +1578,7 @@ socorrista,Ana López,ana@ejemplo.com"></textarea>
 <script src="js/ps-pdf.js"></script>
 <script src="js/titulaciones.js"></script>
 <script src="js/ps-horarios.js"></script>
+<script src="js/ps-cuadrante.js"></script>
 <script src="js/ps-notifications.js"></script>
 <script src="js/ps-incidencias.js"></script>
 <script src="js/coordinador.js"></script>
