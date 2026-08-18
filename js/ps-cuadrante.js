@@ -457,15 +457,23 @@
     });
 
     let creados = 0, archivados = 0, errores = [];
-    // 2) Por cada grupo: archivar horarios activos previos del mismo empleado+hotel que solapen esta semana
+    // 2) Por cada grupo: archivar horarios activos previos del mismo empleado+hotel que solapen esta semana.
+    //
+    // Regla de solape: un horario existente solapa la semana nueva si
+    //   (fecha_desde IS NULL OR fecha_desde <= nueva.fecha_hasta)
+    //   AND (fecha_hasta IS NULL OR fecha_hasta >= nueva.fecha_desde)
+    //
+    // Los dos .or() encadenados de supabase-js se combinan con AND entre
+    // grupos, así que la expresión final cubre TODO — incluidos los
+    // horarios "permanentes" sin fechas (que antes NO se archivaban y
+    // provocaban duplicados: permanente activo + nuevo semanal activo).
     for (const h of horariosCrear) {
       try {
-        // Archivar los previos que solapen
         const { error: eArc } = await window.sb.from('horarios').update({ activo: false })
           .eq('empleado_id', h.empleado_id)
           .eq('puesto_id', h.puesto_id)
           .eq('activo', true)
-          .lte('fecha_desde', h.fecha_hasta)
+          .or(`fecha_desde.is.null,fecha_desde.lte.${h.fecha_hasta}`)
           .or(`fecha_hasta.is.null,fecha_hasta.gte.${h.fecha_desde}`);
         if (!eArc) archivados++;
         // Insertar el nuevo (con fallback si no existen columnas partido)
