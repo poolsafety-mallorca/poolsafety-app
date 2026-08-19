@@ -545,51 +545,53 @@
       <div class="panel-body">
         <div class="norma-banner" style="margin-bottom: 14px;">
           <svg class="ic ic-14"><use href="#ic-shield"/></svg>
-          <span>Sube el cuadrante mensual en <b>PDF, Excel o CSV</b> y el sistema detecta automáticamente los socorristas, hoteles/puestos y turnos. También puedes asignar horarios manualmente uno a uno. Cualquier cambio se refleja al momento en la app de cada socorrista.</span>
+          <span>Sube el <b>cuadrante Excel de Pool Safety</b> (el de siempre — una hoja por semana con hoteles en filas y días en columnas). El sistema detecta socorristas, hoteles y turnos y los aplica a cada persona. Los cambios se ven al momento en la app de cada socorrista.</span>
         </div>
 
-        <!-- Drag-drop upload -->
-        <div class="upload-drop" id="uploadDrop">
-          <input type="file" id="uploadInput" accept=".pdf,.xlsx,.xls,.csv" style="display:none;" />
-          <div class="upload-drop-icon">
+        <!-- Drag-drop principal: importador cuadrante semanal formato Pool Safety -->
+        <div class="upload-drop" id="uploadDropCuadrante" style="border-color:#B91C1C;background:linear-gradient(135deg,#FEF2F2,#FEE2E2);cursor:pointer;" onclick="PSCuadrante.openModal()">
+          <div class="upload-drop-icon" style="background:#B91C1C;color:#fff;">
             <svg class="ic ic-24"><use href="#ic-download"/></svg>
           </div>
-          <div class="upload-drop-title">Arrastra aquí el cuadrante mensual</div>
-          <div class="upload-drop-sub">o haz click para seleccionar · admite PDF, Excel (.xlsx, .xls) y CSV</div>
+          <div class="upload-drop-title" style="color:#7F1D1D;">🗓 Subir cuadrante semanal (formato Pool Safety)</div>
+          <div class="upload-drop-sub" style="color:#7F1D1D;">Excel .xlsx con una hoja por semana — hoteles en filas, socorristas por día en columnas</div>
           <div class="upload-drop-cta" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
-            <button class="btn btn-primary" onclick="document.getElementById('uploadInput').click()">
-              <svg class="ic ic-16"><use href="#ic-download"/></svg>
-              Seleccionar archivo
-            </button>
-            <button class="btn btn-outline" onclick="descargarPlantillaHorarios()" title="Baja una plantilla Excel con columnas exactas y ejemplos">
-              <svg class="ic ic-16"><use href="#ic-file-text"/></svg>
-              Plantilla Excel
-            </button>
-            <button class="btn btn-outline" onclick="mostrarAyudaFormatoHorarios()">
-              <svg class="ic ic-16"><use href="#ic-alert-circle"/></svg>
-              Ayuda de formato
-            </button>
-          </div>
-        </div>
-
-        <!-- Importador cuadrante semanal formato Pool Safety -->
-        <div style="margin-top:14px;padding:14px;background:linear-gradient(135deg,#FEF2F2,#FEE2E2);border:1px solid #B91C1C;border-radius:12px;">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <div style="flex:1;">
-              <div style="font-weight:800;font-size:14.5px;color:#7F1D1D;">🗓 Cuadrante semanal (formato Pool Safety)</div>
-              <div style="font-size:12.5px;color:#7F1D1D;margin-top:4px;">
-                Sube el Excel de siempre — una hoja por semana con hoteles en filas y días en columnas.
-                El sistema detecta socorristas, hoteles y turnos automáticamente y los aplica a cada persona.
-              </div>
-            </div>
-            <button class="btn btn-primary" onclick="PSCuadrante.openModal()" style="background:#B91C1C;flex-shrink:0;">
+            <button class="btn btn-primary" onclick="event.stopPropagation();PSCuadrante.openModal()" style="background:#B91C1C;">
               <svg class="ic ic-16"><use href="#ic-download"/></svg>
               Subir cuadrante
             </button>
           </div>
         </div>
 
-        <!-- Preview extraído -->
+        <!-- Importador antiguo (plantilla plana) — plegable -->
+        <details style="margin-top:14px;padding:10px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#334155;">
+            📋 ¿Prefieres subir una plantilla plana (nombre + hotel + hora)? Pulsa aquí
+          </summary>
+          <div style="margin-top:12px;">
+            <p class="small text-muted" style="margin:0 0 10px;">
+              Este importador es para el formato antiguo: una fila por asignación con columnas <code>nombre</code>, <code>dni</code>, <code>hotel</code>, <code>hora_inicio</code>, <code>hora_fin</code>, <code>dias</code>.
+              <b>Para el Excel semanal de Pool Safety usa el botón rojo de arriba</b>, no este.
+            </p>
+            <div class="row gap-2" style="flex-wrap:wrap;">
+              <input type="file" id="uploadInput" accept=".pdf,.xlsx,.xls,.csv" style="display:none;" />
+              <button class="btn btn-outline btn-sm" onclick="document.getElementById('uploadInput').click()">
+                <svg class="ic ic-14"><use href="#ic-download"/></svg>
+                Subir plantilla plana
+              </button>
+              <button class="btn btn-outline btn-sm" onclick="descargarPlantillaHorarios()">
+                <svg class="ic ic-14"><use href="#ic-file-text"/></svg>
+                Descargar plantilla
+              </button>
+              <button class="btn btn-outline btn-sm" onclick="mostrarAyudaFormatoHorarios()">
+                <svg class="ic ic-14"><use href="#ic-alert-circle"/></svg>
+                Ayuda formato
+              </button>
+            </div>
+          </div>
+        </details>
+
+        <!-- Preview extraído (del importador antiguo) -->
         <div id="horarioPreview" style="display:none;"></div>
       </div>
     </section>

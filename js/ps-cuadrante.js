@@ -235,7 +235,7 @@
   let modalEl = null;
   let ultimaData = null; // { asignaciones, resueltas: [], nomatches: {emp:[], hotel:[]}, semanas: [] }
 
-  async function abrirModal() {
+  async function abrirModal(fileOpcional) {
     if (modalEl) modalEl.remove();
     const rol = ((window.PS_SESSION || {}).rol);
     if (rol !== 'dueno' && rol !== 'coordinador') { alert('Solo admin/coord'); return; }
@@ -288,7 +288,29 @@
       e.preventDefault(); drop.style.background = '#FEF2F2';
       if (e.dataTransfer.files[0]) procesarArchivo(e.dataTransfer.files[0]);
     });
+    // Si se abrió con un archivo ya (drag desde fuera del modal), procesarlo
+    if (fileOpcional) setTimeout(() => procesarArchivo(fileOpcional), 100);
   }
+
+  // Enganchar drag-drop del panel principal (uploadDropCuadrante) para que
+  // arrastrar el archivo directamente abra el modal y lo procese al vuelo.
+  function engancharDragDropPanel() {
+    const dz = document.getElementById('uploadDropCuadrante');
+    if (!dz || dz._psBound) return;
+    dz._psBound = true;
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.background = '#FCA5A5'; });
+    dz.addEventListener('dragleave', () => { dz.style.background = ''; });
+    dz.addEventListener('drop', e => {
+      e.preventDefault(); dz.style.background = '';
+      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) abrirModal(file);
+    });
+  }
+  // Reintentar hasta que el DOM lo tenga (el panel Horarios puede tardar en renderizar)
+  setTimeout(engancharDragDropPanel, 500);
+  setTimeout(engancharDragDropPanel, 1500);
+  setTimeout(engancharDragDropPanel, 3000);
+  document.addEventListener('ps-session-updated', () => setTimeout(engancharDragDropPanel, 300));
 
   async function procesarArchivo(file) {
     if (!file) return;
