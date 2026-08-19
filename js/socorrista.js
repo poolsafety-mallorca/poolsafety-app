@@ -335,18 +335,80 @@
   // del día — no sobre el "Sin puesto" que traía la ficha.
   async function hidratarHotelHoy() {
     if (!empleadoReal || !window.sb) return;
+    // Si ya tiene puestoReal por ficha, respetarlo (puesto fijo)
+    if (puestoReal && puestoReal.id) return;
+
     const key = 'psHotelHoy_' + empleadoReal.id;
-    const hotelId = sessionStorage.getItem(key);
-    if (!hotelId) return;
-    // Si ya coincide con puestoReal, nada que hacer
-    if (puestoReal && puestoReal.id === hotelId) return;
+    let hotelId = sessionStorage.getItem(key);
+    let origen = 'sessionStorage';
+
+    // Fallback 1: buscar el fichaje MÁS RECIENTE de HOY del empleado en BD.
+    // Cubre el caso: correturnos que fichó, cerró el navegador (perdió el
+    // sessionStorage) y vuelve a abrir la app — su fichaje sigue en BD.
+    if (!hotelId) {
+      try {
+        const hoy = new Date();
+        const desde = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString();
+        const { data } = await window.sb.from('fichajes')
+          .select('puesto_id')
+          .eq('empleado_id', empleadoReal.id)
+          .gte('hora', desde)
+          .not('puesto_id', 'is', null)
+          .order('hora', { ascending: false })
+          .limit(1);
+        if (data && data[0] && data[0].puesto_id) {
+          hotelId = data[0].puesto_id;
+          origen = 'fichaje de hoy';
+          // Guardamos en sessionStorage para próximas cargas
+          sessionStorage.setItem(key, hotelId);
+        }
+      } catch (_) {}
+    }
+
+    // Fallback 2: buscar el horario ACTIVO del empleado para HOY.
+    // Cubre el caso: correturnos que aún NO ha fichado hoy pero tiene turno
+    // asignado — puede consultar botiquín/pedir material antes de fichar.
+    if (!hotelId) {
+      try {
+        const jsDay = new Date().getDay();
+        const hoyISO = new Date().toISOString().slice(0,10);
+        const { data } = await window.sb.from('horarios')
+          .select('puesto_id, dias, fecha_desde, fecha_hasta')
+          .eq('empleado_id', empleadoReal.id).eq('activo', true);
+        const DIAS = ['dom','lun','mar','mie','jue','vie','sab'];
+        const target = DIAS[jsDay];
+        const candidatos = (data || []).filter(h => {
+          const dias = String(h.dias || '').toLowerCase();
+          if (!dias.includes(target)) {
+            // Soportar formato "lun-vie" simplificado
+            const m = dias.match(/([dlmxjvs]|lun|mar|mie|jue|vie|sab|dom)\s*-\s*([dlmxjvs]|lun|mar|mie|jue|vie|sab|dom)/);
+            if (!m) return false;
+            const idx = s => s.length === 1 ? ['d','l','m','x','j','v','s'].indexOf(s) : DIAS.indexOf(s.slice(0,3));
+            const ini = idx(m[1]), fin = idx(m[2]);
+            if (ini < 0 || fin < 0) return false;
+            const en = ini <= fin ? (jsDay >= ini && jsDay <= fin) : (jsDay >= ini || jsDay <= fin);
+            if (!en) return false;
+          }
+          if (h.fecha_desde && hoyISO < h.fecha_desde) return false;
+          if (h.fecha_hasta && hoyISO > h.fecha_hasta) return false;
+          return true;
+        });
+        if (candidatos.length) {
+          hotelId = candidatos[0].puesto_id;
+          origen = 'horario de hoy';
+        }
+      } catch (_) {}
+    }
+
+    if (!hotelId) return; // sin hotel determinable — se queda "Sin puesto"
+
     try {
       const { data } = await window.sb.from('puestos')
         .select('id, nombre, zona, direccion, gps_lat, gps_lng, gps_radio_m, hora_inicio_default, hora_fin_default, tiene_botiquin, tiene_desa, tiene_oxigeno')
         .eq('id', hotelId).single();
       if (data) {
         puestoReal = data;
-        console.log('[hotel-hoy] cargado desde sessionStorage:', data.nombre);
+        console.log('[hotel-hoy] cargado (' + origen + '):', data.nombre);
       }
     } catch (err) {
       console.warn('[hotel-hoy] no se pudo cargar:', err.message);
