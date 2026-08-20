@@ -164,13 +164,50 @@
   setInterval(tickClock, 30 * 1000);
 
   /* ---------- Navegación ---------- */
+  // Recordamos el puesto contra el que se cargó el inventario. Si cambia
+  // (correturnos fichó en otro hotel) recargamos al entrar en la pestaña.
+  let ultimoPuestoInv = null;
   window.showView = function (name) {
     document.querySelectorAll('.view').forEach(v => v.classList.toggle('hidden', v.dataset.view !== name));
     document.querySelectorAll('.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Al entrar en Botiquín, si el puesto cambió o el cache está vacío,
+    // recargar inventario para reflejar el hotel real del día.
+    if (name === 'botiquin') {
+      const puestoActualId = puestoReal?.id || empleadoReal?.puesto_id || null;
+      if (puestoActualId && puestoActualId !== ultimoPuestoInv) {
+        ultimoPuestoInv = puestoActualId;
+        if (typeof cargarInventarioBD === 'function') {
+          cargarInventarioBD().then(() => {
+            if (typeof renderTabs === 'function') renderTabs();
+            if (typeof renderInventario === 'function') renderInventario();
+            if (typeof renderRevisionSummary === 'function') renderRevisionSummary();
+            if (typeof renderAlertasStock === 'function') renderAlertasStock();
+          }).catch(err => console.warn('[inventario recarga]', err.message));
+        }
+      }
+    }
   };
   document.querySelectorAll('.tabbar button').forEach(b => {
     b.addEventListener('click', () => showView(b.dataset.tab));
+  });
+
+  // Al recuperar foco de la app (volver de otra pestaña / desbloquear
+  // móvil), rehidratar hotel del día por si fichó en otro dispositivo.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && empleadoReal && window.sb) {
+      hidratarHotelHoy().then(() => {
+        const nuevoId = puestoReal?.id || null;
+        if (nuevoId && nuevoId !== ultimoPuestoInv) {
+          ultimoPuestoInv = nuevoId;
+          if (typeof aplicarPuestoEnUI === 'function') aplicarPuestoEnUI();
+          if (typeof cargarInventarioBD === 'function') cargarInventarioBD().then(() => {
+            if (typeof renderTabs === 'function') renderTabs();
+            if (typeof renderInventario === 'function') renderInventario();
+          });
+        }
+      }).catch(() => {});
+    }
   });
 
   /* ==========================================================================
@@ -644,11 +681,19 @@
       // Sobrescribir puestoReal para que botiquín/reporte material del día
       // funcionen contra el hotel elegido y no contra "Sin puesto".
       puestoReal = elegido;
+      // Reset del marcador de "puesto ya cargado en inventario" para forzar
+      // recarga la próxima vez que se abra Botiquín (por si el usuario aún
+      // no había entrado en esa pestaña).
+      try { ultimoPuestoInv = null; } catch (_) {}
       try {
         aplicarPuestoEnUI && aplicarPuestoEnUI();
         // Recargar inventario del nuevo hotel para que Botiquín funcione
         if (typeof cargarInventarioBD === 'function') await cargarInventarioBD();
+        if (typeof renderTabs === 'function') renderTabs();
         if (typeof renderInventario === 'function') renderInventario();
+        if (typeof renderRevisionSummary === 'function') renderRevisionSummary();
+        // Marcar el puesto como ya cargado para no reintentar en showView
+        ultimoPuestoInv = elegido.id;
       } catch (_) {}
     }
 
