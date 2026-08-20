@@ -4,11 +4,11 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-07 (v108 · sesión 6ª · hotfix salida sin GPS + radio 100m + visitas entrada/salida + tarde real + 2ª firma incidencia)
-**Cache SW actual: `poolsafety-v108`**
+Última actualización: 2026-08-20 (v120 · sesión 7ª · cuadrante Excel + correturnos completo + panel revisiones + 2ª firma incidencia + RLS corrupt/reparaciones)
+**Cache SW actual: `poolsafety-v120`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
-Estado a fecha 2026-08-07. Todos son idempotentes (`create if not exists` / `if not exists`).
+Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
 Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 
 - ✅ `sql/06-incidencias.sql` — tabla incidencias + trigger nº parte + RLS + Realtime
@@ -18,16 +18,20 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/11-empleados-para-coord.sql` — ficha empleado para coord/dueño
 - ✅ `sql/12-cambiar-email-admin.sql` — RPC admin_cambiar_email()
 - ✅ `sql/13-accuracy-fichajes.sql` — columna accuracy_m en fichajes
-- ✅ `sql/14-unidades-material.sql` — múltiples botiquines por hotel (ejecutado 2026-08-07)
-- ✅ `sql/15-ajuste-guedel-pediatrica.sql` — Guedel pediátrica mín 1 (ejecutado 2026-08-07)
+- ✅ `sql/14-unidades-material.sql` — múltiples botiquines por hotel
+- ✅ `sql/15-ajuste-guedel-pediatrica.sql` — Guedel pediátrica mín 1
+- ✅ `sql/16-ampliar-radio-gps.sql` — radio GPS a 100m (excepto los de 30m)
+- ✅ `sql/17-visitas-entrada-salida.sql` — visitas coord con salida y duración
+- ✅ `sql/18-incidencia-firma-testigo.sql` — 2ª firma incidencia
+- ✅ `sql/19-rls-socorrista-ve-coord.sql` — socorrista ve coord/admin (contactar)
+- ✅ `sql/20-revisiones-diarias.sql` — auditoría revisiones botiquín/DESA/oxígeno
+- ✅ `sql/21-rls-correturnos-inventario.sql` — correturnos leen/escriben inventario del hotel donde fichan
+- ✅ `sql/22-diagnostico-reparar-unidades.sql` — reparar Botiquín 2/3 sin items (Cala Gran)
 - ⏳ `sql/10-asignaciones-temporales.sql` — cobertura del día (feature en curso, no urge)
-- ⏳ `sql/16-ampliar-radio-gps.sql` — sube gps_radio_m a 100m en todos los hoteles activos EXCEPTO los que están exactamente a 30m. Reduce muchos falsos "fuera de zona". Si Hotel Ankaa (Artá) o Carrossa siguen dando problemas, subir esos a 150m con update manual.
-- ⏳ `sql/17-visitas-entrada-salida.sql` — añade `fecha_hora_salida`, `gps_lat_salida`, `gps_lng_salida` a `visitas_hoteles` + índice. Sin él el botón "Registrar salida del hotel" da error.
-- ⏳ `sql/18-incidencia-firma-testigo.sql` — añade 6 columnas a `incidencias` para segunda firma (tipo, nombre, dni, relacion, imagen, motivo_ausencia). Sin él el paso 6 del wizard funciona pero la segunda firma se descarta silenciosamente (fallback con warning en consola).
 
 ## 🚨 Bugs conocidos abiertos (no bloquean pero atender)
-- **Fichajes históricos con puesto_id null** de correturnos: si aparecen más, usar SQL de rescate por GPS (docs abajo).
 - **Hotel de Artá con GPS impreciso**: puede necesitar radio 150m manual o corregir coords GPS del pin del hotel desde admin.
+- **Fichajes históricos con puesto_id null** de correturnos: si aparecen más, usar SQL de rescate por GPS.
 
 ---
 
@@ -544,6 +548,71 @@ Alba Gil llevaba desde las 7 de la tarde sin poder fichar salida porque Safari l
 3. **Fichaje de salida NUNCA debe bloquearse**. Es más importante que el socorrista pueda cerrar turno (aunque sea sin GPS) que la evidencia GPS. Guardar sin coords y marcar el motivo.
 4. **Chip/KPI con `= 0` hardcodeado** era un TODO histórico que se pasó por alto. Grep periódico de `= 0;` en render funcs para detectar deudas técnicas.
 5. **Radios GPS por defecto de 50m son muy justos**. La precisión típica del GPS móvil en piscina (con sombra de edificios) es 30-80m. 100m es un buen valor general; algunos hoteles necesitarán 150m.
+
+---
+
+### Sesión 2026-08-20 · séptima jornada · v109→v120 · cuadrante Excel + correturnos ROBUSTO
+
+**Contactar coord desde socorrista (v109 + sql/19):**
+Bug silencioso: bloque "Contactar coordinador" del perfil socorrista siempre vacío "Ningún coordinador disponible" aunque Adam/Alex/Óscar estuvieran activos y disponibles. Causa: policy `usuarios_select` solo dejaba al socorrista verse a sí mismo (`id = auth.uid()`). Nueva policy `usuarios_select_para_contactar` permite ver dueno/coord activos de la empresa. Además la lista ahora prioriza coordinadores; solo si no hay ninguno disponible cae al admin como fallback con banner ámbar.
+
+**Sub-fix v110 — Hotel del horario al fichar + "Sin servicio hoy":**
+- Selector de hotel al fichar (correturnos) ahora carga los horarios del socorrista y muestra PRIMERO los hoteles donde tiene turno HOY con borde verde + badge "📅 TU HORARIO HOY · 07:00". Si elige uno que NO está en su horario, confirm avisando qué hotel le tocaba (caso Alvaro Erena: fichó Esmeralda Park cuando tenía Seguridad Inturotel).
+- Panel del admin: hoteles sin ningún horario activo para HOY se marcan "Sin servicio hoy" (badge neutral, ocultos por defecto). Se restan del total operativo — KPI muestra 3/8 en lugar de 3/23 lleno de hoteles cerrados.
+
+**Panel revisiones diarias del admin (v111 + sql/20):**
+- Nueva tabla `revisiones_diarias` (empresa, puesto, unidad, sección, empleado, items_ok/total, parcial, observaciones) + RLS + índices + realtime.
+- Socorrista al guardar revisión inserta registro en revisiones_diarias (fallback silencioso si tabla no existe).
+- Nuevo tab "Revisiones diarias" en menú admin/coord con badge rojo del nº pendientes hoy. Panel con resumen visual (completas/parciales/pendientes/fecha) + tabla por sección con hotel, estado, unidades revisadas, quién, hora, observaciones.
+- Botones "Exportar CSV" y "Descargar PDF" solo visibles para `dueno` (coord solo puede ver).
+- Export `exportarParteDiario` ahora también incluye bloque REVISIONES DIARIAS + HOTELES SIN REVISIÓN HOY.
+- Fix `sql/20`: quitar índice parcial con `current_date` porque Postgres exige IMMUTABLE en WHERE de índices parciales.
+
+**Correturnos hidratar hotel — 3 rondas de fix (v112 → v115 → v117 → v119 → sql/21):**
+Bug persistente de Irene, María, Oscar y otros: fichan en un hotel pero Botiquín / Reportar Material / Contactar Coord siguen viendo "Sin puesto asignado".
+
+Diagnóstico progresivo (cada arreglo destapó el siguiente):
+- **v112**: al fichar el correturnos, `puestoReal = elegido` + refresca inventario en caliente. Cubre la primera sesión.
+- **v115**: al arrancar la app, `hidratarHotelHoy()` busca hotel en cascada: sessionStorage → fichaje HOY en BD → horario activo para HOY. Cubre cerrar/abrir app.
+- **v117 (CRÍTICO caso María)**: `hidratarHotelHoy` respetaba el puesto de ficha y no lo actualizaba con el fichaje real. Ahora el FICHAJE REAL DE HOY siempre gana sobre lo asignado en ficha. María fichó Cala Azul pero seguía viendo Luna Park (puesto asignado en admin) → fix.
+- **v119**: `showView('botiquin')` recarga inventario si `puestoReal` cambió desde la última carga. `visibilitychange` re-hidrata + recarga al volver a foreground. `insertarFichaje` resetea `ultimoPuestoInv`.
+- **sql/21 (bug real)**: `invp_select` RLS solo dejaba al socorrista leer inventario de puestos donde `empleados.puesto_id = puesto_id`. Los correturnos con puesto fijo en otro hotel (o sin puesto) veían 0 filas silenciosamente al fichar en Cala Azul. **AMPLIADO**: cualquier empleado activo de la empresa puede leer inventario de cualquier puesto de su empresa; puede escribir el puesto de su ficha O donde tenga fichaje en las últimas 24h.
+
+**Guardado stock + Cala Gran (v120 + sql/22):**
+- Bug "cambio número y vuelve al anterior": UPDATE aparente OK pero RLS bloqueaba y 0 filas afectadas sin error. Ahora `.select()` al final detecta 0 filas y sale alert claro "Sin permiso, cierra y abre la app; si sigue avisa al coord (falta sql/21)".
+- Cala Gran solo dejaba Botiquín 1: Botiquín 2 y Oxígeno 2 se habían creado con la RPC `duplicar_unidad_material` pero sin items copiados (bug histórico). Doble fix: (a) JS defensivo `itemsPorSeccion` cae a todos los items si la unidad activa está vacía; (b) `sql/22-diagnostico-reparar-unidades.sql` recorre todos los hoteles con >1 unidad y copia items faltantes de la unidad #1 a las #2/#3 vacías. Verificado con Cala Gran: 22+22 botiquín, 4 desa, 11+11 oxígeno.
+
+**2ª firma en parte de incidencia (v108 + sql/18)** — se cerró al principio de sesión:
+Wizard incidencia pasa de 6 → 7 pasos. Nuevo paso 6 "Firma del cliente o testigo" con selector de 5 opciones (persona atendida / familiar / responsable hotel / otro testigo / ninguno con justificación). PDF: nuevo bloque "SEGUNDA FIRMA · [ROL]" o "SIN SEGUNDA FIRMA · JUSTIFICACIÓN".
+
+**IMPORTADOR CUADRANTE SEMANAL EXCEL (v113 → v116 → v118):**
+Feature grande — nuevo módulo `js/ps-cuadrante.js` (500+ líneas). Coord/admin sube el Excel semanal DEL CLIENTE tal cual (una hoja por semana, hoteles en filas, socorristas por día en columnas) y la app extrae + aplica los horarios de cada persona automáticamente.
+- Parser propio (no plantilla plana) que entiende:
+  · "SEMANA DE X-Y DE MES" en título o dentro
+  · Filas grupales (INTUROTEL, GAVIMAR, PORTOCOLOM…) ignoradas
+  · Horarios simples (10:00-18:00) y partidos (10-14/16-20)
+  · Nombres compartidos "ALVARO/ESTEBAN" → 2 asignaciones
+  · Sufijos numéricos "NASSER 9", "ALBA 6,5", "PAULA6" → limpiados
+- Fuzzy matching de socorristas y hoteles contra BD (score >= 70) con contains + token-set + exacto.
+- Modal preview con drag-drop, selector año, resumen visual, aviso ámbar de socorristas/hoteles no encontrados, tabla primeras 200 filas.
+- Al aplicar: agrupa por (empleado, hotel, horario, semana), archiva horarios previos que solapen (incluidos permanentes sin fechas, v114 fix con doble `.or()`) y crea los nuevos con `fecha_desde/fecha_hasta` de la semana.
+- **v116**: reordenada UI Horarios — el drag-drop grande principal AHORA ES el importador cuadrante formato Pool Safety (banner rojo). El importador antiguo (plantilla plana) queda plegado en `<details>`. Elimina la confusión de subir el cuadrante al importador equivocado y ver "(sin asignar) · Sin socorrista".
+- **v118**: fechas en UTC (`Date.UTC()`) para evitar salto de día por zona horaria. Antes 24-agosto-lunes se guardaba como 23-agosto-domingo.
+- Probado con dos archivos reales: `INICIO 2026 _110554.xlsx` (25 semanas, 25 hoteles, 3.962 asignaciones) y `cuadrante socorristas.xlsx` (1 semana, 203 asignaciones).
+
+**Otros arreglos menores:**
+- v104: botón "Comprobar mi GPS" en Perfil socorrista con diagnóstico permiso (denied/prompt/granted) e instrucciones iOS/Android específicas.
+- v105: coordinadores también pueden renombrar/eliminar/añadir botiquines (antes solo dueño). Foto empleado centrada en ficha admin (bug CSS `background: #ddd` reseteaba `background-size: cover`).
+- v106: visitas coord con entrada + salida + duración visible al admin ("10:23 → 11:45 · 1h 22m") + botón rojo "Registrar salida del hotel" en tarjetas EN CURSO.
+- v107: detección real de fichajes tarde en panel admin (antes chip y KPI hardcodeados a 0 desde siempre).
+
+**Aprendizajes clave de esta sesión:**
+1. **RLS bloqueo silencioso es EL bug más recurrente.** Añadir `.select()` a todo UPDATE/INSERT/DELETE de socorrista para detectar 0 filas afectadas y mostrar error real al usuario.
+2. **hidratar puesto tiene que priorizar realidad > configuración**. Fichaje real > sessionStorage > ficha > horario. Nunca dejar que la ficha (que es config) mande sobre el fichaje (que es realidad del día).
+3. **Duplicar unidades con RPC no siempre copia items**. La RPC `duplicar_unidad_material` no era 100% fiable. Verificar siempre con `count(*) group by unidad_id`. `sql/22` es el "arreglar todo" definitivo.
+4. **Fechas en JS**: siempre UTC para transmitir a BD, siempre Local para mostrar al usuario. Mezclar zonas es el bug número 1 en pickers y calendarios.
+5. **Un drag-drop principal DEBE ser el que quieres que use la gente**. Si tienes un importador nuevo mejor, ponlo el primero + más grande, no importa "romper" la UI antigua.
+6. **Los tests con archivos reales detectan bugs que el sintético nunca revela**: nombres compartidos con "/", sufijos numéricos "NASSER 9", filas cabecera duplicadas cada 5 filas, etc.
 
 ---
 
