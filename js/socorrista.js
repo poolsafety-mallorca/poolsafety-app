@@ -1701,9 +1701,16 @@
     }
     // Filtrar por unidad activa; items sin unidad_id se muestran en la unidad #1
     const primeraId = uds[0].id;
-    return inventarioCache.filter(it =>
+    const filtrados = inventarioCache.filter(it =>
       it.seccion === sec && (it.unidadId === activaId || (!it.unidadId && activaId === primeraId))
     );
+    // Fallback defensivo: si la unidad activa NO tiene items asignados en BD
+    // (caso Cala Gran con Botiquín 2/3 mal duplicados), devolvemos todos los
+    // items de la sección para que al menos se puedan ver y revisar.
+    if (filtrados.length === 0) {
+      return inventarioCache.filter(it => it.seccion === sec);
+    }
+    return filtrados;
   }
 
   // Todos los items de la sección (sin filtrar por unidad) — usado para calcular
@@ -1934,12 +1941,17 @@
         const nuevoStock = Math.max(0, parseInt(inp.value) || 0);
         btn.disabled = true; btn.innerHTML = '<svg class="ic ic-14"><use href="#ic-signal"/></svg> Guardando…';
         try {
-          const { error } = await window.sb.from('inventario_puesto').update({
+          // .select() al final para detectar 0 filas afectadas por RLS —
+          // sin esto el UPDATE aparentaba éxito y el valor volvía al viejo.
+          const { data, error } = await window.sb.from('inventario_puesto').update({
             stock: nuevoStock,
             revisado_hoy: true,
             ultima_revision: new Date().toISOString()
-          }).eq('id', it.rowId);
+          }).eq('id', it.rowId).select();
           if (error) throw error;
+          if (!data || !data.length) {
+            throw new Error('Sin permiso para editar. Cierra la app y ábrela otra vez; si sigue, avisa al coord (falta el SQL 21 en Supabase).');
+          }
           it.stock = nuevoStock;
           it.revisadoHoy = true;
           toast(`✓ ${it.nombre}: ${nuevoStock} ${it.unidad}`);
@@ -1947,7 +1959,7 @@
           renderRevisionSummary();
           renderAlertasStock();
         } catch (err) {
-          toast('Error: ' + err.message);
+          alert('❌ No se guardó ' + it.nombre + '\n\n' + err.message);
           btn.disabled = false;
           btn.innerHTML = '<svg class="ic ic-14"><use href="#ic-check"/></svg> Guardar';
         }
