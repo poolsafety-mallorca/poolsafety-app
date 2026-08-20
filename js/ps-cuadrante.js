@@ -144,7 +144,9 @@
       // Construir fecha lunes de la semana (Lun = diaIni?)
       // El excel muestra por columnas D..J los días LUN..DOM.
       // diaIni corresponde al lunes (col D).
-      const fechaLun = new Date(anio, semana.mes, semana.diaIni);
+      // Usar UTC para evitar saltos de día por zona horaria al llamar
+      // .toISOString() más tarde (24-agosto local → 23-agosto UTC).
+      const fechaLun = new Date(Date.UTC(anio, semana.mes, semana.diaIni));
       // Iterar filas de datos
       rows.forEach((fila, idx) => {
         if (!fila || fila.every(c => !String(c || '').trim())) return;
@@ -163,7 +165,7 @@
           const cellN = norm(cell);
           if (!cell || VACIO_VALORES.has(cellN)) continue;
           if (cellN === 'lunes' || cellN.startsWith('marte')) continue; // seguridad
-          const fecha = new Date(fechaLun); fecha.setDate(fechaLun.getDate() + d);
+          const fecha = new Date(fechaLun.getTime() + d * 86400000);
           // Limpieza + split de nombres compartidos:
           //  · "NASSER 9" / "ALBA 6,5" → quitar horas al final (dígitos + coma/punto)
           //  · "ALVARO/ESTEBAN" / "ALBA/NASSER" → generar 2 asignaciones
@@ -441,21 +443,23 @@
     // Cada grupo genera 1 horario con dias="lun,mar,..." y fecha_desde/hasta = lunes/domingo de esa semana
     const grupos = {};
     okItems.forEach(x => {
-      // Semana lunes: retrocedemos hasta el lunes
+      // Todas las fechas son UTC. Semana lunes = retroceder hasta el lunes.
       const f = new Date(x.fecha);
-      const jsDay = f.getDay();
-      const offset = jsDay === 0 ? 6 : jsDay - 1; // domingo=6, lunes=0
-      const lunes = new Date(f); lunes.setDate(f.getDate() - offset); lunes.setHours(0,0,0,0);
-      const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6);
-      const key = [x.emp.id, x.hotel.id, x.hi, x.hf, x.hi2 || '', x.hf2 || '', lunes.toISOString().slice(0,10)].join('|');
+      const jsDay = f.getUTCDay();
+      const offset = jsDay === 0 ? 6 : jsDay - 1; // dom=0→6, lun=1→0, mar=2→1…
+      const lunes = new Date(f.getTime() - offset * 86400000);
+      const domingo = new Date(lunes.getTime() + 6 * 86400000);
+      const isoDesde = lunes.toISOString().slice(0,10);
+      const isoHasta = domingo.toISOString().slice(0,10);
+      const key = [x.emp.id, x.hotel.id, x.hi, x.hf, x.hi2 || '', x.hf2 || '', isoDesde].join('|');
       if (!grupos[key]) {
         grupos[key] = { emp: x.emp, hotel: x.hotel, hi: x.hi, hf: x.hf, hi2: x.hi2, hf2: x.hf2, es_partido: x.es_partido,
-                        fecha_desde: lunes.toISOString().slice(0,10),
-                        fecha_hasta: domingo.toISOString().slice(0,10),
+                        fecha_desde: isoDesde,
+                        fecha_hasta: isoHasta,
                         dias: new Set() };
       }
       const NOMBRES = ['dom','lun','mar','mie','jue','vie','sab'];
-      grupos[key].dias.add(NOMBRES[x.fecha.getDay()]);
+      grupos[key].dias.add(NOMBRES[f.getUTCDay()]);
     });
 
     const horariosCrear = Object.values(grupos).map(g => {
