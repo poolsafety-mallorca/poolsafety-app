@@ -335,39 +335,48 @@
   // del día — no sobre el "Sin puesto" que traía la ficha.
   async function hidratarHotelHoy() {
     if (!empleadoReal || !window.sb) return;
-    // Si ya tiene puestoReal por ficha, respetarlo (puesto fijo)
-    if (puestoReal && puestoReal.id) return;
 
-    const key = 'psHotelHoy_' + empleadoReal.id;
-    let hotelId = sessionStorage.getItem(key);
-    let origen = 'sessionStorage';
+    let hotelId = null;
+    let origen = '';
 
-    // Fallback 1: buscar el fichaje MÁS RECIENTE de HOY del empleado en BD.
-    // Cubre el caso: correturnos que fichó, cerró el navegador (perdió el
-    // sessionStorage) y vuelve a abrir la app — su fichaje sigue en BD.
+    // PRIORIDAD 1 (siempre gana): el fichaje real de HOY. Si el socorrista
+    // fichó en un hotel, ese es EL hotel del día — aunque su ficha tenga
+    // otro puesto asignado. Caso María Herrera: puesto de ficha Luna Park
+    // pero fichó en Cala Azul → tiene que operar sobre Cala Azul, no sobre
+    // Luna Park.
+    try {
+      const hoy = new Date();
+      const desde = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString();
+      const { data } = await window.sb.from('fichajes')
+        .select('puesto_id')
+        .eq('empleado_id', empleadoReal.id)
+        .gte('hora', desde)
+        .not('puesto_id', 'is', null)
+        .order('hora', { ascending: false })
+        .limit(1);
+      if (data && data[0] && data[0].puesto_id) {
+        hotelId = data[0].puesto_id;
+        origen = 'fichaje de hoy';
+        sessionStorage.setItem('psHotelHoy_' + empleadoReal.id, hotelId);
+      }
+    } catch (_) {}
+
+    // Si ya vino puestoReal por ficha y el fichaje coincide, nada más que hacer
+    if (hotelId && puestoReal && puestoReal.id === hotelId) return;
+
+    // PRIORIDAD 2: si NO fichó hoy Y ya tiene puestoReal por ficha (puesto fijo),
+    // respetarlo — es su hotel habitual.
+    if (!hotelId && puestoReal && puestoReal.id) return;
+
+    // PRIORIDAD 3: sessionStorage (correturnos en la misma sesión)
     if (!hotelId) {
-      try {
-        const hoy = new Date();
-        const desde = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString();
-        const { data } = await window.sb.from('fichajes')
-          .select('puesto_id')
-          .eq('empleado_id', empleadoReal.id)
-          .gte('hora', desde)
-          .not('puesto_id', 'is', null)
-          .order('hora', { ascending: false })
-          .limit(1);
-        if (data && data[0] && data[0].puesto_id) {
-          hotelId = data[0].puesto_id;
-          origen = 'fichaje de hoy';
-          // Guardamos en sessionStorage para próximas cargas
-          sessionStorage.setItem(key, hotelId);
-        }
-      } catch (_) {}
+      const key = 'psHotelHoy_' + empleadoReal.id;
+      const stored = sessionStorage.getItem(key);
+      if (stored) { hotelId = stored; origen = 'sessionStorage'; }
     }
 
-    // Fallback 2: buscar el horario ACTIVO del empleado para HOY.
-    // Cubre el caso: correturnos que aún NO ha fichado hoy pero tiene turno
-    // asignado — puede consultar botiquín/pedir material antes de fichar.
+    // PRIORIDAD 4: horario ACTIVO del empleado para HOY (aún no fichó pero
+    // tiene turno asignado — puede consultar botiquín antes de empezar).
     if (!hotelId) {
       try {
         const jsDay = new Date().getDay();
