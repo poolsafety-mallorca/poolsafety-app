@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-20 (v120 · sesión 7ª · cuadrante Excel + correturnos completo + panel revisiones + 2ª firma incidencia + RLS corrupt/reparaciones)
-**Cache SW actual: `poolsafety-v120`**
+Última actualización: 2026-08-26 (v121 · sesión 8ª · botiquín: hotel nuevo sin material + ticks que no se dejaban marcar)
+**Cache SW actual: `poolsafety-v121`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -27,6 +27,7 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/20-revisiones-diarias.sql` — auditoría revisiones botiquín/DESA/oxígeno
 - ✅ `sql/21-rls-correturnos-inventario.sql` — correturnos leen/escriben inventario del hotel donde fichan
 - ✅ `sql/22-diagnostico-reparar-unidades.sql` — reparar Botiquín 2/3 sin items (Cala Gran)
+- ⏳ `sql/23-botiquin-hotel-nuevo-y-ticks.sql` — RLS UPDATE inventario para cualquier empleado de la empresa + siembra hoteles creados vacíos **(PENDIENTE — sin esto los ticks siguen sin guardarse)**
 - ⏳ `sql/10-asignaciones-temporales.sql` — cobertura del día (feature en curso, no urge)
 
 ## 🚨 Bugs conocidos abiertos (no bloquean pero atender)
@@ -616,7 +617,7 @@ Feature grande — nuevo módulo `js/ps-cuadrante.js` (500+ líneas). Coord/admi
 
 ---
 
-### Aprendizajes clave de esta sesión (para no volver a caer)
+### Aprendizajes clave de la 7ª jornada (para no volver a caer)
 
 1. **RLS falla en silencio**: sin política Postgres devuelve 0 filas afectadas SIN error. Si algo "no guarda" pero no da error → probablemente falta policy. Añadir `.select()` tras el `.delete()`/`.update()` para detectarlo.
 
@@ -682,6 +683,26 @@ alter table fichajes add column if not exists motivo_manual text;
 alter publication supabase_realtime add table tareas;
 alter publication supabase_realtime add table firmas_documentos;
 ```
+
+### Sesión 2026-08-26 · octava jornada · v120→v121 · botiquín: hotel vacío + ticks que no se guardaban
+
+Dos fallos reportados desde la app, ambos con la misma raíz de fondo: **RLS bloqueando en silencio** y **datos que nunca se sembraron**.
+
+**Fallo 1 — hotel nuevo nace vacío (`js/coordinador.js` + sql/23 bloque 2):**
+`crearNuevoHotel()` sólo insertaba la fila en `puestos`. Marcar `tiene_botiquin`/`tiene_desa`/`tiene_oxigeno` no creaba NADA: ni filas en `inventario_puesto`, ni la unidad en `unidades_material`. Resultado para el socorrista: "0/0 revisados · sin material configurado" y "No hay material configurado en esta sección para tu puesto".
+- Nueva `sembrarMaterialPuesto(puestoId, secciones)`: copia el catálogo maestro (`inventario_items`) de cada sección marcada con stock 0 y el mínimo recomendado, creando además "Botiquín 1" / "DESA 1" / "Oxígeno 1". Tolera BD sin `unidades_material` (siembra sin `unidad_id`).
+- El insert de `puestos` pasa a `.select('id').single()` porque hace falta el id para sembrar.
+- Toast final dice cuántos artículos se han copiado; si se marcaron secciones y no se sembró nada, `alert()` avisando de que hay que revisar el catálogo.
+- `sql/23` bloque 2 siembra retroactivamente los hoteles YA creados vacíos. Sólo toca secciones sin ningún artículo → no pisa inventarios cargados.
+
+**Fallo 2 — los ticks no se dejaban marcar por un segundo socorrista (`js/socorrista.js` + sql/23 bloque 1):**
+La policy `invp_write` de `sql/21` sólo dejaba escribir en el puesto de `empleados.puesto_id` o donde el empleado hubiera fichado en las últimas 24 h. El segundo socorrista del hotel, el correturnos, o cualquiera que abriera el botiquín ANTES de fichar no cumplía ninguna de las dos. Postgres devuelve **0 filas sin error** → la app pintaba el tick y al siguiente render volvía atrás.
+- Reproducido en Postgres 16 local con el esquema real (01, 02, 04, 06, 14, 20, 21): el socorrista sin puesto asignado LEE 3 artículos pero su UPDATE afecta a 0 filas sin lanzar error; el asignado afecta a 3.
+- Nuevo helper `updateInventario(filtro, campos)` con `.select('id')` obligatorio: si vuelven 0 filas lanza error con mensaje útil ("ficha tu entrada… si sigue igual falta ejecutar sql/23").
+- Las CUATRO rutas de escritura pasan ya por él: el tick `.inv-check` (con revert del tick optimista + `alert()`, no `toast` que se pierde), `.inv-save`, `#btnGuardarRevision` (avisa por consola si se sellaron menos filas de las pedidas) y `#btnRevisarOtraVez`. Sólo "Guardar" estaba blindado; "Guardar revisión" llegaba a decir "✓ Revisión guardada" sin haber guardado nada.
+- `sql/23` bloque 1 parte la policy `for all` en tres: **UPDATE** (marcar revisión / ajustar stock) para cualquier empleado activo de la empresa en cualquier puesto de SU empresa; **INSERT/DELETE** (gestionar catálogo) sólo dueño/coordinador. Helper `auth_empleado_activo()` en `security definer` a propósito — consultar `empleados` desde la policy le aplicaría el RLS de esa tabla dentro del propio chequeo.
+
+⚠️ **`sql/23` está PENDIENTE de ejecutar en Supabase.** Hasta entonces la app ya no miente (avisa en vez de revertir en silencio), pero los ticks del segundo socorrista siguen sin guardarse.
 
 ### Features aún no implementadas
 - **Web Push real (VAPID)** al coordinador aunque la PWA esté cerrada (hoy hay push LOCAL solo si la app está abierta/backgrounded).
