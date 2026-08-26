@@ -55,10 +55,20 @@ create policy invp_select on inventario_puesto for select using (
 -- SECURITY DEFINER a propósito — si la policy consultara `empleados`
 -- directamente se le aplicaría el RLS de esa tabla dentro del propio
 -- chequeo, que es justo el tipo de bloqueo silencioso que arreglamos.
+--
+-- OJO con `empleados.activo`: está en sql/01-schema.sql (línea 101) pero NO
+-- existe en la BD de producción — la tabla se creó antes de que se añadiera
+-- esa columna y `create table if not exists` no altera tablas existentes
+-- (la línea 110 del 01 sólo hace el `add column` sobre `usuarios`, no sobre
+-- `empleados`). La primera versión de este fichero la usaba y petaba con
+-- "column e.activo does not exist". Usamos `estado` + `fecha_baja`, que es
+-- además el criterio que ya aplica la app en todas sus consultas
+-- (.neq('estado','eliminado').is('fecha_baja', null)).
 create or replace function auth_empleado_activo()
 returns boolean language sql stable security definer as $$
   select coalesce((
-    select e.activo = true and coalesce(e.estado, 'activo') <> 'baja'
+    select coalesce(e.estado, 'activo') not in ('baja', 'eliminado', 'finiquitado')
+       and e.fecha_baja is null
       from empleados e
      where e.usuario_id = auth.uid()
      limit 1

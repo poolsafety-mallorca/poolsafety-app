@@ -633,6 +633,10 @@ Feature grande — nuevo módulo `js/ps-cuadrante.js` (500+ líneas). Coord/admi
 
 7. **`window.PS` no se expone con `const PS = ...`**: hay que hacer `window.PS = PS` explícito. Const en top-level no crea propiedad de window.
 
+### Aprendizaje de la 8ª jornada
+
+8. **`sql/01-schema.sql` NO describe la BD real**: `create table if not exists` no aplica columnas nuevas a tablas ya creadas. Si anades una columna al CREATE TABLE sin su `alter table ... add column if not exists` correspondiente, produccion se queda sin ella y no te enteras hasta que un SQL peta. Caso real: `empleados.activo`. Antes de usar una columna en una policy o funcion, comprobar que existe en produccion, no en el fichero de esquema.
+
 ### SQLs manuales pendientes (si los del día no se ejecutaron)
 ```sql
 -- Política usuarios_delete (crítica para eliminar coord)
@@ -701,6 +705,10 @@ La policy `invp_write` de `sql/21` sólo dejaba escribir en el puesto de `emplea
 - Nuevo helper `updateInventario(filtro, campos)` con `.select('id')` obligatorio: si vuelven 0 filas lanza error con mensaje útil ("ficha tu entrada… si sigue igual falta ejecutar sql/23").
 - Las CUATRO rutas de escritura pasan ya por él: el tick `.inv-check` (con revert del tick optimista + `alert()`, no `toast` que se pierde), `.inv-save`, `#btnGuardarRevision` (avisa por consola si se sellaron menos filas de las pedidas) y `#btnRevisarOtraVez`. Sólo "Guardar" estaba blindado; "Guardar revisión" llegaba a decir "✓ Revisión guardada" sin haber guardado nada.
 - `sql/23` bloque 1 parte la policy `for all` en tres: **UPDATE** (marcar revisión / ajustar stock) para cualquier empleado activo de la empresa en cualquier puesto de SU empresa; **INSERT/DELETE** (gestionar catálogo) sólo dueño/coordinador. Helper `auth_empleado_activo()` en `security definer` a propósito — consultar `empleados` desde la policy le aplicaría el RLS de esa tabla dentro del propio chequeo.
+
+**Sub-fix — `empleados.activo` no existe en produccion:**
+La primera version de `sql/23` petaba en Supabase con `ERROR: 42703: column e.activo does not exist`. La columna `activo` esta en `sql/01-schema.sql` (linea 101) pero NUNCA llego a la BD real: la tabla `empleados` se creo antes de que se anadiera y `create table if not exists` no altera tablas existentes — la linea 110 del 01 solo hace el `add column` sobre `usuarios`. La app tampoco la usa nunca (usa `empleados.estado` + `usuarios.activo`). `auth_empleado_activo()` pasa a filtrar por `estado not in ('baja','eliminado','finiquitado') and fecha_baja is null`, que es el mismo criterio que ya aplica la app en todas sus consultas.
+Verificado en Postgres 16 local reproduciendo la deriva (tabla `empleados` SIN la columna): el socorrista sin puesto asignado y sin fichar pasa de 0 a 3 filas afectadas; empleado de otra empresa 0, empleado de baja 0, INSERT de no-admin rechazado por RLS, DELETE de no-admin 0 filas.
 
 ⚠️ **`sql/23` está PENDIENTE de ejecutar en Supabase.** Hasta entonces la app ya no miente (avisa en vez de revertir en silencio), pero los ticks del segundo socorrista siguen sin guardarse.
 
