@@ -1614,6 +1614,21 @@
     }
   }
 
+  // Un UPDATE bloqueado por RLS en Supabase NO devuelve error: devuelve 0 filas.
+  // Sin `.select()` el update aparenta éxito, la UI pinta el cambio y al siguiente
+  // render vuelve al valor viejo (bug "no me deja marcar el tick"). Todas las
+  // escrituras de inventario pasan por aquí para detectarlo y avisar de verdad.
+  const RLS_MSG = 'No tienes permiso para editar el material de este hotel. ' +
+    'Ficha tu entrada en este puesto y vuelve a intentarlo. ' +
+    'Si ya has fichado y sigue igual, avisa al coordinador (falta ejecutar sql/23 en Supabase).';
+
+  async function updateInventario(filtro, campos) {
+    const { data, error } = await filtro(window.sb.from('inventario_puesto').update(campos)).select('id');
+    if (error) throw error;
+    if (!data || !data.length) throw new Error(RLS_MSG);
+    return data;
+  }
+
   // Cache local del inventario del puesto (cargado de BD)
   let inventarioCache = [];
   let unidadesCache = {};   // { 'botiquin': [{id, nombre, numero}], 'desa': […], 'oxigeno': […] }
@@ -1904,16 +1919,26 @@
         const it = inventarioCache.find(x => x.id === id);
         if (!it) return;
         const nuevo = !it.revisadoHoy;
+        const antes = it.revisadoHoy;
+        const antesFecha = it.ultimaRevision;
         it.revisadoHoy = nuevo;
+        it.ultimaRevision = nuevo ? new Date() : null;
         renderInventario();
         renderRevisionSummary();
         try {
-          await window.sb.from('inventario_puesto').update({
+          await updateInventario(q => q.eq('id', it.rowId), {
             revisado_hoy: nuevo,
             ultima_revision: nuevo ? new Date().toISOString() : null
-          }).eq('id', it.rowId);
+          });
           if (nuevo) toast(`Revisado ✓ ${it.nombre}`);
-        } catch (err) { toast('Error: ' + err.message); }
+        } catch (err) {
+          // Revertir el tick optimista: el servidor no lo aceptó.
+          it.revisadoHoy = antes;
+          it.ultimaRevision = antesFecha;
+          renderInventario();
+          renderRevisionSummary();
+          alert('❌ No se pudo marcar "' + it.nombre + '"\n\n' + err.message);
+        }
       });
     });
 
@@ -1941,17 +1966,11 @@
         const nuevoStock = Math.max(0, parseInt(inp.value) || 0);
         btn.disabled = true; btn.innerHTML = '<svg class="ic ic-14"><use href="#ic-signal"/></svg> Guardando…';
         try {
-          // .select() al final para detectar 0 filas afectadas por RLS —
-          // sin esto el UPDATE aparentaba éxito y el valor volvía al viejo.
-          const { data, error } = await window.sb.from('inventario_puesto').update({
+          await updateInventario(q => q.eq('id', it.rowId), {
             stock: nuevoStock,
             revisado_hoy: true,
             ultima_revision: new Date().toISOString()
-          }).eq('id', it.rowId).select();
-          if (error) throw error;
-          if (!data || !data.length) {
-            throw new Error('Sin permiso para editar. Cierra la app y ábrela otra vez; si sigue, avisa al coord (falta el SQL 21 en Supabase).');
-          }
+          });
           it.stock = nuevoStock;
           it.revisadoHoy = true;
           toast(`✓ ${it.nombre}: ${nuevoStock} ${it.unidad}`);
@@ -1988,11 +2007,13 @@
           // 1) Sellar ultima_revision de TODOS los items de la sección (aunque no tuvieran tick — la revisión abarca la sección entera)
           const rowIds = items.map(it => it.rowId);
           if (rowIds.length) {
-            const { error } = await window.sb.from('inventario_puesto').update({
+            const guardadas = await updateInventario(q => q.in('id', rowIds), {
               revisado_hoy: true,
               ultima_revision: new Date().toISOString()
-            }).in('id', rowIds);
-            if (error) throw error;
+            });
+            if (guardadas.length < rowIds.length) {
+              console.warn(`[revisión] solo ${guardadas.length}/${rowIds.length} artículos sellados`);
+            }
           }
           // 2) Auditar la revisión en revisiones_diarias (quién, cuándo,
           // en qué hotel y unidad, cuántos items ok/total, observaciones).
@@ -2065,10 +2086,7 @@
         try {
           const rowIds = items.map(it => it.rowId);
           if (rowIds.length) {
-            await window.sb.from('inventario_puesto').update({
-              revisado_hoy: false,
-              ultima_revision: null
-            }).in('id', rowIds);
+            await updateInventario(q => q.in('id', rowIds), { revisado_hoy: false, ultima_revision: null });
           }
           items.forEach(it => { it.revisadoHoy = false; it.ultimaRevision = null; });
           renderInventario();

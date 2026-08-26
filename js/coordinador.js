@@ -5719,8 +5719,12 @@
     const nombre = document.getElementById('nhNombre').value.trim();
     if (!nombre) { toast('Escribe un nombre'); return; }
     const psSes = window.PS_SESSION || {};
+    const secciones = [];
+    if (document.getElementById('nhBotiquin').checked) secciones.push('botiquin');
+    if (document.getElementById('nhDesa').checked) secciones.push('desa');
+    if (document.getElementById('nhOxigeno').checked) secciones.push('oxigeno');
     try {
-      const { error } = await window.sb.from('puestos').insert({
+      const { data: nuevo, error } = await window.sb.from('puestos').insert({
         empresa_id: psSes.empresa_id,
         nombre,
         zona: document.getElementById('nhZona').value.trim(),
@@ -5735,14 +5739,85 @@
         tiene_desa: document.getElementById('nhDesa').checked,
         tiene_oxigeno: document.getElementById('nhOxigeno').checked,
         activo: true
-      });
+      }).select('id').single();
       if (error) throw error;
+      const sembrado = await sembrarMaterialPuesto(nuevo.id, secciones);
       ['nhNombre','nhZona','nhGrupo','nhDireccion','nhLat','nhLng'].forEach(id => document.getElementById(id).value = '');
       closeNuevoHotelModal();
       await cargarHoteles();
-      toast(`Hotel "${nombre}" creado`);
+      toast(sembrado > 0
+        ? `Hotel "${nombre}" creado con ${sembrado} artículos del catálogo`
+        : `Hotel "${nombre}" creado`);
+      if (secciones.length && sembrado === 0) {
+        alert(`El hotel "${nombre}" se ha creado, pero no se le ha podido asignar material.\n\n` +
+              `Revisa el catálogo en Botiquín → "+ Añadir producto", o el socorrista verá ` +
+              `"sin material configurado" al abrir su botiquín.`);
+      }
     } catch (err) { toast('Error: ' + err.message); }
   };
+
+  /* ---------- Sembrar material de un hotel desde el catálogo maestro ----------
+     Un hotel recién creado no tenía NINGUNA fila en inventario_puesto, así que
+     el socorrista veía "0/0 revisados · sin material configurado". Aquí le
+     copiamos el catálogo (inventario_items) de las secciones que tenga
+     activadas, con stock 0 y el mínimo recomendado de cada artículo, creando
+     además la unidad "Botiquín 1" / "DESA 1" / "Oxígeno 1" de cada sección.
+     Devuelve cuántos artículos se han insertado. */
+  async function sembrarMaterialPuesto(puestoId, secciones) {
+    if (!puestoId || !secciones || !secciones.length) return 0;
+    let total = 0;
+    for (const sec of secciones) {
+      try {
+        // El esquema de producción se ha desviado de sql/01 (p.ej. hay
+        // instalaciones sin `activo` ni `minimo_recomendado` en el catálogo),
+        // así que degradamos la consulta en vez de romper la siembra.
+        let catalogo = null;
+        const cat1 = await window.sb.from('inventario_items')
+          .select('id, minimo_recomendado').eq('seccion', sec).eq('activo', true);
+        if (!cat1.error) {
+          catalogo = cat1.data;
+        } else {
+          const cat2 = await window.sb.from('inventario_items')
+            .select('id, minimo_recomendado').eq('seccion', sec);
+          if (!cat2.error) {
+            catalogo = cat2.data;
+          } else {
+            const cat3 = await window.sb.from('inventario_items').select('id').eq('seccion', sec);
+            if (cat3.error) throw cat3.error;
+            catalogo = cat3.data;
+          }
+        }
+        if (!catalogo || !catalogo.length) continue;
+
+        // Unidad 1 de la sección (tabla de sql/14 — puede no existir en BD antigua)
+        let unidadId = null;
+        try {
+          const nombreUnidad = sec === 'botiquin' ? 'Botiquín 1' : sec === 'desa' ? 'DESA 1' : 'Oxígeno 1';
+          const { data: ud, error: errUd } = await window.sb.from('unidades_material')
+            .insert({ puesto_id: puestoId, seccion: sec, nombre: nombreUnidad, numero: 1 })
+            .select('id').single();
+          if (!errUd && ud) unidadId = ud.id;
+        } catch (_) { /* BD sin unidades_material: se siembra sin unidad_id */ }
+
+        const filas = catalogo.map(it => ({
+          puesto_id: puestoId,
+          item_id: it.id,
+          stock: 0,
+          minimo: it.minimo_recomendado || 1,
+          revisado_hoy: false,
+          ...(unidadId ? { unidad_id: unidadId } : {})
+        }));
+        const { data: ins, error: errIns } = await window.sb.from('inventario_puesto')
+          .insert(filas).select('id');
+        if (errIns) throw errIns;
+        total += (ins || []).length;
+      } catch (err) {
+        console.warn(`[nuevo hotel] no se pudo sembrar la sección ${sec}:`, err.message);
+      }
+    }
+    return total;
+  }
+  window.sembrarMaterialPuesto = sembrarMaterialPuesto;
 
   // Arrancar carga de hoteles
   cargarHoteles();
