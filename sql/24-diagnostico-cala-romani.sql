@@ -2,111 +2,158 @@
 -- PoolSafety · Diagnóstico Cala Romani — "no deja registrar ni
 -- revisar botiquines"
 -- Ejecutar en Supabase SQL Editor con Role postgres.
--- SOLO LECTURA: no modifica nada. Se puede ejecutar en producción
+-- SOLO LECTURA: no modifica nada. Se puede lanzar en producción
 -- sin riesgo y las veces que haga falta.
 -- ============================================================
+-- IMPORTANTE: es UNA sola consulta a propósito. El SQL Editor de
+-- Supabase sólo enseña el resultado de la ÚLTIMA sentencia, así que
+-- un diagnóstico partido en varios `select` pierde todos los bloques
+-- menos el último. Aquí sale todo junto en una tabla con la columna
+-- `bloque`.
+--
 -- Reportado el 2026-08-27: los socorristas de Cala Romani no pueden
--- registrar ni revisar el botiquín. Hay dos causas posibles y este
--- script distingue cuál es:
+-- registrar ni revisar botiquines. Dos causas posibles:
 --
---   A) FALTA MATERIAL — las unidades Botiquín 2 y 3 (Cala Romani tiene
---      tres, ver sql/14) no tienen artículos. Es el mismo fallo que se
---      reportó en Cala Gran y que repara sql/22.
+--   A) FALTA MATERIAL — Cala Romani tiene tres botiquines (sql/14) y
+--      las unidades 2 y 3 pueden estar sin artículos, el mismo fallo
+--      que se reportó en Cala Gran. Lo repara sql/22.
 --
---   B) RLS BLOQUEA LA ESCRITURA — si sql/23 no llegó a ejecutarse, la
---      única policy es `invp_write` de sql/21, que sólo deja escribir
---      en el puesto asignado en la ficha o donde el empleado haya
---      fichado en las últimas 24 h. En Cala Romani entran VARIOS
---      socorristas, así que al segundo y al tercero les bloquea. Y con
---      la v120 desplegada el UPDATE no da error: devuelve 0 filas, el
---      tick se pinta y al recargar vuelve atrás.
+--   B) RLS BLOQUEA LA ESCRITURA — si sql/23 no se ejecutó, la única
+--      policy es invp_write de sql/21, que sólo deja escribir en el
+--      puesto asignado en la ficha o donde el empleado haya fichado
+--      desde ayer. Lo arregla sql/23.
 --
--- Mira el bloque 1: si NO salen las cuatro policies invp_select /
--- invp_update / invp_insert / invp_delete, es el caso B → ejecuta
--- sql/23. Si salen, mira el bloque 3: unidades con 0 artículos → caso
--- A → ejecuta sql/22.
+-- El bloque "0 · VEREDICTO" lo resuelve solo. Los demás bloques son
+-- el detalle en el que se apoya.
 -- ============================================================
 
--- ------------------------------------------------------------
--- 1) ¿Está aplicado sql/23? Policies vivas en inventario_puesto
--- ------------------------------------------------------------
--- Esperado tras sql/23: exactamente 4 filas (select/update/insert/
--- delete). Si aparece `invp_write`, sql/23 NO se ejecutó → caso B.
-select policyname, cmd, permissive
-  from pg_policies
- where schemaname = 'public' and tablename = 'inventario_puesto'
- order by policyname;
+with
+-- ¿Está aplicado sql/23? Con sql/21 sólo hay invp_select + invp_write.
+pol as (
+  select policyname, cmd, permissive
+    from pg_policies
+   where schemaname = 'public' and tablename = 'inventario_puesto'
+),
+sql23_aplicado as (
+  select count(*) filter (where policyname = 'invp_update') > 0
+     and count(*) filter (where policyname = 'invp_write')  = 0 as ok
+    from pol
+),
+romani as (
+  select id, nombre from puestos where nombre ilike '%romani%' limit 1
+),
+-- Unidades del hotel y cuántos artículos cuelgan de cada una
+uds as (
+  select um.id, um.seccion, um.numero, um.nombre, um.activo,
+         (select count(*) from inventario_puesto ip where ip.unidad_id = um.id) as articulos
+    from unidades_material um
+    join romani r on r.id = um.puesto_id
+),
+unidades_vacias as (
+  select count(*) as n from uds where activo and articulos = 0
+),
+-- Quién podría escribir bajo la regla de sql/21
+socorristas as (
+  select e.nombre, e.estado, e.fecha_baja,
+         coalesce(e.puesto_id = r.id, false) as puesto_asignado_ok,
+         exists (
+           select 1 from fichajes f
+            where f.empleado_id = e.id and f.puesto_id = r.id
+              and f.hora >= (current_date - interval '1 day')
+         ) as ficho_desde_ayer,
+         (select max(f2.hora) from fichajes f2
+           where f2.empleado_id = e.id and f2.puesto_id = r.id) as ultimo_fichaje
+    from empleados e
+    cross join romani r
+   where e.puesto_id = r.id
+      or exists (select 1 from fichajes f
+                  where f.empleado_id = e.id and f.puesto_id = r.id
+                    and f.hora > now() - interval '30 days')
+),
+bloqueados as (
+  select count(*) as n from socorristas
+   where not puesto_asignado_ok and not ficho_desde_ayer
+)
+select * from (
+  -- 0 · VEREDICTO ------------------------------------------------
+  select 0 as orden, '0 · VEREDICTO' as bloque,
+         'sql/23 aplicado' as concepto,
+         case when (select ok from sql23_aplicado) then 'SI' else 'NO' end as valor,
+         case when (select ok from sql23_aplicado)
+              then 'Las cuatro policies invp_* estan puestas'
+              else 'CAUSA B: sigue la invp_write de sql/21 -> ejecuta sql/23' end as detalle
+  union all
+  select 0, '0 · VEREDICTO', 'socorristas que RLS bloquearia',
+         case when (select ok from sql23_aplicado) then '0'
+              else (select n::text from bloqueados) end,
+         case when (select ok from sql23_aplicado)
+              then 'sql/23 ya esta puesto: la regla de sql/21 no aplica, todos pueden escribir'
+              when (select n from bloqueados) = 0
+              then 'Ninguno: aun con la regla de sql/21 todos pueden escribir -> la causa NO es B'
+              else 'CAUSA B: esos no pueden marcar y la v120 no se lo dice' end
+  union all
+  select 0, '0 · VEREDICTO', 'unidades sin articulos',
+         (select n::text from unidades_vacias),
+         case when (select n from unidades_vacias) = 0
+              then 'Ninguna: todas las unidades tienen material'
+              else 'CAUSA A probable: mira el bloque 3. Si la seccion no tiene'
+                   || ' articulos en el catalogo inventario_items es normal;'
+                   || ' si los tiene, ejecuta sql/22' end
+  union all
+  select 0, '0 · VEREDICTO', 'hotel encontrado',
+         coalesce((select nombre from romani), '(NINGUNO)'),
+         case when (select count(*) from romani) = 0
+              then 'Sin puesto que case con %romani% - revisa el nombre'
+              else 'ok' end
 
--- ------------------------------------------------------------
--- 2) ¿Existe el helper y con qué criterio?
--- ------------------------------------------------------------
--- Sin fila → sql/23 no se ejecutó nunca (caso B).
-select p.proname,
-       p.prosecdef as security_definer,
-       pg_get_functiondef(p.oid) as definicion
-  from pg_proc p
-  join pg_namespace n on n.oid = p.pronamespace
- where n.nspname = 'public' and p.proname = 'auth_empleado_activo';
+  -- 1 · POLICIES -------------------------------------------------
+  union all
+  select 1, '1 · POLICIES inventario_puesto', policyname, cmd, permissive
+    from pol
 
--- ------------------------------------------------------------
--- 3) Cala Romani: unidades de material y cuántos artículos tiene cada una
--- ------------------------------------------------------------
--- Esperado: Botiquín 1, 2 y 3 · DESA 1 · Oxígeno 1, todas con el mismo
--- número de artículos. Una unidad con 0 artículos → caso A (sql/22).
-select p.nombre    as hotel,
-       um.seccion,
-       um.numero,
-       um.nombre   as unidad,
-       um.activo,
-       (select count(*) from inventario_puesto ip where ip.unidad_id = um.id) as articulos
-  from unidades_material um
-  join puestos p on p.id = um.puesto_id
- where p.nombre ilike '%romani%'
- order by um.seccion, um.numero;
+  -- 2 · HELPER ---------------------------------------------------
+  union all
+  select 2, '2 · HELPER', 'auth_empleado_activo',
+         case when to_regprocedure('public.auth_empleado_activo()') is null
+              then 'NO EXISTE' else 'existe' end,
+         coalesce((
+           select substring(pg_get_functiondef(p.oid) from 'select coalesce\(\(select (.*) from empleados')
+             from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = 'public' and p.proname = 'auth_empleado_activo'
+         ), 'sql/23 no se ha ejecutado nunca')
 
--- ------------------------------------------------------------
--- 4) Cala Romani: artículos por sección, incluidos los huérfanos
--- ------------------------------------------------------------
--- `unidad_id is null` = artículos sin unidad asignada. La app los pinta
--- dentro de la unidad #1, así que no rompen, pero conviene verlos.
-select ii.seccion,
-       coalesce(um.nombre, '(sin unidad)') as unidad,
-       count(*) as articulos,
-       count(*) filter (where ip.revisado_hoy) as revisados_hoy
-  from inventario_puesto ip
-  join puestos p            on p.id  = ip.puesto_id
-  join inventario_items ii  on ii.id = ip.item_id
-  left join unidades_material um on um.id = ip.unidad_id
- where p.nombre ilike '%romani%'
- group by ii.seccion, coalesce(um.nombre, '(sin unidad)')
- order by ii.seccion, unidad;
+  -- 3 · UNIDADES -------------------------------------------------
+  union all
+  select 3, '3 · UNIDADES de Cala Romani',
+         seccion || ' #' || numero || ' · ' || nombre,
+         articulos::text || ' articulos',
+         case when not activo then 'INACTIVA'
+              when articulos = 0 then 'VACIA -> ejecuta sql/22'
+              else 'ok' end
+    from uds
 
--- ------------------------------------------------------------
--- 5) Los socorristas de Cala Romani: ¿pasarían el chequeo de escritura?
--- ------------------------------------------------------------
--- `puesto_asignado_ok` = tiene Cala Romani en su ficha (empleados.puesto_id).
--- `ficho_desde_ayer`   = tiene un fichaje ahí desde ayer (misma ventana que
---                        usa la policy de sql/21: hora >= current_date - 1 día).
--- Con sql/21 SOLO puede escribir quien tenga true en alguna de las dos.
--- Con sql/23 aplicado basta con estar de alta en la empresa, así que
--- todos deberían poder. Si aquí ves socorristas con las dos en false y
--- se quejan de que no pueden marcar, es exactamente el caso B.
-select e.nombre,
-       e.estado,
-       e.fecha_baja,
-       coalesce(e.puesto_id = p.id, false)      as puesto_asignado_ok,
-       exists (
-         select 1 from fichajes f
-          where f.empleado_id = e.id
-            and f.puesto_id   = p.id
-            and f.hora       >= (current_date - interval '1 day')
-       )                                        as ficho_desde_ayer,
-       (select max(f2.hora) from fichajes f2
-         where f2.empleado_id = e.id and f2.puesto_id = p.id) as ultimo_fichaje
-  from empleados e
-  cross join (select id from puestos where nombre ilike '%romani%' limit 1) p
- where e.puesto_id = p.id
-    or exists (select 1 from fichajes f
-                where f.empleado_id = e.id and f.puesto_id = p.id
-                  and f.hora > now() - interval '30 days')
- order by e.nombre;
+  -- 4 · ARTICULOS POR SECCION ------------------------------------
+  union all
+  select 4, '4 · ARTICULOS por seccion',
+         ii.seccion || ' · ' || coalesce(um.nombre, '(sin unidad)'),
+         count(*)::text || ' articulos',
+         count(*) filter (where ip.revisado_hoy)::text || ' revisados hoy'
+    from inventario_puesto ip
+    join romani r             on r.id  = ip.puesto_id
+    join inventario_items ii  on ii.id = ip.item_id
+    left join unidades_material um on um.id = ip.unidad_id
+   group by ii.seccion, coalesce(um.nombre, '(sin unidad)')
+
+  -- 5 · SOCORRISTAS ----------------------------------------------
+  union all
+  select 5, '5 · SOCORRISTAS', nombre,
+         case when puesto_asignado_ok or ficho_desde_ayer
+              then 'PUEDE escribir' else 'BLOQUEADO por sql/21' end,
+         'estado=' || estado
+           || case when fecha_baja is not null then ' fecha_baja=' || fecha_baja else '' end
+           || ' · puesto_en_ficha=' || puesto_asignado_ok
+           || ' · ficho_desde_ayer=' || ficho_desde_ayer
+           || ' · ultimo_fichaje=' || coalesce(ultimo_fichaje::text, 'nunca')
+    from socorristas
+) d
+order by orden, concepto;
