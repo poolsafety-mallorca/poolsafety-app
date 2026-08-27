@@ -37,11 +37,25 @@
 -- permiso de "marcar revisión" con el de "gestionar el catálogo".
 -- Las separamos: escribir números → cualquier compañero de
 -- empresa; crear/borrar filas → sólo admin.
-drop policy if exists invp_write on inventario_puesto;
+--
+-- Borramos TODAS las policies de la tabla, no sólo las que conocemos
+-- por nombre: si alguien probó un SQL a mano puede haber dejado alguna
+-- con otro nombre, y las policies se suman con OR — una de sobra
+-- abriría permisos sin que se note. Las cuatro que creamos debajo
+-- cubren SELECT / INSERT / UPDATE / DELETE, así que no hace falta
+-- conservar ninguna anterior.
+do $$
+declare pol record;
+begin
+  for pol in select policyname from pg_policies
+              where schemaname = 'public' and tablename = 'inventario_puesto'
+  loop
+    execute format('drop policy if exists %I on inventario_puesto', pol.policyname);
+    raise notice 'Policy anterior eliminada: %', pol.policyname;
+  end loop;
+end $$;
 
--- SELECT: se mantiene el de sql/21 (toda la empresa lee). Se
--- redeclara aquí para que este fichero funcione por sí solo.
-drop policy if exists invp_select on inventario_puesto;
+-- SELECT: se mantiene el criterio de sql/21 (toda la empresa lee).
 create policy invp_select on inventario_puesto for select using (
   auth_es_admin()
   or exists (
