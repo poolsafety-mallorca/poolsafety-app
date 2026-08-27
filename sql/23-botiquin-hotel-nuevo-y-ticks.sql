@@ -39,8 +39,14 @@
 -- SECURITY DEFINER a propósito: si la policy consultara `empleados`
 -- directamente se le aplicaría el RLS de esa tabla dentro del propio
 -- chequeo, que es justo el tipo de bloqueo silencioso que arreglamos.
--- El cuerpo se arma según existan `activo` y/o `estado`; si no hay
--- ninguna de las dos, basta con tener ficha de empleado.
+-- El cuerpo se arma según qué columnas existan de verdad: `activo` está
+-- en el CREATE TABLE de sql/01 pero no en producción, y `estado` y
+-- `fecha_baja` viven en ese mismo bloque, así que tampoco se pueden dar
+-- por seguras leyendo el fichero de esquema.
+-- El criterio de "en activo" es el mismo que la app aplica ya en todas
+-- sus consultas de empleados: .neq('estado','eliminado') +
+-- .is('fecha_baja', null). Si no existiera ninguna de las columnas,
+-- basta con tener ficha de empleado.
 do $$
 declare
   v_cond text := 'true';
@@ -55,7 +61,14 @@ begin
   if exists (select 1 from information_schema.columns
               where table_schema = 'public' and table_name = 'empleados'
                 and column_name = 'estado') then
-    v_cond := v_cond || ' and coalesce(e.estado, ''activo'') <> ''baja''';
+    v_cond := v_cond || ' and coalesce(e.estado, ''activo'')'
+                     || ' not in (''baja'', ''eliminado'', ''finiquitado'')';
+  end if;
+
+  if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'empleados'
+                and column_name = 'fecha_baja') then
+    v_cond := v_cond || ' and e.fecha_baja is null';
   end if;
 
   v_sql := 'create or replace function auth_empleado_activo() returns boolean '
