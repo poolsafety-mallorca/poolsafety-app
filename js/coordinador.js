@@ -5768,10 +5768,25 @@
     let total = 0;
     for (const sec of secciones) {
       try {
-        const { data: catalogo, error: errCat } = await window.sb.from('inventario_items')
-          .select('id, minimo_recomendado')
-          .eq('seccion', sec).eq('activo', true);
-        if (errCat) throw errCat;
+        // El esquema de producción se ha desviado de sql/01 (p.ej. hay
+        // instalaciones sin `activo` ni `minimo_recomendado` en el catálogo),
+        // así que degradamos la consulta en vez de romper la siembra.
+        let catalogo = null;
+        const cat1 = await window.sb.from('inventario_items')
+          .select('id, minimo_recomendado').eq('seccion', sec).eq('activo', true);
+        if (!cat1.error) {
+          catalogo = cat1.data;
+        } else {
+          const cat2 = await window.sb.from('inventario_items')
+            .select('id, minimo_recomendado').eq('seccion', sec);
+          if (!cat2.error) {
+            catalogo = cat2.data;
+          } else {
+            const cat3 = await window.sb.from('inventario_items').select('id').eq('seccion', sec);
+            if (cat3.error) throw cat3.error;
+            catalogo = cat3.data;
+          }
+        }
         if (!catalogo || !catalogo.length) continue;
 
         // Unidad 1 de la sección (tabla de sql/14 — puede no existir en BD antigua)

@@ -10,8 +10,7 @@
 --    "No hay material configurado en esta sección para tu puesto".
 --    Causa: crear un puesto NO sembraba ninguna fila en
 --    inventario_puesto. El hotel nacía literalmente vacío.
---    Fix app: js/coordinador.js → sembrarMaterialPuesto().
---    Fix aquí: bloque 2, siembra los hoteles ya creados vacíos.
+--    Fix aquí: bloque 3, siembra los hoteles ya creados vacíos.
 --
 -- 2) Los artículos SIN tick verde no se dejan marcar por otro
 --    socorrista: el tick se pinta y al recargar vuelve atrás.
@@ -22,16 +21,55 @@
 --    que abra el botiquín ANTES de fichar, no cumple ninguna de
 --    las dos → RLS devuelve 0 filas SIN error → el UPDATE
 --    aparenta éxito y la app revierte al siguiente render.
---    Fix app: js/socorrista.js → updateInventario() con .select()
---    detecta las 0 filas y avisa en vez de mentir.
---    Fix aquí: bloque 1, cualquier empleado activo de la empresa
+--    Fix aquí: bloque 2, cualquier empleado activo de la empresa
 --    puede marcar revisión y ajustar stock del material de
 --    cualquier puesto de SU empresa. Crear/borrar artículos del
 --    inventario sigue siendo sólo de dueño/coordinador.
+--
+-- NOTA: el esquema de producción se ha desviado de sql/01 (por
+-- ejemplo `empleados.activo` no existe en prod aunque sí en el
+-- fichero). Por eso todo lo que depende de columnas opcionales
+-- se construye con SQL dinámico, comprobando antes si la columna
+-- está. Así el script funciona en cualquier variante del esquema.
 -- ============================================================
 
 -- ------------------------------------------------------------
--- 1) RLS de inventario_puesto — separar UPDATE de INSERT/DELETE
+-- 1) Helper: ¿el usuario actual es un empleado en activo?
+-- ------------------------------------------------------------
+-- SECURITY DEFINER a propósito: si la policy consultara `empleados`
+-- directamente se le aplicaría el RLS de esa tabla dentro del propio
+-- chequeo, que es justo el tipo de bloqueo silencioso que arreglamos.
+-- El cuerpo se arma según existan `activo` y/o `estado`; si no hay
+-- ninguna de las dos, basta con tener ficha de empleado.
+do $$
+declare
+  v_cond text := 'true';
+  v_sql  text;
+begin
+  if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'empleados'
+                and column_name = 'activo') then
+    v_cond := v_cond || ' and coalesce(e.activo, true) = true';
+  end if;
+
+  if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'empleados'
+                and column_name = 'estado') then
+    v_cond := v_cond || ' and coalesce(e.estado, ''activo'') <> ''baja''';
+  end if;
+
+  v_sql := 'create or replace function auth_empleado_activo() returns boolean '
+        || 'language sql stable security definer as '
+        || quote_literal(
+             'select coalesce((select ' || v_cond ||
+             ' from empleados e where e.usuario_id = auth.uid() limit 1), false)'
+           );
+  execute v_sql;
+  raise notice 'auth_empleado_activo() creada con la condición: %', v_cond;
+end $$;
+
+-- ------------------------------------------------------------
+-- 2) RLS de inventario_puesto — separar UPDATE de INSERT/DELETE
 -- ------------------------------------------------------------
 -- sql/21 dejó una única policy `for all`, lo que mezclaba el
 -- permiso de "marcar revisión" con el de "gestionar el catálogo".
@@ -65,33 +103,10 @@ create policy invp_select on inventario_puesto for select using (
   )
 );
 
--- Helper: ¿el usuario actual es un empleado en activo?
--- SECURITY DEFINER a propósito — si la policy consultara `empleados`
--- directamente se le aplicaría el RLS de esa tabla dentro del propio
--- chequeo, que es justo el tipo de bloqueo silencioso que arreglamos.
---
--- OJO con `empleados.activo`: está en sql/01-schema.sql (línea 101) pero NO
--- existe en la BD de producción — la tabla se creó antes de que se añadiera
--- esa columna y `create table if not exists` no altera tablas existentes
--- (la línea 110 del 01 sólo hace el `add column` sobre `usuarios`, no sobre
--- `empleados`). La primera versión de este fichero la usaba y petaba con
--- "column e.activo does not exist". Usamos `estado` + `fecha_baja`, que es
--- además el criterio que ya aplica la app en todas sus consultas
--- (.neq('estado','eliminado').is('fecha_baja', null)).
-create or replace function auth_empleado_activo()
-returns boolean language sql stable security definer as $$
-  select coalesce((
-    select coalesce(e.estado, 'activo') not in ('baja', 'eliminado', 'finiquitado')
-       and e.fecha_baja is null
-      from empleados e
-     where e.usuario_id = auth.uid()
-     limit 1
-  ), false)
-$$;
-
 -- UPDATE: marcar revisado_hoy / ultima_revision / stock en
 -- cualquier puesto de la propia empresa. Cubre al segundo
 -- socorrista, al correturnos y al que revisa antes de fichar.
+drop policy if exists invp_update on inventario_puesto;
 create policy invp_update on inventario_puesto for update
   using (
     auth_es_admin()
@@ -140,9 +155,9 @@ create policy invp_delete on inventario_puesto for delete
   );
 
 -- ------------------------------------------------------------
--- 2) Sembrar los hoteles que se crearon vacíos
+-- 3) Sembrar los hoteles que se crearon vacíos
 -- ------------------------------------------------------------
--- Para cada puesto activo y cada sección que tenga marcada
+-- Para cada puesto y cada sección que tenga marcada
 -- (tiene_botiquin / tiene_desa / tiene_oxigeno) sin NINGÚN
 -- artículo en esa sección: crea la unidad 1 y le copia el
 -- catálogo maestro con stock 0 y el mínimo recomendado.
@@ -153,31 +168,60 @@ declare
   v_unidad uuid;
   v_tiene_unidades boolean;
   v_insertados int;
+  v_total int := 0;
+  v_f_puestos text := '';
+  v_f_items   text := '';
+  v_f_ud      text := '';
+  v_minimo    text := '1';
+  v_sql       text;
 begin
   select to_regclass('public.unidades_material') is not null into v_tiene_unidades;
 
-  for r in
+  -- Filtros opcionales según el esquema realmente desplegado
+  if exists (select 1 from information_schema.columns
+              where table_schema='public' and table_name='puestos' and column_name='activo') then
+    v_f_puestos := ' and coalesce(p.activo, true) = true';
+  end if;
+
+  if exists (select 1 from information_schema.columns
+              where table_schema='public' and table_name='inventario_items' and column_name='activo') then
+    v_f_items := ' and coalesce(ii.activo, true) = true';
+  end if;
+
+  if exists (select 1 from information_schema.columns
+              where table_schema='public' and table_name='inventario_items' and column_name='minimo_recomendado') then
+    v_minimo := 'coalesce(ii.minimo_recomendado, 1)';
+  end if;
+
+  if v_tiene_unidades and exists (select 1 from information_schema.columns
+              where table_schema='public' and table_name='unidades_material' and column_name='activo') then
+    v_f_ud := ' and coalesce(um.activo, true) = true';
+  end if;
+
+  v_sql := '
     select p.id as puesto_id, p.nombre, s.seccion
       from puestos p
-      cross join lateral (values ('botiquin'), ('desa'), ('oxigeno')) as s(seccion)
-     where p.activo = true
-       and case s.seccion
-             when 'botiquin' then coalesce(p.tiene_botiquin, false)
-             when 'desa'     then coalesce(p.tiene_desa, false)
-             else                 coalesce(p.tiene_oxigeno, false)
-           end
+      cross join (values (''botiquin''), (''desa''), (''oxigeno'')) as s(seccion)
+     where case s.seccion
+             when ''botiquin'' then coalesce(p.tiene_botiquin, false)
+             when ''desa''     then coalesce(p.tiene_desa, false)
+             else                   coalesce(p.tiene_oxigeno, false)
+           end' || v_f_puestos || '
        and not exists (
          select 1 from inventario_puesto ip
            join inventario_items ii on ii.id = ip.item_id
           where ip.puesto_id = p.id and ii.seccion = s.seccion
        )
-  loop
+     order by p.nombre, s.seccion';
+
+  for r in execute v_sql loop
     v_unidad := null;
 
     if v_tiene_unidades then
-      select id into v_unidad from unidades_material
-       where puesto_id = r.puesto_id and seccion = r.seccion and activo = true
-       order by numero limit 1;
+      execute 'select um.id from unidades_material um
+                where um.puesto_id = $1 and um.seccion = $2' || v_f_ud || '
+                order by um.numero limit 1'
+        into v_unidad using r.puesto_id, r.seccion;
 
       if v_unidad is null then
         insert into unidades_material (puesto_id, seccion, nombre, numero)
@@ -194,33 +238,39 @@ begin
     end if;
 
     if v_tiene_unidades then
-      insert into inventario_puesto (puesto_id, item_id, stock, minimo, revisado_hoy, unidad_id)
-      select r.puesto_id, ii.id, 0, coalesce(ii.minimo_recomendado, 1), false, v_unidad
-        from inventario_items ii
-       where ii.seccion = r.seccion and coalesce(ii.activo, true) = true
-      on conflict do nothing;
+      execute 'insert into inventario_puesto (puesto_id, item_id, stock, minimo, revisado_hoy, unidad_id)
+               select $1, ii.id, 0, ' || v_minimo || ', false, $2
+                 from inventario_items ii
+                where ii.seccion = $3' || v_f_items || '
+               on conflict do nothing'
+        using r.puesto_id, v_unidad, r.seccion;
     else
-      insert into inventario_puesto (puesto_id, item_id, stock, minimo, revisado_hoy)
-      select r.puesto_id, ii.id, 0, coalesce(ii.minimo_recomendado, 1), false
-        from inventario_items ii
-       where ii.seccion = r.seccion and coalesce(ii.activo, true) = true
-      on conflict do nothing;
+      execute 'insert into inventario_puesto (puesto_id, item_id, stock, minimo, revisado_hoy)
+               select $1, ii.id, 0, ' || v_minimo || ', false
+                 from inventario_items ii
+                where ii.seccion = $2' || v_f_items || '
+               on conflict do nothing'
+        using r.puesto_id, r.seccion;
     end if;
 
     get diagnostics v_insertados = row_count;
+    v_total := v_total + v_insertados;
     raise notice 'Sembrado % · % → % artículos', r.nombre, r.seccion, v_insertados;
   end loop;
+
+  raise notice 'TOTAL sembrado: % artículos', v_total;
 end $$;
 
 -- ============================================================
 -- Verificación
 -- ============================================================
--- a) Hoteles activos que siguen sin material en alguna sección marcada
+-- a) Hoteles que SIGUEN sin material en alguna sección marcada.
+--    Debe salir vacío. Si sale algo, es que el catálogo
+--    inventario_items no tiene artículos de esa sección.
 select p.nombre, s.seccion as seccion_vacia
   from puestos p
-  cross join lateral (values ('botiquin'), ('desa'), ('oxigeno')) as s(seccion)
- where p.activo = true
-   and case s.seccion
+  cross join (values ('botiquin'), ('desa'), ('oxigeno')) as s(seccion)
+ where case s.seccion
          when 'botiquin' then coalesce(p.tiene_botiquin, false)
          when 'desa'     then coalesce(p.tiene_desa, false)
          else                 coalesce(p.tiene_oxigeno, false)
@@ -232,15 +282,15 @@ select p.nombre, s.seccion as seccion_vacia
    )
  order by p.nombre;
 
--- b) Policies resultantes de inventario_puesto
+-- b) Policies resultantes: deben ser 4 (select, update, insert, delete)
+--    y NO debe quedar `invp_write`.
 select policyname, cmd from pg_policies
  where tablename = 'inventario_puesto' order by policyname;
 
--- c) Recuento de artículos por hotel
+-- c) Recuento de artículos por hotel y sección
 select p.nombre, ii.seccion, count(*) as items
   from inventario_puesto ip
   join puestos p on p.id = ip.puesto_id
   join inventario_items ii on ii.id = ip.item_id
- where p.activo = true
  group by p.nombre, ii.seccion
  order by p.nombre, ii.seccion;

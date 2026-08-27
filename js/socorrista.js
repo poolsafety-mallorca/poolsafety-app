@@ -1966,8 +1966,6 @@
         const nuevoStock = Math.max(0, parseInt(inp.value) || 0);
         btn.disabled = true; btn.innerHTML = '<svg class="ic ic-14"><use href="#ic-signal"/></svg> Guardando…';
         try {
-          // updateInventario() detecta las 0 filas afectadas por RLS —
-          // sin esto el UPDATE aparentaba éxito y el valor volvía al viejo.
           await updateInventario(q => q.eq('id', it.rowId), {
             stock: nuevoStock,
             revisado_hoy: true,
@@ -2088,10 +2086,7 @@
         try {
           const rowIds = items.map(it => it.rowId);
           if (rowIds.length) {
-            await updateInventario(q => q.in('id', rowIds), {
-              revisado_hoy: false,
-              ultima_revision: null
-            });
+            await updateInventario(q => q.in('id', rowIds), { revisado_hoy: false, ultima_revision: null });
           }
           items.forEach(it => { it.revisadoHoy = false; it.ultimaRevision = null; });
           renderInventario();
