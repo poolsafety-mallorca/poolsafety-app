@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-26 (v121 · sesión 8ª · botiquín: hotel nuevo se siembra solo + ticks marcables por cualquier socorrista)
-**Cache SW actual: `poolsafety-v121`**
+Última actualización: 2026-08-27 (v122 · sesión 9ª · botiquín: cada fila se identifica por rowId — se guardaba en el botiquín equivocado)
+**Cache SW actual: `poolsafety-v122`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -28,11 +28,17 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/21-rls-correturnos-inventario.sql` — correturnos leen/escriben inventario del hotel donde fichan
 - ✅ `sql/22-diagnostico-reparar-unidades.sql` — reparar Botiquín 2/3 sin items (Cala Gran)
 - ✅ `sql/23-botiquin-hotel-nuevo-y-ticks.sql` — RLS inventario por empresa (ticks del 2º socorrista) + siembra hoteles creados vacíos
+- ✅ `sql/24-diagnostico-cala-romani.sql` — SOLO LECTURA. Diagnóstico en UNA consulta (el SQL Editor de Supabase
+  sólo muestra la última sentencia). Relanzable sin riesgo.
 - ⏳ `sql/10-asignaciones-temporales.sql` — cobertura del día (feature en curso, no urge)
 
 ## 🚨 Bugs conocidos abiertos (no bloquean pero atender)
 - **Hotel de Artá con GPS impreciso**: puede necesitar radio 150m manual o corregir coords GPS del pin del hotel desde admin.
 - **Fichajes históricos con puesto_id null** de correturnos: si aparecen más, usar SQL de rescate por GPS.
+- **Stock cruzado entre unidades (herencia del bug de v122)**: en los hoteles con varios botiquines, las cantidades
+  guardadas antes de v122 pueden estar en la unidad equivocada. **No se puede reconstruir desde la BD** — no queda
+  rastro de qué unidad se estaba editando. Requiere recuento presencial. Diagnóstico en `sql/24`. Prioridad: el
+  material `obligatorio` con stock 0 (Decreto 53/1995), que puede ser dato cruzado o falta real.
 
 ---
 
@@ -717,6 +723,41 @@ El tick se pintaba y al siguiente render volvía atrás. Causa: la policy `invp_
 
 **Validado en Postgres 16 local** con el esquema real (sql/01, 02, 04, 06, 14, 20, 21 + `alter table empleados drop column activo`): con la policy de sql/21 el socorrista sin puesto asignado LEE 3-4 artículos pero su UPDATE afecta a **0 filas sin lanzar error**; con sql/23 afecta a todas. `sql/23` corre limpio y es idempotente (2ª pasada: 0 sembrado, sin filas duplicadas). INSERT sigue rechazado al socorrista y permitido al coordinador.
 
+### Sesión 2026-08-27 · novena jornada · v122 · el botiquín guardaba en la unidad equivocada
+
+Reportado en **Cala Romaní** con vídeo, un día después de dar por cerrado v121: el socorrista cambia la cantidad de un producto, pulsa Guardar, **sale el toast "✓ Venda de algodón 10 cm x 5 m: 3 ud"** y el campo vuelve a 1. El tick tampoco se queda marcado.
+
+**El toast de éxito es la pista.** Con el `updateInventario()` de v121 ya en producción, un toast de OK significa que el UPDATE afectó a filas de verdad. O sea: sí guardaba. Guardaba **en otro botiquín**.
+
+**Causa:** en `renderInventario()` las tarjetas llevaban `data-id="${it.id}"`, que es el **`item_id` del catálogo**. Ese id **no es único dentro de un hotel**: desde `sql/14` la restricción es `unique (puesto_id, item_id, unidad_id)`, justo para permitir el mismo artículo en varios botiquines (es lo que crea el RPC `duplicar_unidad_material`).
+
+`itemsPorSeccion()` renderiza **sólo los artículos de la unidad activa**, pero los dos handlers hacían `inventarioCache.find(x => x.id === id)` sobre el **caché entero, todas las unidades**. En un hotel con 3 botiquines eso devolvía la fila de la unidad 1 aunque en pantalla estuviera la 2:
+- el UPDATE se aplicaba a la fila equivocada → **datos corrompidos en la otra unidad, en silencio**;
+- `it.stock` / `it.revisadoHoy` mutaban un objeto que no se estaba pintando;
+- el re-render seguía mostrando el valor viejo.
+
+**Fix:** `data-id` pasa a llevar `it.rowId` (la fila de `inventario_puesto`, única) en los cinco controles de la tarjeta (`inv-check`, `inv-minus`, `inv-stock-input`, `inv-plus`, `inv-save`), y los dos handlers buscan por `rowId`. Un fichero, +14/−7.
+
+El modal de reportar material (`rep-*`, `reportItemsCache`) sigue con `it.id` **a propósito**: ahí se reporta la falta de un artículo, no de una fila concreta. Si algún día se le añade cantidad por unidad, tendrá el mismo problema.
+
+**Alcance del daño:** el diagnóstico en prod (`sql/24`) devolvió **154 artículos repartidos en 3 botiquines por hotel**, con cantidades divergentes entre unidades (`Gasas estériles 0 | 6 | 2`, `Guantes nitrilo 1 | 3 | 2`, `Esparadrapo 2,5 → 4 | 4 | 0`). Los `1 | 1 | 1` son el valor con que `duplicar_unidad_material` copió las unidades, no un recuento real.
+
+**Reproducido con un test de lógica** (dos filas, mismo `item_id`, unidad activa = la 2ª): con `item_id` como clave se escribe en `fila-botiquin-1`, el toast dice 3 y la pantalla muestra 1 con el tick apagado; con `rowId`, se escribe en la fila correcta y la pantalla muestra 3.
+
+**Orden obligatorio al recuperar los datos:** desplegar v122 → comprobar que guarda bien → **y sólo entonces** mandar recontar. Antes de v122 en producción, cada recuento se vuelve a guardar en el botiquín equivocado.
+
+### Aprendizajes clave de esta sesión
+
+1. **`item_id` no identifica una fila de `inventario_puesto`.** La clave real es `inventario_puesto.id` (`it.rowId`). Cualquier `data-id`, `find()`, `querySelector()` o `Map` del inventario debe ir por `rowId`. Desde `sql/14` un hotel puede repetir artículo en N unidades.
+
+2. **Un toast de éxito no prueba que se haya guardado lo correcto.** v121 arregló "no da error cuando falla"; este bug era "da OK y escribe en otro sitio". Al depurar un "no guarda", separar tres casos: no escribe / escribe y falla en silencio / **escribe donde no toca**.
+
+3. **Renderizar un subconjunto y buscar en el conjunto entero es una trampa.** `itemsPorSeccion()` filtra por unidad activa pero los handlers miraban todo `inventarioCache`. Si la vista está filtrada, la búsqueda debe estarlo también — o la clave debe ser única globalmente.
+
+4. **El vídeo del usuario valió más que el log.** El toast "3 ud" junto al campo en "1" en el mismo fotograma descartó RLS en un segundo. Pedir vídeo, no descripción.
+
+5. **`vercel.json` en la raíz es residuo** — el hosting es **Netlify** (`_headers`, `poolsafety-app.netlify.app`). No fiarse de ese fichero para deducir el despliegue.
+
 ---
 
 ## 11. Decisiones importantes (histórico)
@@ -767,7 +808,10 @@ Un SyntaxError en cualquier JS bloquea toda la app. Ya pasó una vez.
 Supabase → SQL Editor → New query → pegar → Run
 
 ### Cache Service Worker
-Al añadir/modificar `.js` que se cachea, **incrementar** `const CACHE = 'poolsafety-vX'` en `sw.js`. Actual: **v41**.
+Al añadir/modificar `.js` que se cachea, **incrementar** `const CACHE = 'poolsafety-vX'` en `sw.js`. Actual: **v122**.
+Nota: la estrategia de `fetch` es **network-first** para HTML/JS/CSS propios — con red el navegador siempre recibe
+lo último y los cambios salen al primer refresco. La caché sólo actúa como respaldo offline, así que un despliegue
+llega a los móviles sin obligar a cerrar y reabrir la app. Subir la versión mantiene limpia la caché vieja.
 
 ### Test SMTP
 Coordinación → Miembros del equipo → icono ↗ en una fila → confirma → revisar Resend Dashboard.
