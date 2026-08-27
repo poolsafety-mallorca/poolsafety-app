@@ -1826,6 +1826,13 @@
       return;
     }
 
+    // OJO con la clave del DOM: `data-id` lleva `it.rowId` (la fila de
+    // inventario_puesto), NUNCA `it.id` (el item del catálogo). Un hotel puede
+    // tener el MISMO artículo en varias unidades — la restricción de la BD es
+    // unique(puesto_id, item_id, unidad_id) — así que `item_id` se repite.
+    // Con `item_id` como clave, editar un artículo del Botiquín 2 escribía en
+    // la fila del Botiquín 1 y la pantalla seguía mostrando el valor viejo:
+    // el socorrista guardaba, salía el toast de OK y el campo volvía atrás.
     const itemsHTML = items.map(it => {
       const pct = Math.min(100, Math.round((it.stock / (it.minimo * 2)) * 100));
       const level = it.stock === 0 ? 'low' : it.stock < it.minimo ? 'warn' : 'ok';
@@ -1844,7 +1851,7 @@
 
       return `
         <div class="inv">
-          <button class="inv-check ${it.revisadoHoy ? 'done' : ''}" data-id="${it.id}" title="Marcar revisado hoy">
+          <button class="inv-check ${it.revisadoHoy ? 'done' : ''}" data-id="${it.rowId}" title="Marcar revisado hoy">
             ${it.revisadoHoy ? `<svg class="ic ic-14"><use href="#ic-check"/></svg>` : ''}
           </button>
           <div class="inv-icon ${level}">
@@ -1861,11 +1868,11 @@
             </div>
             <div class="row gap-2 mt-2" style="align-items:center;flex-wrap:wrap;">
               <label class="small text-muted" style="margin:0;">Cantidad actual:</label>
-              <button class="btn btn-outline btn-sm inv-minus" data-id="${it.id}" style="padding:4px 10px;font-weight:700;">−</button>
-              <input type="number" class="inv-stock-input" data-id="${it.id}" value="${it.stock}" min="0" style="width:70px;text-align:center;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-weight:600;" />
-              <button class="btn btn-outline btn-sm inv-plus" data-id="${it.id}" style="padding:4px 10px;font-weight:700;">+</button>
+              <button class="btn btn-outline btn-sm inv-minus" data-id="${it.rowId}" style="padding:4px 10px;font-weight:700;">−</button>
+              <input type="number" class="inv-stock-input" data-id="${it.rowId}" value="${it.stock}" min="0" style="width:70px;text-align:center;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-weight:600;" />
+              <button class="btn btn-outline btn-sm inv-plus" data-id="${it.rowId}" style="padding:4px 10px;font-weight:700;">+</button>
               <span class="small text-muted">${it.unidad} · mín. ${it.minimo}</span>
-              <button class="btn btn-primary btn-sm inv-save" data-id="${it.id}" style="margin-left:auto;">
+              <button class="btn btn-primary btn-sm inv-save" data-id="${it.rowId}" style="margin-left:auto;">
                 <svg class="ic ic-14"><use href="#ic-check"/></svg> Guardar
               </button>
             </div>
@@ -1916,7 +1923,7 @@
     inventarioList.querySelectorAll('.inv-check').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.id;
-        const it = inventarioCache.find(x => x.id === id);
+        const it = inventarioCache.find(x => x.rowId === id);
         if (!it) return;
         const nuevo = !it.revisadoHoy;
         const antes = it.revisadoHoy;
@@ -1960,7 +1967,7 @@
     inventarioList.querySelectorAll('.inv-save').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.id;
-        const it = inventarioCache.find(x => x.id === id);
+        const it = inventarioCache.find(x => x.rowId === id);
         const inp = inventarioList.querySelector(`.inv-stock-input[data-id="${id}"]`);
         if (!it || !inp) return;
         const nuevoStock = Math.max(0, parseInt(inp.value) || 0);
