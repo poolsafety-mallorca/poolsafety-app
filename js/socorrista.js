@@ -1629,6 +1629,39 @@
     return data;
   }
 
+  // Revisiones que YA se han enviado hoy al coordinador (tabla revisiones_diarias).
+  // Los ticks viven en inventario_puesto y sólo los ve el socorrista; lo que el
+  // panel de admin/coordinación lee es esta otra tabla. Marcar los ticks NO crea
+  // la fila: hace falta pulsar "Guardar revisión". Antes, al marcar el último
+  // tick la sección pasaba a "revisado hoy" y el botón desaparecía, así que la
+  // revisión nunca llegaba al coordinador y salía "Pendiente 0/1 unidades".
+  let revisionesEnviadasHoy = [];   // [{ seccion, unidad_id }]
+
+  function revisionYaEnviada(sec) {
+    const u = unidadActiva[sec] || null;
+    return revisionesEnviadasHoy.some(r =>
+      r.seccion === sec && (u ? r.unidad_id === u : true)
+    );
+  }
+
+  async function cargarRevisionesDeHoy() {
+    const puestoId = puestoReal?.id || empleadoReal?.puesto_id;
+    if (!puestoId || !window.sb) return;
+    try {
+      const desde = new Date(); desde.setHours(0,0,0,0);
+      const { data, error } = await window.sb.from('revisiones_diarias')
+        .select('seccion, unidad_id')
+        .eq('puesto_id', puestoId)
+        .gte('fecha', desde.toISOString());
+      if (error) throw error;
+      revisionesEnviadasHoy = data || [];
+    } catch (err) {
+      // Si la tabla no existe (sql/20 sin ejecutar) no bloqueamos al socorrista.
+      console.warn('[revisión] no se pudieron leer las revisiones de hoy:', err.message);
+      revisionesEnviadasHoy = [];
+    }
+  }
+
   // Cache local del inventario del puesto (cargado de BD)
   let inventarioCache = [];
   let unidadesCache = {};   // { 'botiquin': [{id, nombre, numero}], 'desa': […], 'oxigeno': […] }
@@ -1890,7 +1923,11 @@
       .map(it => it.ultimaRevision)
       .filter(Boolean)
       .sort((a, b) => b - a)[0] || null;
-    const seccionYaRevisadaHoy = allDone && ultimaRevSec;
+    // OJO: no basta con tener todos los ticks. Mientras no exista la fila en
+    // revisiones_diarias, el coordinador sigue viendo "Pendiente", así que aquí
+    // seguimos mostrando el botón de enviar.
+    const enviadaAlCoord = revisionYaEnviada(seccionActual);
+    const seccionYaRevisadaHoy = allDone && ultimaRevSec && enviadaAlCoord;
     const nombreSeccion = SECCION_INFO[seccionActual]?.titulo || seccionActual;
 
     // Bloque final: cambia según si la sección ya está revisada hoy o no
@@ -1905,8 +1942,10 @@
         </div>
       </div>` : `
       <div class="card" style="margin-top:16px;padding:14px;background:#fffbeb;border:2px solid #F59E0B;">
-        <div style="font-weight:700;font-size:15px;color:#78350F;">Revisión de ${nombreSeccion.toLowerCase()} pendiente</div>
-        <div class="small" style="color:#92400E;margin-top:2px;">${revCount} de ${totalCount} artículos marcados. Marca los ticks conforme compruebes cada material. Cuando termines, pulsa <b>Guardar revisión</b>.</div>
+        <div style="font-weight:700;font-size:15px;color:#78350F;">${allDone ? 'Falta enviar la revisión al coordinador' : `Revisión de ${nombreSeccion.toLowerCase()} pendiente`}</div>
+        <div class="small" style="color:#92400E;margin-top:2px;">${allDone
+          ? `Tienes los ${totalCount} artículos marcados, pero el coordinador <b>todavía no lo ve</b>. Pulsa el botón para enviárselo.`
+          : `${revCount} de ${totalCount} artículos marcados. Marca los ticks conforme compruebes cada material. Cuando termines, pulsa <b>Guardar revisión</b>.`}</div>
         <button class="btn btn-primary btn-lg" id="btnGuardarRevision" style="width:100%;margin-top:12px;background:#B91C1C;">
           <svg class="ic ic-18"><use href="#ic-check-circle"/></svg>
           Guardar revisión de ${nombreSeccion.toLowerCase()}
@@ -2042,12 +2081,15 @@
                 parcial: revCount < totalCount,
                 observaciones: obs.trim() || null
               });
-              if (revErr) {
-                console.warn('[revisión] no se auditó en revisiones_diarias:', revErr.message);
-              }
+              if (revErr) throw revErr;
+              revisionesEnviadasHoy.push({ seccion: seccionActual, unidad_id: unidadIdRev });
             }
           } catch (auditErr) {
-            console.warn('[revisión] auditoría falló (no bloquea):', auditErr.message);
+            // Sin esta fila el coordinador NO ve la revisión: hay que avisar,
+            // no tragárselo en la consola como se hacía antes.
+            alert('⚠️ Los ticks se han guardado, pero la revisión NO ha llegado al ' +
+                  'coordinador.\n\n' + auditErr.message +
+                  '\n\nVuelve a pulsar "Guardar revisión". Si sigue igual, avísale.');
           }
           // 3) Registrar alerta informativa SOLO si hay observaciones (para no ensuciar el feed del coord)
           if (obs.trim()) {
@@ -2109,6 +2151,7 @@
   document.addEventListener('ps-session-updated', async () => {
     setTimeout(async () => {
       await cargarInventarioBD();
+      await cargarRevisionesDeHoy();
       renderTabs();
       renderRevisionSummary();
       renderAlertasStock();
@@ -2117,6 +2160,7 @@
   });
   setTimeout(async () => {
     await cargarInventarioBD();
+    await cargarRevisionesDeHoy();
     renderTabs();
     renderRevisionSummary();
     renderAlertasStock();
@@ -4493,6 +4537,7 @@
 
       // Recargar botiquín para reflejar stock bajado
       await cargarInventarioBD();
+      await cargarRevisionesDeHoy();
       renderInventario && renderInventario();
 
       toast(`✓ Parte ${ins.numero_parte || ''} enviado al coordinador`);
