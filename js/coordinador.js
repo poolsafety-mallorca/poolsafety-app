@@ -1534,39 +1534,18 @@
         .select('empleado_id, tipo, hora')
         .gte('hora', desde).lt('hora', hasta)
         .order('hora', { ascending: true });
-      // 3. Agrupar por empleado → días trabajados + horas ordinarias + extras
-      //    El tope de 8 h ordinarias se aplica al TOTAL DEL DÍA, no a cada tramo.
-      //    Si no, un turno partido de 4,5 h + 4,5 h (9 h) contaría las 9 como
-      //    ordinarias, porque ningún tramo suelto llega a 8.
-      const OBJ_DIA = 8;
-      const stats = {};
-      empleados.forEach(e => { stats[e.id] = { dias: new Set(), ord: 0, extra: 0, porDia: {} }; });
-      const entradaTmp = {};
-      (fichs || []).forEach(f => {
-        const s = stats[f.empleado_id];
-        if (!s) return;
-        const d = new Date(f.hora);
-        if (f.tipo === 'entrada') {
-          entradaTmp[f.empleado_id] = d;
-          s.dias.add(d.toDateString());
-        } else if (f.tipo === 'salida' && entradaTmp[f.empleado_id]) {
-          const ini = entradaTmp[f.empleado_id];
-          const h = Math.max(0, (d - ini) / 3600000);
-          const clave = ini.toDateString();               // acumulamos por día natural
-          s.porDia[clave] = (s.porDia[clave] || 0) + h;
-          delete entradaTmp[f.empleado_id];
-        }
-      });
-      // Con el total de cada día ya cerrado, repartimos entre ordinarias y extras
-      Object.values(stats).forEach(s => {
-        Object.values(s.porDia).forEach(hDia => {
-          s.ord   += Math.min(OBJ_DIA, hDia);
-          s.extra += Math.max(0, hDia - OBJ_DIA);
-        });
-      });
+      // 3. Horas con la MISMA regla que firma el socorrista y que sale en la hoja
+      //    de inspección: window.PSJornada, tope de 40 h por semana natural.
+      //    Antes este panel repartía con tope de 8 h/día y daba un tercer número
+      //    distinto de los otros dos (con 6 días de 7 h decía 42 h "normales" y
+      //    0 extras, mientras el trabajador firmaba 40 h + 2 h complementarias).
+      const fmtH = window.PSJornada.fmtH;
+      const porEmp = {};
+      (fichs || []).forEach(f => { (porEmp[f.empleado_id] = porEmp[f.empleado_id] || []).push(f); });
+
       // 4. Construir filas
       let list = empleados.map(e => {
-        const s = stats[e.id];
+        const calc = window.PSJornada.calcular(porEmp[e.id] || []);
         const puesto = (e.puestos && e.puestos.nombre) || '—';
         const iniciales = (e.nombre || '?').split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase();
         return {
@@ -1574,10 +1553,11 @@
           nombre: e.nombre,
           iniciales,
           puesto,
-          dias: s.dias.size,
-          normales: Math.round(s.ord),
-          extras: Math.round(s.extra),
-          total: Math.round(s.ord + s.extra)
+          dias: calc.diasTrabajados,
+          normales: calc.horasFirmadas,
+          extras: calc.horasComplementarias,
+          total: calc.horasReales,
+          sinCerrar: calc.incompletos.length
         };
       });
       // 5. Filtros
@@ -1602,15 +1582,16 @@
             <div class="hours-name">
               <div class="mini-av sky">${s.iniciales}</div>
               <span style="font-weight:500;">${s.nombre}</span>
+              ${s.sinCerrar ? `<span title="${s.sinCerrar} día(s) con entrada sin salida fichada: esas horas no cuentan. Corrígelas en la ficha." style="margin-left:6px;background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap;">⚠ ${s.sinCerrar} sin cerrar</span>` : ''}
             </div>
           </td>
           <td class="text-muted">${s.puesto}</td>
           <td class="num">${s.dias}</td>
-          <td class="num">${s.normales}</td>
+          <td class="num">${fmtH(s.normales)}</td>
           <td class="num">
-            <span class="hours-extras ${s.extras > 0 ? '' : 'zero'}">${s.extras}</span>
+            <span class="hours-extras ${s.extras > 0 ? '' : 'zero'}">${fmtH(s.extras)}</span>
           </td>
-          <td class="num"><span class="hours-total">${s.total}h</span></td>
+          <td class="num"><span class="hours-total">${fmtH(s.total)}h</span></td>
           ${esAdmin ? `<td class="num">
             <button class="btn-icon" title="Editar fichajes del mes" onclick="abrirEditorHorasMes('${s.id}','${s.nombre.replace(/'/g,"\\'")}')"
               style="width:32px;height:32px;background:#FEF3C7;color:#92400E;border-radius:8px;border:none;cursor:pointer;">
@@ -2550,29 +2531,24 @@
         .select('empleado_id, tipo, hora, fuera_de_zona')
         .gte('hora', desde).lt('hora', hasta).order('hora');
 
-      // Igual que en el panel: el tope de 8 h ordinarias es POR DÍA, no por
-      // tramo, para que los turnos partidos se repartan bien.
-      const OBJ_DIA = 8;
-      const stats = {};
-      (emps || []).forEach(e => { stats[e.id] = { dias: new Set(), ord: 0, extra: 0, fueraZona: 0, porDia: {} }; });
-      const entradaTmp = {};
+      // Mismas horas que el panel, que la firma del socorrista y que la hoja de
+      // inspección: window.PSJornada, tope de 40 h por semana natural.
+      const porEmp = {}, fueraZonaPorEmp = {};
       (fichs || []).forEach(f => {
-        const s = stats[f.empleado_id]; if (!s) return;
-        const d = new Date(f.hora);
-        if (f.tipo === 'entrada') { entradaTmp[f.empleado_id] = d; s.dias.add(d.toDateString()); if (f.fuera_de_zona) s.fueraZona++; }
-        else if (f.tipo === 'salida' && entradaTmp[f.empleado_id]) {
-          const ini = entradaTmp[f.empleado_id];
-          const h = Math.max(0, (d - ini) / 3600000);
-          const clave = ini.toDateString();
-          s.porDia[clave] = (s.porDia[clave] || 0) + h;
-          delete entradaTmp[f.empleado_id];
-        }
+        (porEmp[f.empleado_id] = porEmp[f.empleado_id] || []).push(f);
+        if (f.tipo === 'entrada' && f.fuera_de_zona) fueraZonaPorEmp[f.empleado_id] = (fueraZonaPorEmp[f.empleado_id] || 0) + 1;
       });
-      Object.values(stats).forEach(s => {
-        Object.values(s.porDia).forEach(hDia => {
-          s.ord   += Math.min(OBJ_DIA, hDia);
-          s.extra += Math.max(0, hDia - OBJ_DIA);
-        });
+      const stats = {};
+      (emps || []).forEach(e => {
+        const calc = window.PSJornada.calcular(porEmp[e.id] || []);
+        stats[e.id] = {
+          dias: calc.diasTrabajados,
+          ord: calc.horasFirmadas,
+          extra: calc.horasComplementarias,
+          reales: calc.horasReales,
+          sinCerrar: calc.incompletos.length,
+          fueraZona: fueraZonaPorEmp[e.id] || 0
+        };
       });
 
       const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
@@ -2580,7 +2556,9 @@
         ['Informe de horas del mes', nombreMes],
         ['Pool Safety Des Llevant, S.L. · CIF B75828418'],
         [],
-        ['Socorrista', 'DNI', 'Email', 'Teléfono', 'Puesto', 'Días', 'Horas ordinarias', 'Horas extras', 'Total', 'Fuera de zona']
+        ['Criterio: horas reales por semana natural (lunes-domingo), hasta 40 h ordinarias; el exceso es complementario.'],
+        [],
+        ['Socorrista', 'DNI', 'Email', 'Teléfono', 'Puesto', 'Días', 'Horas ordinarias', 'Horas complementarias', 'Total real', 'Días sin cerrar', 'Fuera de zona']
       ];
       (emps || []).forEach(e => {
         const s = stats[e.id];
@@ -2590,18 +2568,20 @@
           e.email || '',
           e.telefono || '',
           (e.puestos && e.puestos.nombre) || '',
-          s.dias.size,
-          Math.round(s.ord),
-          Math.round(s.extra),
-          Math.round(s.ord + s.extra),
+          s.dias,
+          s.ord,
+          s.extra,
+          s.reales,
+          s.sinCerrar,
           s.fueraZona
         ]);
       });
       // Fila total
-      const totOrd = Object.values(stats).reduce((a, s) => a + s.ord, 0);
-      const totExtra = Object.values(stats).reduce((a, s) => a + s.extra, 0);
+      const r1 = window.PSJornada.r1;
+      const sum = (campo) => r1(Object.values(stats).reduce((a, s) => a + s[campo], 0));
       filas.push([]);
-      filas.push(['TOTAL EMPRESA', '', '', '', '', '', Math.round(totOrd), Math.round(totExtra), Math.round(totOrd + totExtra), '']);
+      // 11 columnas, las mismas que la cabecera.
+      filas.push(['TOTAL EMPRESA', '', '', '', '', sum('dias'), sum('ord'), sum('extra'), sum('reales'), sum('sinCerrar'), sum('fueraZona')]);
 
       // Serializar como CSV (separador ; para Excel español) con BOM UTF-8
       const csv = '﻿' + filas.map(r => r.map(c => {

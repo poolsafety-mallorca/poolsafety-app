@@ -247,10 +247,19 @@ que lee la inspección decía 42 h ordinarias: **dos papeles firmados que se con
 - ✅ **Columna del PDF renombrada** de "Firma trabajador" a **"Observaciones"**: lo que
   se imprimía dentro era "FESTIVO · …" / "Turno partido", nunca una firma. En una hoja
   que lee la inspección eso no podía seguir llamándose firma.
-- ⚠️ **PENDIENTE (decisión del cliente)**: el panel "Horas del mes" (`renderHours`) sigue
-  con el tope de 8 h/día y sus columnas "Normales/Extras". Se dejó como estaba por
-  petición expresa ("el resto que lo vea como ahora"), pero es la última cuenta que no
-  sigue la regla de 40 h/semana.
+- ✅ **Panel "Horas del mes" alineado también** (2ª tanda, a petición del cliente):
+  `renderHours` y el CSV `descargarInformeHoras` usan ya `PSJornada`. Columnas
+  renombradas a **Ordinarias / Complementarias / Total real**, chip ámbar
+  "⚠ N sin cerrar" junto al nombre, y el CSV lleva el criterio escrito, columna de
+  días sin cerrar y fila de totales con las 11 columnas correctas.
+- ✅ **Métricas del socorrista en su Inicio** también por `PSJornada` (muestra horas
+  reales; avisa de días sin cerrar en el subtítulo).
+- ✅ **Eliminado `openJornadaSign` + `submitJornada`** (socorrista.js): el modal ANTIGUO
+  que hacía firmar **160 h fijas** al mes sin mirar los fichajes. Estaba muerto (solo
+  expuesto como `window.openDocView`, que nadie llamaba) pero era una mina.
+- 🔒 **Invariante**: hoy `OBJ_DIA`, `OBJ_MES` y `Math.min(8` no existen en `js/`. Toda
+  hora que se muestre o se firme sale de `window.PSJornada.calcular()`. Si añades una
+  cuenta nueva, úsalo; no repliques la regla.
 
 ### Sesión 2026-07-28 (maratón inicial, ~25 commits)
 Ver commits: SMTP Resend, auto-update PWA, PSHor horarios editables, Correturnos, Miembros del equipo, Toggle Disponible/Libre coord, Enviar email invitación, Creación masiva, Autoreparación cuentas huérfanas, Contactar coordinador real, Badge Documentación real, GPS "Cómo llegar" real, Puestos en vivo con Realtime, Estado del equipo admin, Campana con alertas reales, Kit Alta texto legal completo, PDF Kit Alta, PDF Jornada oficial (formato Word inspección), 3 acciones ficha empleado (baja/finiquito/eliminar), Reenviar Kit Alta, Subir docs socorrista, Máx 20 MB, tracking ultimo_login.

@@ -1446,24 +1446,19 @@
       const { data: fichs } = await window.sb.from('fichajes')
         .select('id, tipo, hora').eq('empleado_id', empId)
         .gte('hora', desde).lt('hora', hasta).order('hora', { ascending: true });
-      const arr = fichs || [];
-      // Días distintos con al menos una entrada
-      const diasSet = new Set(arr.filter(f => f.tipo === 'entrada').map(f => new Date(f.hora).toDateString()));
-      // Horas: emparejar entrada+salida
-      let mins = 0, entrada = null;
-      arr.forEach(f => {
-        if (f.tipo === 'entrada') entrada = new Date(f.hora);
-        else if (f.tipo === 'salida' && entrada) {
-          mins += Math.max(0, (new Date(f.hora) - entrada) / 60000);
-          entrada = null;
-        }
-      });
-      const horas = Math.round(mins / 60);
+      // Mismo cálculo que todo lo demás (window.PSJornada). Aquí se muestran las
+      // horas REALES trabajadas, que es lo que el socorrista espera ver en su
+      // pantalla; las ordinarias con tope de 40 h/semana salen al firmar.
+      const calc = window.PSJornada.calcular(fichs || []);
       const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long' });
-      if (elDias) elDias.textContent = String(diasSet.size);
+      if (elDias) elDias.textContent = String(calc.diasTrabajados);
       if (elDiasSub) elDiasSub.textContent = `en ${nombreMes}`;
-      if (elHoras) elHoras.innerHTML = `${horas}<span class="unit">h</span>`;
-      if (elHorasSub) elHorasSub.textContent = `en ${nombreMes}`;
+      if (elHoras) elHoras.innerHTML = `${window.PSJornada.fmtH(calc.horasReales)}<span class="unit">h</span>`;
+      if (elHorasSub) {
+        elHorasSub.textContent = calc.incompletos.length
+          ? `en ${nombreMes} · ⚠ ${calc.incompletos.length} día(s) sin cerrar`
+          : `en ${nombreMes}`;
+      }
     } catch (_) {
       if (elDias) elDias.textContent = '0';
       if (elHoras) elHoras.innerHTML = '0<span class="unit">h</span>';
@@ -3409,139 +3404,14 @@
     } catch (err) { toast('Error: ' + err.message); }
   };
 
-  async function openJornadaSign(d) {
-    document.getElementById('docViewTitle').textContent = d.titulo;
-    document.getElementById('docViewSub').textContent = 'Firma obligatoria antes del cierre del mes';
-    document.getElementById('docViewModal').classList.add('open');
-
-    // Detectar mes de la jornada desde el id: 'jornada-YYYY-MM'
-    const mm = d.id.match(/jornada-(\d{4})-(\d{2})/);
-    const anio = mm ? parseInt(mm[1]) : new Date().getFullYear();
-    const mes = mm ? parseInt(mm[2]) - 1 : new Date().getMonth();
-    const desde = new Date(anio, mes, 1).toISOString();
-    const hasta = new Date(anio, mes + 1, 1).toISOString();
-
-    // Cargar fichajes reales del mes (silencioso — si no hay, seguimos con objetivo)
-    let horasReales = 0, diasTrabajados = 0;
-    try {
-      const empId = empleadoReal?.id;
-      if (empId && window.sb) {
-        const { data } = await window.sb.from('fichajes')
-          .select('id, tipo, hora')
-          .eq('empleado_id', empId)
-          .gte('hora', desde).lt('hora', hasta)
-          .order('hora', { ascending: true });
-        const fichajes = data || [];
-        let totalMins = 0, entrada = null;
-        fichajes.forEach(f => {
-          if (f.tipo === 'entrada') entrada = new Date(f.hora);
-          else if (f.tipo === 'salida' && entrada) {
-            totalMins += Math.max(0, (new Date(f.hora) - entrada) / 60000);
-            entrada = null;
-          }
-        });
-        horasReales = Math.round(totalMins / 60);
-        diasTrabajados = new Set(fichajes.filter(f => f.tipo === 'entrada').map(f => new Date(f.hora).toDateString())).size;
-      }
-    } catch (_) {}
-
-    // Regla del cliente: siempre 40h/sem · 160h/mes; solo mostrar menos si trabajó menos.
-    // Si trabajó más de 40h/sem, las extras solo las ve admin — el socorrista firma 160h.
-    const OBJ_MES = 160;
-    let horasMostradas;
-    let mensajeExtra = '';
-    if (horasReales <= 0) {
-      // Sin fichajes o mes futuro: se firma la jornada estándar
-      horasMostradas = OBJ_MES;
-    } else if (horasReales < OBJ_MES) {
-      horasMostradas = horasReales;
-      mensajeExtra = `Trabajaste menos de las 40h/semana (${horasReales}h reales). Firmas por las horas realmente trabajadas.`;
-    } else {
-      horasMostradas = OBJ_MES;
-      mensajeExtra = 'Tú firmas por las 40h/semana ordinarias. Las horas complementarias, si las hay, las ve tu coordinador.';
-    }
-
-    document.getElementById('docViewBody').innerHTML = `
-      <div class="jornada-summary">
-        <div class="jornada-row">
-          <span>Horas ordinarias (40h/sem · 160h/mes)</span>
-          <b>${horasMostradas}h</b>
-        </div>
-        ${mensajeExtra ? `<div class="jornada-note small">${mensajeExtra}</div>` : ''}
-        <div class="jornada-row total">
-          <span>Total del mes</span>
-          <b>${horasMostradas}h</b>
-        </div>
-      </div>
-      <div class="field mt-3">
-        <label>Firma (nombre completo)</label>
-        <input type="text" id="jornada-firma" value="${(empleadoReal?.nombre || me?.nombre || '').replace(/"/g,'&quot;')}" />
-      </div>
-      <div class="field">
-        <label>Firma manuscrita</label>
-        <div class="firma-canvas-wrap">
-          <canvas id="firmaCanvas" width="500" height="180"></canvas>
-          <div class="firma-canvas-hint">Firma aquí dentro con el dedo o ratón</div>
-        </div>
-        <button type="button" class="btn btn-outline btn-sm" onclick="limpiarFirma()" style="margin-top:8px;">
-          <svg class="ic ic-14"><use href="#ic-x"/></svg> Limpiar firma
-        </button>
-      </div>
-      <label class="wizard-accept-line mt-2">
-        <input type="checkbox" id="jornada-accept" />
-        <span>Confirmo que los datos del registro de jornada son correctos y firmo el documento mensual.</span>
-      </label>
-    `;
-    document.getElementById('docViewActions').innerHTML = `
-      <button class="btn btn-outline" onclick="closeDocView()">Cancelar</button>
-      <button class="btn btn-primary" onclick="submitJornada('${d.id}', ${horasMostradas}, ${horasReales}, ${diasTrabajados})">
-        <svg class="ic ic-16"><use href="#ic-pen"/></svg>
-        Firmar jornada
-      </button>
-    `;
-    setTimeout(initFirmaCanvas, 50);
-  }
-
-  window.submitJornada = async function (docId, horasFirmadas, horasReales, diasTrabajados) {
-    const firma = document.getElementById('jornada-firma')?.value.trim();
-    const accept = document.getElementById('jornada-accept')?.checked;
-    if (!firma || !accept) { toast('Firma, marca la casilla y dibuja tu firma'); return; }
-    if (firmaEstaVacia()) { toast('Dibuja tu firma manuscrita en el recuadro'); return; }
-
-    const firmaImagen = getFirmaImagen();
-    const empleadoId = empleadoReal?.id || me.id;
-
-    try {
-      if (empleadoReal && window.sb) {
-        const { error } = await window.sb.from('firmas_documentos').insert({
-          empleado_id: empleadoId,
-          documento_codigo: docId,
-          firma_nombre: firma,
-          dispositivo: 'móvil empleado',
-          firma_imagen: firmaImagen,
-          ubicacion_lat: ultimaPosicion?.lat || null,
-          ubicacion_lng: ultimaPosicion?.lng || null,
-          campos_json: {
-            horas_firmadas: horasFirmadas || 0,   // lo que ve el trabajador y firma (40h/sem cap)
-            horas_reales: horasReales || 0,       // lo real (solo admin)
-            dias_trabajados: diasTrabajados || 0
-          }
-        });
-        if (error) throw error;
-      }
-      PS.firmarDocumento(me.id, docId, { firma, dispositivo: 'móvil empleado', firmaImagen });
-      await cargarFirmasBD();
-      closeDocView();
-      toast('✓ Jornada mensual firmada y guardada');
-      renderDocsHeader();
-      renderDocsLists();
-    } catch (err) {
-      toast('Error: ' + err.message);
-    }
-  };
+  // Aquí vivía openJornadaSign + submitJornada: el modal ANTIGUO que hacía firmar
+  // 160 h fijas al mes (40 h/sem × 4) sin mirar los fichajes reales. Lo sustituyó
+  // openJornadaSignReal, que calcula semana a semana con window.PSJornada.
+  // Estaba muerto (solo se exponía como window.openDocView y nadie lo llamaba),
+  // pero era una mina: cualquier llamada suelta habría hecho firmar 160 h
+  // inventadas. Eliminado para que solo exista una forma de firmar la jornada.
 
   window.closeDocView = () => document.getElementById('docViewModal').classList.remove('open');
-  window.openDocView = openJornadaSign;
 
   // Render inicial de docs
   renderDocsHeader();

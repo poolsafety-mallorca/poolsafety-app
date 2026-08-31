@@ -711,11 +711,12 @@
         <div class="panel-title-wrap">
           <h3 class="panel-title">Horas del mes por socorrista</h3>
           <span class="panel-count" id="hoursPanelCount">—</span>
+          <span class="small text-muted" style="margin-left:8px;">Mismo criterio que la firma del socorrista y la hoja de inspección: 40 h/semana natural.</span>
         </div>
         <div class="row gap-2">
           <select id="hourFilter" style="padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; background: #fff; color: var(--ink-700); font-weight: 500;">
-            <option value="all">Todos (150)</option>
-            <option value="extra">Con horas extra</option>
+            <option value="all">Todos</option>
+            <option value="extra">Con horas complementarias</option>
             <option value="top">Top 10 más horas</option>
           </select>
           <button class="btn btn-outline btn-icon" title="Descargar informe del mes" onclick="descargarInformeHoras()">
@@ -730,9 +731,9 @@
               <th>Socorrista</th>
               <th>Puesto</th>
               <th class="num">Días</th>
-              <th class="num">Normales</th>
-              <th class="num">Extras</th>
-              <th class="num">Total</th>
+              <th class="num" title="Hasta 40 h por semana natural">Ordinarias</th>
+              <th class="num" title="Lo que excede de 40 h en la semana">Complementarias</th>
+              <th class="num">Total real</th>
               <th class="num" id="hoursTableActionsTh" style="display:none;">Editar</th>
             </tr>
           </thead>
