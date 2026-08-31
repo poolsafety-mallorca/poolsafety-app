@@ -3189,10 +3189,33 @@ img, svg { display: block; max-width: 100%; }
   .dash-title { font-size: 20px; }
 }
 
-/* ---- Safe area para iOS (notch) ---- */
+/* ---- Safe area para iOS (notch / Dynamic Island) ----
+   La app se instala como PWA con `apple-mobile-web-app-status-bar-style:
+   black-translucent` + `viewport-fit=cover`. Eso hace que la barra de estado del
+   iPhone (hora, cobertura, batería) sea TRANSPARENTE y se dibuje ENCIMA de la
+   web: el contenido empieza en el píxel 0 de la pantalla física, detrás del
+   notch. iOS además se reserva los toques de esa franja, así que cualquier botón
+   que caiga debajo NO se puede pulsar.
+
+   Por eso todo lo que viva pegado al borde superior necesita reservar
+   `env(safe-area-inset-top)`. En Android, en escritorio y en Safari sin instalar
+   ese valor es 0 y no cambia nada. */
 @supports (padding: max(0px)) {
   .tabbar { padding-bottom: max(6px, env(safe-area-inset-bottom)); }
   .dash-nav { padding-top: max(14px, env(safe-area-inset-top)); }
+
+  /* Cabecera del socorrista: era la que se comía la barra de estado. El saludo
+     quedaba tapado por la hora del iPhone y los botones de campana y SALIR
+     caían justo debajo de los iconos de cobertura y batería, sin poder pulsarse
+     (que es lo que impedía cerrar sesión para entrar con otro usuario). */
+  .mob-header { padding-top: calc(20px + env(safe-area-inset-top)); }
+
+  /* El panel de notificaciones del coordinador se colgaba a 62px fijos, "justo
+     bajo la nav". Pero la nav crece con el safe-area, así que en un iPhone con
+     notch el panel se metía por debajo de ella. */
+  @media (max-width: 720px) {
+    .notif-panel { top: calc(62px + env(safe-area-inset-top)); }
+  }
 }
 
 /* ==========================================================================

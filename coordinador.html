@@ -2,7 +2,9 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- viewport-fit=cover es imprescindible: sin él env(safe-area-inset-*) vale 0
+       en iOS y la barra de estado se come la cabecera. Antes había DOS metas
+       viewport aquí y la primera no lo llevaba. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#B91C1C" />
   <title>PoolSafety · Panel operativo</title>
