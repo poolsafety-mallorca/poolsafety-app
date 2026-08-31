@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v124 · sesión 10ª · jornada: regla ÚNICA de 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin)
-**Cache SW actual: `poolsafety-v124`**
+Última actualización: 2026-08-31 (v125 · sesión 10ª · jornada: regla ÚNICA de 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS)
+**Cache SW actual: `poolsafety-v125`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -31,6 +31,27 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/24-diagnostico-cala-romani.sql` — SOLO LECTURA. Diagnóstico en UNA consulta (el SQL Editor de Supabase
   sólo muestra la última sentencia). Relanzable sin riesgo.
 - ⏳ `sql/10-asignaciones-temporales.sql` — cobertura del día (feature en curso, no urge)
+
+## 📱 iOS · barra de estado y safe-area (leer antes de tocar cabeceras)
+
+La app se instala como PWA con `apple-mobile-web-app-status-bar-style: black-translucent`
++ `viewport-fit=cover`. En iPhone eso hace que **la barra de estado sea transparente y
+se dibuje ENCIMA de la web**: el contenido empieza en el píxel 0 de la pantalla física,
+detrás del notch / Dynamic Island. iOS además se reserva los toques de esa franja, así
+que **cualquier botón que caiga debajo no se puede pulsar**.
+
+Regla: todo lo que viva pegado al borde superior tiene que reservar
+`env(safe-area-inset-top)`. Está centralizado en el bloque `@supports (padding: max(0px))`
+de `css/styles.css` (busca "Safe area para iOS"). Cubre `.tabbar` (abajo), `.dash-nav`,
+`.mob-header` y `.notif-panel`. En Android, escritorio y Safari sin instalar ese valor
+es 0 y no cambia nada.
+
+Caso real (2026-08-31, Carlos Biosca): en la cabecera del socorrista el saludo quedaba
+tapado por la hora del iPhone y **los botones de campana y SALIR eran imposibles de
+pulsar**, así que no se podía cerrar sesión para entrar con otro usuario. Afectaba a
+todos los iPhone con notch que tuvieran la app instalada, no solo al suyo.
+
+---
 
 ## 🚨 Bugs conocidos abiertos (no bloquean pero atender)
 - **Hotel de Artá con GPS impreciso**: puede necesitar radio 150m manual o corregir coords GPS del pin del hotel desde admin.
