@@ -632,6 +632,9 @@ window.PSPdf = (function () {
       let marcaFestivo = '';
       if (festivo) marcaFestivo = `FESTIVO · ${festivo}`;
       else if (d && d.incompleto) marcaFestivo = 'SIN FICHAR SALIDA';
+      // Salida reconstruida a mano: el registro tiene que decir que esa hora es
+      // una estimación y no una medición. Ocultarlo sería falsear el documento.
+      else if (d && d.salidaManual) marcaFestivo = 'Salida estimada';
       else if (d && d.tramos.length > 1) marcaFestivo = 'Turno partido';
 
       const valores = [String(dia), nombresDia[diaSemIdx], entrada, salida, horasOrd, horasCompl, marcaFestivo];

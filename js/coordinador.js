@@ -1800,6 +1800,225 @@
     if (caret) caret.textContent = abierto ? '▸' : '▾';
   };
 
+  /* ==========================================================================
+     CERRAR DÍAS SIN SALIDA · solo admin
+     Un día con entrada y sin salida cuenta CERO horas: el trabajador lo trabajó
+     y en su registro no consta nada. Sólo lo puede arreglar alguien que sepa a
+     qué hora salió, así que aquí se PROPONE una hora y el admin la revisa.
+
+     De dónde sale la propuesta, por orden:
+       1. El horario que tenga asignado ese empleado en ese hotel para ese día
+          de la semana (`horarios.hora_fin`, o `hora_fin_2` si es turno partido).
+       2. Su propia hora de salida habitual ese mes (la mediana de sus otros días).
+       3. La hora de cierre por defecto del hotel (`puestos.hora_fin_default`).
+
+     La hora queda guardada como fichaje MANUAL, con quién la metió y en qué se
+     basó, dentro de `motivo_manual`. Es una reconstrucción, no una medición, y
+     el registro tiene que decirlo.
+     ========================================================================== */
+  let cerrarDiasCache = [];
+
+  function medianaHoraSalida(fichajes) {
+    // Minutos desde medianoche de las salidas reales del trabajador.
+    const mins = (fichajes || [])
+      .filter(f => f.tipo === 'salida')
+      .map(f => { const d = new Date(f.hora); return d.getHours() * 60 + d.getMinutes(); })
+      .sort((a, b) => a - b);
+    if (!mins.length) return null;
+    return mins[Math.floor(mins.length / 2)];
+  }
+
+  window.abrirCerrarDiasSinSalida = async function () {
+    if (((window.PS_SESSION || {}).rol || rol) !== 'dueno') return;
+    const body = document.getElementById('cerrarDiasBody');
+    document.getElementById('cerrarDiasModal').classList.add('open');
+    body.innerHTML = '<div style="padding:30px;text-align:center;">Buscando días sin cerrar…</div>';
+    try {
+      const cod = document.getElementById('nominaMes')?.value || new Date().toISOString().slice(0, 7);
+      const [anio, mes] = cod.split('-').map(Number);
+      const desde = new Date(anio, mes - 1, 1).toISOString();
+      const hasta = new Date(anio, mes, 1).toISOString();
+      const nombreMes = new Date(anio, mes - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+
+      const [{ data: emps }, { data: fichs }, { data: horarios }, { data: puestos }] = await Promise.all([
+        window.sb.from('empleados').select('id, nombre, puesto_id').neq('estado', 'eliminado'),
+        window.sb.from('fichajes').select('id, empleado_id, puesto_id, tipo, hora').gte('hora', desde).lt('hora', hasta).order('hora'),
+        window.sb.from('horarios').select('empleado_id, puesto_id, hora_fin, hora_fin_2, es_partido, dias, fecha_desde, fecha_hasta').eq('activo', true),
+        window.sb.from('puestos').select('id, nombre, hora_fin_default')
+      ]);
+      const puestoPorId = {};
+      (puestos || []).forEach(p => { puestoPorId[p.id] = p; });
+      const porEmp = {};
+      (fichs || []).forEach(f => { (porEmp[f.empleado_id] = porEmp[f.empleado_id] || []).push(f); });
+
+      cerrarDiasCache = [];
+      (emps || []).forEach(e => {
+        const suyos = porEmp[e.id] || [];
+        const { incompletos } = window.PSJornada.emparejarTramos(suyos);
+        if (!incompletos.length) return;
+        const medianaMin = medianaHoraSalida(suyos);
+        incompletos.forEach(t => {
+          const entrada = t.entrada;
+          // Fichaje de entrada original, para saber el puesto de ese día
+          const filaEntrada = suyos.find(f => f.tipo === 'entrada' && new Date(f.hora).getTime() === entrada.getTime());
+          const puestoId = filaEntrada ? filaEntrada.puesto_id : e.puesto_id;
+
+          let minutos = null, base = '';
+          const h = (horarios || []).find(x =>
+            x.empleado_id === e.id && x.puesto_id === puestoId &&
+            horarioAplicaEnDiaCoord(x, entrada.getDay()) &&
+            (!x.fecha_desde || new Date(x.fecha_desde) <= entrada) &&
+            (!x.fecha_hasta || new Date(x.fecha_hasta) >= entrada)
+          );
+          const finHorario = h && (h.es_partido && h.hora_fin_2 ? h.hora_fin_2 : h.hora_fin);
+          if (finHorario) {
+            const [hh, mm] = finHorario.split(':').map(Number);
+            minutos = hh * 60 + mm;
+            base = 'su horario en ese hotel';
+          } else if (medianaMin != null) {
+            minutos = medianaMin;
+            base = 'su hora de salida habitual del mes';
+          } else if (puestoPorId[puestoId] && puestoPorId[puestoId].hora_fin_default) {
+            const [hh, mm] = puestoPorId[puestoId].hora_fin_default.split(':').map(Number);
+            minutos = hh * 60 + mm;
+            base = 'la hora de cierre del hotel';
+          }
+          if (minutos == null) { minutos = 18 * 60; base = 'valor por defecto (18:00)'; }
+
+          // Nunca antes de la entrada: si sale antes, se asume turno de noche.
+          const entradaMin = entrada.getHours() * 60 + entrada.getMinutes();
+          const cruzaMedianoche = minutos <= entradaMin;
+
+          cerrarDiasCache.push({
+            empleadoId: e.id,
+            nombre: e.nombre,
+            puestoId,
+            puestoNombre: (puestoPorId[puestoId] || {}).nombre || '—',
+            entradaISO: entrada.toISOString(),
+            fechaTxt: entrada.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+            entradaTxt: entrada.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+            propuesta: String(Math.floor(minutos / 60)).padStart(2, '0') + ':' + String(minutos % 60).padStart(2, '0'),
+            base, cruzaMedianoche
+          });
+        });
+      });
+
+      if (!cerrarDiasCache.length) {
+        body.innerHTML = `
+          <div class="modal-head"><h3>Días sin salida · ${nombreMes}</h3>
+            <button class="modal-close" onclick="cerrarCerrarDias()">✕</button></div>
+          <div style="padding:24px;text-align:center;color:var(--ink-500);">
+            <div style="font-size:34px;">✅</div>
+            <div style="margin-top:8px;">Ningún día sin cerrar en ${nombreMes}. Todo el mundo fichó su salida.</div>
+          </div>`;
+        return;
+      }
+
+      body.innerHTML = `
+        <div class="modal-head">
+          <h3>Cerrar días sin salida · ${nombreMes}</h3>
+          <button class="modal-close" onclick="cerrarCerrarDias()">✕</button>
+        </div>
+        <div style="padding:0 16px;">
+          <div class="small" style="background:#FEF3C7;border:1px solid #F59E0B;color:#92400E;padding:10px;border-radius:8px;">
+            Estos días tienen entrada pero <b>no tienen salida</b>, así que ahora mismo cuentan <b>0 horas</b>.
+            La hora propuesta es una <b>estimación</b>, no una medición: revísala una por una y corrige la que no
+            cuadre. Cada salida se guardará como <b>fichaje manual a tu nombre</b>, dejando constancia de en qué se basó.
+          </div>
+        </div>
+        <div style="padding:12px 16px;max-height:52vh;overflow:auto;">
+          <table class="hours-table" style="width:100%;font-size:12.5px;">
+            <thead><tr>
+              <th style="width:34px;"><input type="checkbox" id="cdTodos" checked onchange="document.querySelectorAll('.cd-chk').forEach(c=>c.checked=this.checked)"></th>
+              <th style="text-align:left;">Trabajador</th>
+              <th style="text-align:left;">Día</th>
+              <th class="num">Entró</th>
+              <th class="num">Salió</th>
+              <th style="text-align:left;">Según</th>
+            </tr></thead>
+            <tbody>
+              ${cerrarDiasCache.map((r, i) => `
+                <tr>
+                  <td><input type="checkbox" class="cd-chk" data-i="${i}" checked></td>
+                  <td><b>${r.nombre}</b><div class="small text-muted">${r.puestoNombre}</div></td>
+                  <td>${r.fechaTxt}</td>
+                  <td class="num">${r.entradaTxt}</td>
+                  <td class="num"><input type="time" class="cd-hora" data-i="${i}" value="${r.propuesta}" style="padding:5px 7px;border:1px solid var(--line);border-radius:7px;font-size:13px;"></td>
+                  <td class="small text-muted">${r.base}${r.cruzaMedianoche ? ' <b style="color:#B45309;">· cruza medianoche</b>' : ''}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-actions" style="padding:12px 16px;display:flex;gap:10px;justify-content:flex-end;">
+          <button class="btn btn-outline" onclick="cerrarCerrarDias()">Cancelar</button>
+          <button class="btn btn-primary" id="btnAplicarCierres" onclick="aplicarCierreDias()">
+            Guardar las salidas marcadas
+          </button>
+        </div>`;
+    } catch (err) {
+      body.innerHTML = `<div style="padding:24px;color:#B91C1C;">Error: ${err.message}
+        <div style="margin-top:12px;text-align:right;"><button class="btn btn-outline" onclick="cerrarCerrarDias()">Cerrar</button></div></div>`;
+    }
+  };
+
+  window.cerrarCerrarDias = () => document.getElementById('cerrarDiasModal').classList.remove('open');
+
+  window.aplicarCierreDias = async function () {
+    const btn = document.getElementById('btnAplicarCierres');
+    const marcados = [...document.querySelectorAll('.cd-chk')].filter(c => c.checked).map(c => +c.dataset.i);
+    if (!marcados.length) { toast('No has marcado ningún día'); return; }
+    if (!confirm(`Vas a guardar ${marcados.length} salida(s) a mano.\n\n` +
+      `Quedarán marcadas como fichaje manual con tu nombre y el criterio usado.\n\n` +
+      `Después tendrás que pedir a esos trabajadores que firmen de nuevo el mes si ya lo habían firmado.\n\n¿Seguir?`)) return;
+
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    const psSes = window.PS_SESSION || {};
+    let ok = 0; const fallos = [];
+    for (const i of marcados) {
+      const r = cerrarDiasCache[i];
+      const input = document.querySelector(`.cd-hora[data-i="${i}"]`);
+      const val = input ? input.value : r.propuesta;
+      if (!/^\d{2}:\d{2}$/.test(val)) { fallos.push(`${r.nombre} ${r.fechaTxt}: hora no válida`); continue; }
+      const [hh, mm] = val.split(':').map(Number);
+      const entrada = new Date(r.entradaISO);
+      const salida = new Date(entrada.getFullYear(), entrada.getMonth(), entrada.getDate(), hh, mm);
+      if (salida <= entrada) salida.setDate(salida.getDate() + 1);   // turno de noche
+      const horas = (salida - entrada) / 3600000;
+      if (horas > 16) { fallos.push(`${r.nombre} ${r.fechaTxt}: salen ${window.PSJornada.fmtH(horas)} h, revísalo`); continue; }
+      const payload = {
+        empleado_id: r.empleadoId,
+        puesto_id: r.puestoId,
+        tipo: 'salida',
+        hora: salida.toISOString(),
+        gps_ok: false,
+        fuera_de_zona: false,
+        origen_manual: true,
+        registrado_por: psSes.userId || null,
+        motivo_manual: `[Salida reconstruida ${new Date().toLocaleDateString('es-ES')} por admin] ` +
+                       `No se fichó la salida. Hora estimada según ${r.base}.`
+      };
+      try {
+        let { error } = await window.sb.from('fichajes').insert(payload);
+        if (error && /registrado_por|origen_manual|motivo_manual|column/i.test(error.message)) {
+          const { registrado_por, origen_manual, motivo_manual, ...basico } = payload;
+          const { error: e2 } = await window.sb.from('fichajes').insert(basico);
+          if (e2) throw e2;
+        } else if (error) throw error;
+        ok++;
+      } catch (err) {
+        fallos.push(`${r.nombre} ${r.fechaTxt}: ${err.message}`);
+      }
+    }
+    cerrarCerrarDias();
+    if (fallos.length) {
+      alert(`Guardadas ${ok} salida(s).\n\nNo se pudieron guardar ${fallos.length}:\n\n` + fallos.join('\n'));
+    } else {
+      toast(`✓ ${ok} día(s) cerrados`);
+    }
+    renderNomina();
+    if (window.renderHours) renderHours(document.getElementById('hourFilter')?.value || 'all');
+  };
+
   window.descargarNominaCSV = function () {
     if (!nominaEsAdmin()) return;
     if (!nominaCacheFilas.length) { toast('No hay datos que descargar'); return; }
@@ -6636,7 +6855,7 @@
       const desde = new Date(anio, mes, 1).toISOString();
       const hasta = new Date(anio, mes + 1, 1).toISOString();
       const { data: fichs } = await window.sb.from('fichajes')
-        .select('id, tipo, hora').eq('empleado_id', fichaActualId)
+        .select('id, tipo, hora, origen_manual').eq('empleado_id', fichaActualId)
         .gte('hora', desde).lt('hora', hasta).order('hora');
       const nombreMes = new Date(anio, mes, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
       await window.PSPdf.descargarJornadaOficial(empData, firma, fichs || [], nombreMes);
