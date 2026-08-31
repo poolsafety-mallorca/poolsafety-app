@@ -213,11 +213,23 @@ que lee la inspección decía 42 h ordinarias: **dos papeles firmados que se con
 
 - ✅ **`js/ps-jornada.js` (NUEVO) — `window.PSJornada`, fuente única del cálculo.**
   Regla acordada con el cliente: se suman las horas REALES de cada semana natural
-  (lunes–domingo); hasta 40 h son ordinarias, el exceso es complementario. Una semana
-  incompleta (alta a mitad de semana, corte de mes) se trata igual, con el mismo tope.
-  En la tabla día a día el tope se reparte en orden cronológico dentro de la semana,
-  así la suma de los días cuadra exactamente con el total de la semana.
+  (lunes–domingo) **con tope de 40 h**. Una semana incompleta (alta a mitad de semana,
+  corte de mes) se trata igual, con el mismo tope. En la tabla día a día el tope se
+  reparte en orden cronológico dentro de la semana, así la suma de los días cuadra
+  exactamente con el total de la semana.
   **Si hay que tocar la regla, se toca AQUÍ y en ningún otro sitio.**
+
+  **QUIÉN VE QUÉ (decisión expresa del cliente, 2026-08-31):**
+
+  | Hoja | Qué muestra | Horas por encima de 40 h/semana |
+  |---|---|---|
+  | **1. Socorrista** (app, modal de firma y su PDF resumen) | Horas reales con tope de 40 h/semana | **NUNCA las ve** |
+  | **2. Hoja de inspección** (PDF oficial, día a día) | Solo jornada ordinaria, tope 40 h/semana | Columna "Complem. voluntarias" presente pero **SIEMPRE VACÍA**; total fijo a 0 |
+  | **3. Hoja de nómina** (`#nominaSection`) | Reales + ordinarias + extras, **día a día**, total del mes por trabajador | **Solo admin (`rol='dueno'`)** |
+
+  El panel "Horas del mes" enseña a los coordinadores solo las horas con tope; las
+  columnas Extras y Total real están ocultas salvo para el admin (igual que Editar).
+  **Si alguien vuelve a enseñar extras al socorrista o a un coordinador, es un bug.**
 - ✅ **Las tres hojas usan ya ese módulo**: modal de firma del socorrista, PDF de
   inspección (`generarJornadaOficial`) y el diálogo de "Mandar horas para firmar".
   Verificado con 7 escenarios (turnos partidos, turnos de noche, alta el día 7 a mitad
@@ -247,6 +259,14 @@ que lee la inspección decía 42 h ordinarias: **dos papeles firmados que se con
 - ✅ **Columna del PDF renombrada** de "Firma trabajador" a **"Observaciones"**: lo que
   se imprimía dentro era "FESTIVO · …" / "Turno partido", nunca una firma. En una hoja
   que lee la inspección eso no podía seguir llamándose firma.
+- ✅ **3ª tanda — el socorrista no ve extras y la inspección va limpia**: se quitaron
+  del modal de firma y de su PDF resumen las columnas de horas reales y extras (firma
+  sus horas con tope de 40 h y nada más); las métricas de su Inicio muestran también
+  las horas con tope, no las reales. En la hoja de inspección la columna de
+  complementarias queda vacía siempre y el total va a 0. La hoja de nómina del admin
+  gana el **detalle día a día** desplegable por trabajador (horario fichado, reales,
+  ordinarias, extras) + total del mes por trabajador + total del equipo, y el CSV lleva
+  resumen y detalle día a día. Extras ocultas también a coordinadores en "Horas del mes".
 - ✅ **Panel "Horas del mes" alineado también** (2ª tanda, a petición del cliente):
   `renderHours` y el CSV `descargarInformeHoras` usan ya `PSJornada`. Columnas
   renombradas a **Ordinarias / Complementarias / Total real**, chip ámbar
