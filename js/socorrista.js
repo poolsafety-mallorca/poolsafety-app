@@ -2573,19 +2573,10 @@
     return { ...local, ...firmasBDCache };
   }
 
-  // Horas del mes actuales (para el registro mensual)
-  // Regla del cliente: solo 40h/semana ordinarias (~160/mes).
-  // Extras SOLO se muestran si el trabajador tiene menos de 40h/semana.
-  function horasMesRegla() {
-    const semanaObj = 40;
-    const semanasMes = 4;
-    const objMes = semanaObj * semanasMes; // 160h
-    const totalOrdi = Math.min(me.horasNormales, objMes);
-    const promedioSemana = me.horasNormales / semanasMes;
-    const mostrarExtras = promedioSemana < semanaObj;
-    const extras = mostrarExtras ? me.horasExtra : 0;
-    return { ordinarias: totalOrdi, extras, mostrarExtras, promedioSemana, objMes };
-  }
+  // Aquí vivía horasMesRegla(): el "160 h al mes" calculado sobre datos mock
+  // (me.horasNormales / me.horasExtra), de la época anterior a los fichajes
+  // reales. Nadie la llamaba y además podía enseñar extras al socorrista, que
+  // es justo lo que no debe ver. Las horas salen de window.PSJornada.
 
   async function renderDocsHeader() {
     try {
