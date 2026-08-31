@@ -65,13 +65,34 @@
   function emparejarTramos(fichajes) {
     var ordenados = (fichajes || []).slice()
       .sort(function (a, b) { return new Date(a.hora) - new Date(b.hora); });
-    var tramos = [], incompletos = [], abierta = null;
+    var tramos = [], incompletos = [], duplicados = [], abierta = null;
     ordenados.forEach(function (f) {
       var d = new Date(f.hora);
       if (f.tipo === 'entrada') {
-        // Dos entradas seguidas: la primera se quedó sin cerrar.
-        if (abierta) incompletos.push({ entrada: abierta });
-        abierta = d;
+        if (abierta) {
+          // Dos entradas seguidas sin salida entre medias. Hay que distinguir
+          // dos cosas que NO son lo mismo:
+          //
+          //  a) DOBLE ENTRADA el mismo día: el socorrista pulsó dos veces (a
+          //     veces con 2 minutos de diferencia, a veces porque creyó que no
+          //     se había registrado). El turno empezó en la PRIMERA. Antes se
+          //     conservaba la segunda y se tiraba la primera, así que se le
+          //     quitaban horas trabajadas: a Victoria el 11/8 le contaba 6,9 h
+          //     en vez de 8,1 h, y encima el día salía como "sin fichar salida".
+          //
+          //  b) DÍA ANTERIOR SIN CERRAR: se fue sin fichar salida y la siguiente
+          //     entrada es ya de otro día. Ahí sí falta el dato y hay que avisar.
+          var mismaJornada = claveDia(abierta) === claveDia(d) &&
+                             (d - abierta) < 12 * 3600000;
+          if (mismaJornada) {
+            duplicados.push({ entrada: d, conservada: abierta });   // se descarta
+          } else {
+            incompletos.push({ entrada: abierta });
+            abierta = d;
+          }
+        } else {
+          abierta = d;
+        }
       } else if (f.tipo === 'salida') {
         if (abierta) {
           tramos.push({ entrada: abierta, salida: d });
@@ -81,7 +102,7 @@
       }
     });
     if (abierta) incompletos.push({ entrada: abierta });
-    return { tramos: tramos, incompletos: incompletos };
+    return { tramos: tramos, incompletos: incompletos, duplicados: duplicados };
   }
 
   /* ------------------------------------------------------------------
@@ -111,7 +132,8 @@
       if (!porDia[k]) {
         porDia[k] = {
           fecha: new Date(d.getFullYear(), d.getMonth(), d.getDate()),
-          tramos: [], horas: 0, ordinarias: 0, complementarias: 0, incompleto: false
+          tramos: [], horas: 0, ordinarias: 0, complementarias: 0,
+          incompleto: false, duplicado: false
         };
       }
       return porDia[k];
@@ -127,6 +149,18 @@
       var s = slot(t.entrada);
       s.tramos.push({ entrada: t.entrada, salida: null });
       s.incompleto = true;
+    });
+    // Marca informativa para el admin: ese día hubo un fichaje de entrada
+    // repetido que se ha descartado. No es un error de datos ni resta horas,
+    // así que NO se saca en la hoja de inspección.
+    par.duplicados.forEach(function (t) {
+      var s = slot(t.conservada);
+      s.duplicado = true;
+    });
+    // Los tramos se pintan en orden de reloj (los incompletos se añaden al
+    // final del array y podían salir desordenados: "11:11 / 09:57").
+    Object.keys(porDia).forEach(function (k) {
+      porDia[k].tramos.sort(function (a, b) { return a.entrada - b.entrada; });
     });
 
     // 2) Agrupar días en semanas naturales y aplicar el tope de 40 h.
@@ -187,7 +221,8 @@
       horasFirmadas: r1(horasFirmadas),
       horasComplementarias: r1(horasCompl),
       diasTrabajados: dias,
-      incompletos: par.incompletos
+      incompletos: par.incompletos,
+      duplicados: par.duplicados
     };
   }
 

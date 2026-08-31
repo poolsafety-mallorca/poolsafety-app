@@ -2778,8 +2778,11 @@
         docsJornadaList.appendChild(card);
       });
 
-      // Historial de firmadas
-      (firmadas || []).forEach(f => {
+      // Historial de firmadas. Se excluyen las archivadas: cuando el
+      // coordinador corrige fichajes y le pide firmar de nuevo, la firma vieja
+      // pasa a 'jornada-YYYY-MM-archivada-<ts>' y al trabajador solo le
+      // interesa la vigente.
+      (firmadas || []).filter(f => !/-archivada-/.test(f.documento_codigo)).forEach(f => {
         const m = f.documento_codigo.match(/jornada-(\d{4})-(\d{2})/);
         const nombreMes = m
           ? new Date(parseInt(m[1]), parseInt(m[2]) - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })

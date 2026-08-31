@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v126 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v126`**
+Última actualización: 2026-08-31 (v127 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v127`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -861,6 +861,32 @@ El modal de reportar material (`rep-*`, `reportItemsCache`) sigue con `it.id` **
 ---
 
 ## 11. Decisiones importantes (histórico)
+
+### 2026-08-31 · Doble entrada ≠ salida olvidada (caso Victoria)
+Detectado sobre una hoja ya firmada. `emparejarTramos` trataba **dos entradas
+seguidas** como "la primera se quedó sin cerrar": conservaba la SEGUNDA y tiraba la
+primera. Resultado en la hoja firmada de Victoria (agosto 2026): el 11/8 fichó entrada
+a las 09:57 y otra vez a las 11:11, y le contó **6,9 h en vez de 8,1 h**, marcando
+además el día como "SIN FICHAR SALIDA". Le quitaba horas trabajadas y mentía sobre el
+motivo.
+
+Ahora se distinguen dos casos:
+- **Doble entrada el mismo día** (<12 h de diferencia): el turno empezó en la PRIMERA.
+  Se conserva esa, la segunda se descarta y el día queda marcado `duplicado` (solo
+  informativo, para el admin; NO sale en la hoja de inspección).
+- **Día anterior sin cerrar** (la siguiente entrada es de otro día): ahí sí falta el
+  dato, va a `incompletos` y se avisa. Esto además evita juntar dos días en un tramo
+  de 32 h.
+
+También se ordenan los tramos por hora dentro del día (antes salía "11:11 / 09:57").
+
+### 2026-08-31 · Re-firma de un mes ya firmado
+No había forma de rehacer una firma mensual incorrecta. Ahora "Mandar horas para
+firmar" detecta si ya hay firma de ese mes, avisa comparando horas viejas y nuevas, y
+al confirmar **archiva la anterior** renombrándola a `jornada-YYYY-MM-archivada-<ts>`
+(mismo patrón que el Kit Alta). La archivada sigue en la ficha del coordinador, más
+apagada, como rastro de qué se firmó antes de corregir; al trabajador no se le muestra.
+Necesario porque corregir fichajes después de firmar es el caso normal, no la excepción.
 
 ### 2026-08-31 · El despliegue lo hace Claude, no Adam
 Adam autorizó expresamente que Claude **fusione y despliegue él mismo**, sin pedir

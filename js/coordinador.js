@@ -1694,7 +1694,8 @@
             reales: d.horas,
             ordinarias: d.ordinarias,
             extras: d.complementarias,
-            incompleto: d.incompleto
+            incompleto: d.incompleto,
+            duplicado: d.duplicado
           };
         });
         return {
@@ -1758,7 +1759,7 @@
                 <tbody>
                   ${s.detalle.map(d => `
                     <tr${d.incompleto ? ' style="background:#FEF3C7;"' : ''}>
-                      <td>${d.fechaTxt}${d.incompleto ? ' <b style="color:#92400E;">⚠ sin salida</b>' : ''}</td>
+                      <td>${d.fechaTxt}${d.incompleto ? ' <b style="color:#92400E;">⚠ sin salida</b>' : ''}${d.duplicado ? ' <span class="small" style="color:#64748B;" title="Fichó la entrada dos veces ese día. Se ha usado la primera; el turno cuenta entero.">· doble entrada</span>' : ''}</td>
                       <td class="text-muted">${d.horario || '—'}</td>
                       <td class="num">${fmtH(d.reales)}h</td>
                       <td class="num">${fmtH(d.ordinarias)}h</td>
@@ -4179,7 +4180,13 @@
         } catch (err) { console.warn('firmas:', err.message); }
 
         const kitFirma = firmasBD.find(f => f.documento_codigo === 'kit-alta');
-        const jornadas = firmasBD.filter(f => f.documento_codigo.startsWith('jornada'));
+        // Una jornada re-firmada deja la anterior con el código
+        // 'jornada-YYYY-MM-archivada-<ts>'. Esas NO son la firma vigente del
+        // mes, pero se siguen listando (más apagadas) porque son el rastro de
+        // qué se firmó antes de corregir los fichajes.
+        const esArchivada = c => /-archivada-/.test(c || '');
+        const jornadas = firmasBD.filter(f => f.documento_codigo.startsWith('jornada') && !esArchivada(f.documento_codigo));
+        const jornadasArchivadas = firmasBD.filter(f => f.documento_codigo.startsWith('jornada') && esArchivada(f.documento_codigo));
         // Mes anterior: para poder cerrar un mes que se pasó sin firmar. Antes,
         // pasada la medianoche del último día, ese mes ya no había forma de
         // firmarlo desde la app.
@@ -4256,6 +4263,20 @@
             </div>
           </div>`;
         }).join('')}
+        ${jornadasArchivadas.map(j => {
+          const c = j.campos_json || {};
+          const m = (j.documento_codigo || '').match(/jornada-(\d{4})-(\d{2})/);
+          const nombreMes = m ? new Date(+m[1], +m[2] - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }) : j.documento_codigo;
+          return `
+          <div class="ficha-action-row" style="opacity:.65;background:#F8FAFC;">
+            <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
+            <div class="ficha-action-body">
+              <div class="ficha-action-title" style="font-size:13px;">Archivada · ${nombreMes}</div>
+              <div class="ficha-action-sub">Firmada el ${new Date(j.fecha_firma).toLocaleString('es-ES')} por ${window.PSJornada.fmtH(c.horas_firmadas || 0)}h · sustituida por una firma posterior</div>
+            </div>
+          </div>`;
+        }).join('')}
+
         ${jornadas.length === 0 ? `
           <div class="ficha-action-row warn">
             <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
@@ -6498,7 +6519,32 @@
       const dias = calc.diasTrabajados;
       const nombreMes = new Date(anio, mesIdx, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
-      const msg = `Solicitar a ${nombre} que firme el registro mensual de ${nombreMes}?\n\n` +
+      // ¿Ya hay una firma de ese mes? Entonces esto es una RE-FIRMA: hay que
+      // archivar la anterior, o quedarían dos firmas del mismo mes y no se
+      // sabría cuál vale. Pasa cuando se corrigen fichajes después de firmar
+      // (una salida olvidada que se mete a mano, por ejemplo).
+      const { data: yaFirmadas } = await window.sb.from('firmas_documentos')
+        .select('id, fecha_firma, campos_json')
+        .eq('empleado_id', empId).eq('documento_codigo', codigo)
+        .order('fecha_firma', { ascending: false });
+      const firmaPrevia = (yaFirmadas || [])[0] || null;
+      if (firmaPrevia) {
+        const cp = firmaPrevia.campos_json || {};
+        const okRe = confirm(
+          `${nombre} YA firmó ${nombreMes}.\n\n` +
+          `Firmó el ${new Date(firmaPrevia.fecha_firma).toLocaleString('es-ES')} por ` +
+          `${fmtH(cp.horas_firmadas || 0)}h.\nAhora le saldrían ${fmtH(horas)}h.\n\n` +
+          `Si sigues:\n` +
+          `• La firma anterior se ARCHIVA (no se borra, queda en su ficha).\n` +
+          `• Se le pide que vuelva a firmar con las horas corregidas.\n\n` +
+          `¿Pedirle que firme de nuevo?`
+        );
+        if (!okRe) return;
+      }
+
+      const msg = firmaPrevia
+        ? `Confirmar: archivar la firma anterior de ${nombreMes} y pedirle que firme de nuevo?\n\n`
+        : `Solicitar a ${nombre} que firme el registro mensual de ${nombreMes}?\n\n` +
         `• Horas ordinarias a firmar: ${fmtH(horas)}h (tope 40 h/semana)\n` +
         `• Horas reales trabajadas: ${fmtH(calc.horasReales)}h\n` +
         (calc.horasComplementarias > 0 ? `• Complementarias: ${fmtH(calc.horasComplementarias)}h\n` : '') +
@@ -6506,6 +6552,16 @@
         (calc.incompletos.length ? `\n⚠ ${calc.incompletos.length} día(s) con entrada SIN SALIDA fichada. Esas horas no cuentan: corrígelas antes de pedir la firma.\n` : '') +
         `\nLe saltará el aviso EN EL ACTO en su app (Realtime).`;
       if (!confirm(msg)) return;
+
+      // Archivar la firma anterior renombrando su código (mismo patrón que el
+      // Kit Alta): sigue en la BD con su imagen y sus horas, pero deja de ser
+      // la firma vigente del mes.
+      if (firmaPrevia) {
+        const { error: errArch } = await window.sb.from('firmas_documentos')
+          .update({ documento_codigo: `${codigo}-archivada-${Date.now()}` })
+          .eq('id', firmaPrevia.id);
+        if (errArch) throw new Error('No se pudo archivar la firma anterior: ' + errArch.message);
+      }
 
       // Borrar solicitud previa idéntica para no duplicar
       await window.sb.from('tareas').delete()
