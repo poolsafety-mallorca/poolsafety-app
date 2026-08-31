@@ -762,6 +762,10 @@
         </div>
         <div class="row gap-2" style="align-items:center;flex-wrap:wrap;">
           <select id="nominaMes" style="padding:8px 12px;border-radius:999px;border:1px solid var(--line);font-size:13px;background:#fff;color:var(--ink-700);font-weight:500;"></select>
+          <button class="btn btn-outline btn-sm" id="btnCerrarDias" onclick="abrirCerrarDiasSinSalida()" style="color:#B45309;border-color:#F59E0B;">
+            <svg class="ic ic-14"><use href="#ic-clock"/></svg>
+            Cerrar días sin salida
+          </button>
           <button class="btn btn-outline btn-icon" title="Descargar CSV para la gestoría" onclick="descargarNominaCSV()">
             <svg class="ic ic-16"><use href="#ic-download"/></svg>
           </button>
@@ -1610,6 +1614,11 @@ socorrista,Ana López,ana@ejemplo.com"></textarea>
 </div>
 
 <!-- Modal Titulaciones (compartido con socorrista) -->
+<!-- Cerrar en bloque los días con entrada pero sin salida fichada. Solo admin. -->
+<div class="modal-backdrop" id="cerrarDiasModal">
+  <div class="modal" id="cerrarDiasBody" style="max-width:760px;"></div>
+</div>
+
 <div class="modal-backdrop" id="titulacionModal">
   <div class="modal" id="titulacionModalBody" style="max-width:520px;"></div>
 </div>

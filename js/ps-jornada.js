@@ -95,7 +95,10 @@
         }
       } else if (f.tipo === 'salida') {
         if (abierta) {
-          tramos.push({ entrada: abierta, salida: d });
+          // Se arrastra si la SALIDA fue metida a mano (origen_manual): un día
+          // cuya salida se ha reconstruido no es una medición, y los documentos
+          // que lo usen tienen que poder decirlo.
+          tramos.push({ entrada: abierta, salida: d, salidaManual: !!f.origen_manual });
           abierta = null;
         }
         // Salida sin entrada previa: se ignora (no se puede medir).
@@ -133,7 +136,7 @@
         porDia[k] = {
           fecha: new Date(d.getFullYear(), d.getMonth(), d.getDate()),
           tramos: [], horas: 0, ordinarias: 0, complementarias: 0,
-          incompleto: false, duplicado: false
+          incompleto: false, duplicado: false, salidaManual: false
         };
       }
       return porDia[k];
@@ -142,6 +145,7 @@
       var s = slot(t.entrada);
       s.tramos.push({ entrada: t.entrada, salida: t.salida });
       s.horas += Math.max(0, (t.salida - t.entrada) / 3600000);
+      if (t.salidaManual) s.salidaManual = true;
     });
     // Los días con entrada sin salida quedan MARCADOS y visibles (0 h, pero el
     // día existe y se puede avisar), en vez de desaparecer.

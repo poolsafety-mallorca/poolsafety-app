@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v127 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v127`**
+Última actualización: 2026-08-31 (v128 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v128`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -861,6 +861,28 @@ El modal de reportar material (`rep-*`, `reportItemsCache`) sigue con `it.id` **
 ---
 
 ## 11. Decisiones importantes (histórico)
+
+### 2026-08-31 · "Cerrar días sin salida" en bloque (admin)
+Un día con entrada y sin salida cuenta CERO horas. A Victoria le pasó con el 24 y el
+25 de agosto: los trabajó y su registro no dice nada. Corregirlos uno a uno desde el
+editor de fichajes es inviable con 7+ trabajadores.
+
+Botón **"Cerrar días sin salida"** en la hoja de nómina (solo admin). Escanea el mes,
+lista todos los días abiertos de todo el equipo y **propone** una hora de salida por
+este orden:
+1. El horario asignado a ese empleado en ese hotel para ese día de la semana
+   (`horarios.hora_fin`, o `hora_fin_2` si es partido).
+2. Su propia hora de salida habitual del mes (mediana de sus otras salidas).
+3. `puestos.hora_fin_default`.
+
+El admin revisa cada hora en un `input type=time`, desmarca las que no quiera y guarda.
+Se insertan como `origen_manual=true` + `registrado_por` + `motivo_manual` diciendo en
+qué se basó. Valida turno de noche (si la salida es anterior a la entrada, es del día
+siguiente) y rechaza tramos de más de 16 h.
+
+**La estimación se declara**: `PSJornada` arrastra `salidaManual` hasta el día y la hoja
+de inspección pone **"Salida estimada"** en Observaciones. Es una reconstrucción, no una
+medición, y ocultarlo sería falsear el documento. No quitar esa marca.
 
 ### 2026-08-31 · Doble entrada ≠ salida olvidada (caso Victoria)
 Detectado sobre una hoja ya firmada. `emparejarTramos` trataba **dos entradas

@@ -2857,7 +2857,7 @@
     let semanas = [], horasReales = 0, horasFirmadas = 0, horasCompl = 0, diasTrabajados = 0, incompletos = [];
     try {
       const { data: fichajes } = await window.sb.from('fichajes')
-        .select('id, tipo, hora').eq('empleado_id', empId)
+        .select('id, tipo, hora, origen_manual').eq('empleado_id', empId)
         .gte('hora', desde).lt('hora', hastaCorte).order('hora', { ascending: true });
       const res = calcularSemanasMes(fichajes || [], anio, mes);
       semanas = res.semanas;
