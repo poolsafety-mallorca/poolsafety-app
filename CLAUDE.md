@@ -24,6 +24,42 @@ Especialmente cuando:
 - Cambies estado del piloto (feature completada, bloqueada, etc.)
 - Tomes una decisión que otro Claude podría cuestionar sin saber el porqué
 
+## 🚀 Despliegue: fusiona tú, no le pidas permiso
+
+**Adam (el cliente) autorizó expresamente el 2026-08-31 que fusiones y despliegues tú
+mismo, sin pedirle confirmación cada vez.** No es técnico: dejarle PRs abiertos
+esperando su visto bueno le bloqueaba el trabajo sin que él supiera que estaba
+bloqueado (llegó a preguntar "¿a qué te refieres con PR?").
+
+Flujo por defecto, de principio a fin y sin parar a preguntar:
+1. Rama → cambios → **comprobaciones reales** (no "debería funcionar")
+2. Push → PR con la explicación en castellano llano
+3. **Fusionar tú mismo el PR** (Netlify despliega solo en 30-60 s)
+4. Contarle en el chat qué ha salido y qué tiene que hacer él (avisar al equipo de
+   que cierren y reabran la app si cambia `sw.js`, ejecutar SQL si lo hay, etc.)
+
+Sigue haciendo PR aunque lo vayas a fusionar tú: deja el historial y la explicación
+por escrito, que es lo que hace que otro Claude (o él dentro de tres meses) entienda
+por qué se hizo algo.
+
+**Sí párate a preguntar ANTES de fusionar, sólo en estos casos:**
+- Puede **destruir o corromper datos reales** (borrados, migraciones no idempotentes,
+  cambios de RLS que puedan dejar a alguien sin acceso)
+- Afecta a **documentos ya firmados** por un trabajador o a cómo se calculan las horas
+  de un registro horario ya cerrado
+- Toca **dinero, nóminas o datos personales** de forma no reversible
+- Puede **romper la app a media jornada** para gente que está fichando ahora mismo
+- La petición admite lecturas muy distintas y equivocarse cuesta rehacer trabajo suyo
+
+Fuera de eso: hazlo y cuéntaselo después.
+
+## 🗣️ Cómo explicarle las cosas a Adam
+
+No es programador. Nada de jerga sin traducir: ni "PR", ni "rama", ni "merge", ni
+"deploy" a secas. Si hay que usar el término, explícalo la primera vez. Lo que él
+necesita saber siempre es: **qué falla, por qué, qué has hecho y qué tiene que hacer
+él ahora**. Ya está.
+
 ## 🎯 Prioridades del proyecto
 
 1. **Piloto real en marcha** con 4 usuarios (Adam admin, Alex + Óscar coordinadores, Carlos socorrista)

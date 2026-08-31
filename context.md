@@ -862,6 +862,16 @@ El modal de reportar material (`rep-*`, `reportItemsCache`) sigue con `it.id` **
 
 ## 11. Decisiones importantes (histórico)
 
+### 2026-08-31 · El despliegue lo hace Claude, no Adam
+Adam autorizó expresamente que Claude **fusione y despliegue él mismo**, sin pedir
+confirmación cada vez. Motivo: se estaban dejando PRs abiertos esperando su visto
+bueno y él no sabía que estaba esperando algo (preguntó literalmente "¿a qué te
+refieres con PR?"), así que el trabajo quedaba hecho pero sin llegar a los usuarios.
+Las excepciones en que sí hay que preguntar antes están listadas en `CLAUDE.md`
+(datos reales en riesgo, documentos ya firmados, nóminas, romper la app a media
+jornada). Ver también la nota de estilo: **Adam no es técnico, nada de jerga**.
+
+
 - **Netlify Pro** ($19/mes): tras agotar minutos build Free 2026-07 con ~50 releases. Deploys ilimitados.
 - **Supabase** por región EU (RGPD), Postgres SQL clásico.
 - **Tema rojo permanente** (marca cliente): `#B91C1C` sobre blanco.
