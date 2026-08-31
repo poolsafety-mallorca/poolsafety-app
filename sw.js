@@ -19,6 +19,7 @@ const CORE = [
   '/js/ps-cuadrante.js',
   '/js/theme-toggle.js',
   '/js/ps-storage.js',
+  '/js/ps-jornada.js',
   '/js/ps-pdf.js',
   '/js/ps-notifications.js',
   '/js/ps-incidencias.js',

@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v125 · safe-area iOS: la barra de estado del iPhone tapaba el botón de salir del socorrista)
-**Cache SW actual: `poolsafety-v125`** — ojo: la rama de jornada usa v124; si se fusiona después, dejar la más alta.
+Última actualización: 2026-08-31 (v125 · sesión 10ª · jornada: regla ÚNICA de 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS)
+**Cache SW actual: `poolsafety-v125`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -144,6 +144,7 @@ app poolsafety/
 │   ├── data.js                   # kitAltaSubdocs (con texto legal COMPLETO) + EMPRESA + mocks residuales (que ya casi no se usan)
 │   ├── titulaciones.js           # Módulo PSTit compartido
 │   ├── ps-storage.js             # Wrapper Supabase Storage
+│   ├── ps-jornada.js             # ⭐ window.PSJornada · CÁLCULO ÚNICO de horas (40 h/semana natural). Lo usan modal de firma, PDF inspección y hoja de nómina. NO duplicar la regla en otro sitio.
 │   ├── ps-pdf.js                 # PDFs: generarKitAlta (texto legal + EPIs), generarJornadaResumen, generarJornadaOficial (Word inspección 31 días)
 │   ├── ps-horarios.js            # Módulo PSHor: horarios editables por hotel/socorrista con turnos partidos (hora_fin + es_partido + hora_inicio_2/hora_fin_2)
 │   ├── socorrista.js             # Lógica vista socorrista (BD real, cero mocks visibles)
@@ -222,6 +223,84 @@ Palma Aquarium, Sa Rapita (Club Nautic), Ona Luna Park, Cala Romani, Hotel Ankaa
 ---
 
 ## 9. Features completadas · TODAS reales, sin mocks
+
+### Sesión 2026-08-31 (10ª · registro de jornada: que las hojas digan lo mismo)
+
+**El problema de fondo:** había TRES cuentas distintas de las mismas horas y ninguna
+coincidía con las otras. El socorrista firmaba con tope de **40 h/semana**; la hoja
+mensual de inspección repartía con tope de **8 h/día**; el diálogo del coordinador
+sumaba en bruto sin tope. Con 6 días de 7 h el trabajador firmaba 40 h y el documento
+que lee la inspección decía 42 h ordinarias: **dos papeles firmados que se contradicen**.
+
+- ✅ **`js/ps-jornada.js` (NUEVO) — `window.PSJornada`, fuente única del cálculo.**
+  Regla acordada con el cliente: se suman las horas REALES de cada semana natural
+  (lunes–domingo) **con tope de 40 h**. Una semana incompleta (alta a mitad de semana,
+  corte de mes) se trata igual, con el mismo tope. En la tabla día a día el tope se
+  reparte en orden cronológico dentro de la semana, así la suma de los días cuadra
+  exactamente con el total de la semana.
+  **Si hay que tocar la regla, se toca AQUÍ y en ningún otro sitio.**
+
+  **QUIÉN VE QUÉ (decisión expresa del cliente, 2026-08-31):**
+
+  | Hoja | Qué muestra | Horas por encima de 40 h/semana |
+  |---|---|---|
+  | **1. Socorrista** (app, modal de firma y su PDF resumen) | Horas reales con tope de 40 h/semana | **NUNCA las ve** |
+  | **2. Hoja de inspección** (PDF oficial, día a día) | Solo jornada ordinaria, tope 40 h/semana | Columna "Complem. voluntarias" presente pero **SIEMPRE VACÍA**; total fijo a 0 |
+  | **3. Hoja de nómina** (`#nominaSection`) | Reales + ordinarias + extras, **día a día**, total del mes por trabajador | **Solo admin (`rol='dueno'`)** |
+
+  El panel "Horas del mes" enseña a los coordinadores solo las horas con tope; las
+  columnas Extras y Total real están ocultas salvo para el admin (igual que Editar).
+  **Si alguien vuelve a enseñar extras al socorrista o a un coordinador, es un bug.**
+- ✅ **Las tres hojas usan ya ese módulo**: modal de firma del socorrista, PDF de
+  inspección (`generarJornadaOficial`) y el diálogo de "Mandar horas para firmar".
+  Verificado con 7 escenarios (turnos partidos, turnos de noche, alta el día 7 a mitad
+  de semana, 7,5 h/día, semana a caballo entre meses): coinciden al decimal.
+- ✅ **`campos_json.hasta`**: la firma guarda el corte exacto con el que se firmó y la
+  hoja de inspección lo respeta. Antes, una firma pedida a mitad de mes generaba luego
+  un PDF con días posteriores que el trabajador nunca vio.
+- ✅ **Salida olvidada — se bloquea el fichaje hasta cerrarla.** Antes, si el socorrista
+  no fichaba salida, la entrada del día siguiente **pisaba** la huérfana: el día salía
+  EN BLANCO en la hoja de inspección, sin aviso, y esas horas no se computaban.
+  Ahora, antes de fichar una entrada nueva, se le obliga a meter a mano la hora de
+  salida del día pendiente (`origen_manual=true` + `motivo_manual`), con validación
+  HH:MM, soporte de turno de noche y tope de 16 h. Se repite si hay varios días.
+- ✅ **Los días sin cerrar ya se ven**: marca `SIN FICHAR SALIDA` en la hoja de
+  inspección, aviso ámbar en el modal de firma, aviso en el diálogo del coordinador y
+  columna "Sin cerrar" en la hoja de nómina.
+- ✅ **Meses anteriores firmables.** Antes la tarjeta solo existía el último día del mes
+  y el código se construía con la fecha de HOY: si el socorrista no entraba ese día,
+  ese mes **no se podía firmar nunca** (el botón del coordinador tampoco servía, miraba
+  el mes en curso). Ahora el socorrista ve los 3 meses anteriores con fichajes y sin
+  firmar, y el coordinador tiene botón "Pedir firma de \<mes anterior\>". El mes va
+  codificado como `[jornada-YYYY-MM]` dentro de `tareas.descripcion`.
+- ✅ **Hoja de nómina · SOLO ADMIN** (`#nominaSection`, dentro del tab Horas, oculta
+  salvo rol `dueno`). Horas REALES sin tope + ordinarias + complementarias + días sin
+  cerrar, por empleado, con selector de los últimos 6 meses y descarga CSV con BOM
+  para Excel. Los coordinadores no la ven.
+- ✅ **Columna del PDF renombrada** de "Firma trabajador" a **"Observaciones"**: lo que
+  se imprimía dentro era "FESTIVO · …" / "Turno partido", nunca una firma. En una hoja
+  que lee la inspección eso no podía seguir llamándose firma.
+- ✅ **3ª tanda — el socorrista no ve extras y la inspección va limpia**: se quitaron
+  del modal de firma y de su PDF resumen las columnas de horas reales y extras (firma
+  sus horas con tope de 40 h y nada más); las métricas de su Inicio muestran también
+  las horas con tope, no las reales. En la hoja de inspección la columna de
+  complementarias queda vacía siempre y el total va a 0. La hoja de nómina del admin
+  gana el **detalle día a día** desplegable por trabajador (horario fichado, reales,
+  ordinarias, extras) + total del mes por trabajador + total del equipo, y el CSV lleva
+  resumen y detalle día a día. Extras ocultas también a coordinadores en "Horas del mes".
+- ✅ **Panel "Horas del mes" alineado también** (2ª tanda, a petición del cliente):
+  `renderHours` y el CSV `descargarInformeHoras` usan ya `PSJornada`. Columnas
+  renombradas a **Ordinarias / Complementarias / Total real**, chip ámbar
+  "⚠ N sin cerrar" junto al nombre, y el CSV lleva el criterio escrito, columna de
+  días sin cerrar y fila de totales con las 11 columnas correctas.
+- ✅ **Métricas del socorrista en su Inicio** también por `PSJornada` (muestra horas
+  reales; avisa de días sin cerrar en el subtítulo).
+- ✅ **Eliminado `openJornadaSign` + `submitJornada`** (socorrista.js): el modal ANTIGUO
+  que hacía firmar **160 h fijas** al mes sin mirar los fichajes. Estaba muerto (solo
+  expuesto como `window.openDocView`, que nadie llamaba) pero era una mina.
+- 🔒 **Invariante**: hoy `OBJ_DIA`, `OBJ_MES` y `Math.min(8` no existen en `js/`. Toda
+  hora que se muestre o se firme sale de `window.PSJornada.calcular()`. Si añades una
+  cuenta nueva, úsalo; no repliques la regla.
 
 ### Sesión 2026-07-28 (maratón inicial, ~25 commits)
 Ver commits: SMTP Resend, auto-update PWA, PSHor horarios editables, Correturnos, Miembros del equipo, Toggle Disponible/Libre coord, Enviar email invitación, Creación masiva, Autoreparación cuentas huérfanas, Contactar coordinador real, Badge Documentación real, GPS "Cómo llegar" real, Puestos en vivo con Realtime, Estado del equipo admin, Campana con alertas reales, Kit Alta texto legal completo, PDF Kit Alta, PDF Jornada oficial (formato Word inspección), 3 acciones ficha empleado (baja/finiquito/eliminar), Reenviar Kit Alta, Subir docs socorrista, Máx 20 MB, tracking ultimo_login.

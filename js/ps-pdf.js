@@ -352,6 +352,7 @@ window.PSPdf = (function () {
     if (empleado.puesto_nombre) { doc.text(`Puesto: ${empleado.puesto_nombre}`, 15, y); y += 4.5; }
 
     const campos = firma.campos_json || {};
+    const fmtH = window.PSJornada.fmtH;
     const semanas = Array.isArray(campos.semanas) ? campos.semanas : [];
 
     y += 5;
@@ -366,7 +367,10 @@ window.PSPdf = (function () {
       doc.setTextColor(0, 0, 0);
     } else {
       // Tabla desglose semanal
-      const cols = [{ h: 'Semana', w: 60 }, { h: 'Días', w: 20, num: true }, { h: 'H. reales', w: 30, num: true }, { h: 'H. firmadas', w: 35, num: true }, { h: 'Extras', w: 25, num: true }];
+      // Este es el documento del TRABAJADOR: solo lo que firma, con el tope de
+      // 40 h/semana ya aplicado. Ni horas reales por encima del tope ni extras:
+      // eso solo existe en la hoja de nómina del administrador.
+      const cols = [{ h: 'Semana', w: 85 }, { h: 'Días', w: 30, num: true }, { h: 'Horas', w: 55, num: true }];
       // Header
       doc.setFillColor(240, 240, 240);
       doc.setDrawColor(200, 200, 200);
@@ -382,8 +386,7 @@ window.PSPdf = (function () {
         y = checkPage(doc, y, 6);
         doc.rect(15, y, anchoTot, 5.5, 'D');
         cx = 15;
-        const extras = Math.max(0, s.horas_reales - s.horas_firmadas);
-        const valores = [s.rangoTxt || '—', String(s.dias || 0), `${s.horas_reales || 0}h`, `${s.horas_firmadas || 0}h`, extras > 0 ? `${extras}h` : '—'];
+        const valores = [s.rangoTxt || '—', String(s.dias || 0), `${fmtH(s.horas_firmadas)}h`];
         valores.forEach((v, i) => {
           const c = cols[i];
           doc.text(v, cx + (c.num ? c.w - 2 : 2), y + 4, c.num ? { align: 'right' } : {});
@@ -396,15 +399,9 @@ window.PSPdf = (function () {
       doc.rect(15, y, anchoTot, 6, 'FD');
       doc.setFont('helvetica', 'bold');
       cx = 15;
-      const totExtras = Math.max(0, (campos.horas_reales || 0) - (campos.horas_firmadas || 0));
-      const tots = [`TOTAL MES (${campos.dias_trabajados || 0} días)`, '', `${campos.horas_reales || 0}h`, `${campos.horas_firmadas || 0}h`, totExtras > 0 ? `${totExtras}h` : '—'];
-      // Combinar 1ª y 2ª columna para el label
-      doc.text(tots[0], 17, y + 4);
-      cx = 15 + cols[0].w + cols[1].w;
-      for (let i = 2; i < 5; i++) {
-        doc.text(tots[i], cx + cols[i].w - 2, y + 4, { align: 'right' });
-        cx += cols[i].w;
-      }
+      // Label ocupando las dos primeras columnas + total de horas firmadas
+      doc.text(`TOTAL MES (${campos.dias_trabajados || 0} días)`, 17, y + 4);
+      doc.text(`${fmtH(campos.horas_firmadas)}h`, 15 + cols[0].w + cols[1].w + cols[2].w - 2, y + 4, { align: 'right' });
       y += 8;
       doc.setFont('helvetica', 'normal');
     }
@@ -412,7 +409,7 @@ window.PSPdf = (function () {
     // Resumen firma final
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text(`El trabajador firma ${campos.horas_firmadas || 0} h ordinarias este mes.`, 15, y);
+    doc.text(`El trabajador firma ${fmtH(campos.horas_firmadas)} h ordinarias este mes (tope 40 h por semana natural).`, 15, y);
     y += 6;
 
     // Evidencia
@@ -532,44 +529,32 @@ window.PSPdf = (function () {
     }
     y += 8;
 
-    // Agrupar fichajes por día EMPAREJANDO CADA ENTRADA CON SU SALIDA.
-    // Importante para turnos partidos: si alguien ficha 10:00-14:30 y
-    // 16:00-20:30, hay que contar 9 h, no 10,5 h (que es lo que salía antes
-    // al tomar solo la primera entrada y la última salida, metiendo dentro
-    // la hora y media de descanso).
-    const porDia = {};   // { 15: { tramos: [{entrada, salida}], horas: 9 } }
-    (function emparejarTramos() {
-      const ordenados = (fichajesMes || [])
-        .slice()
-        .sort((a, b) => new Date(a.hora) - new Date(b.hora));
-      let abierta = null;
-      ordenados.forEach(f => {
-        const d = new Date(f.hora);
-        const dia = d.getDate();
-        if (!porDia[dia]) porDia[dia] = { tramos: [], horas: 0 };
-        if (f.tipo === 'entrada') {
-          abierta = d;
-        } else if (f.tipo === 'salida' && abierta) {
-          const diaEntrada = abierta.getDate();
-          if (!porDia[diaEntrada]) porDia[diaEntrada] = { tramos: [], horas: 0 };
-          porDia[diaEntrada].tramos.push({ entrada: abierta, salida: d });
-          porDia[diaEntrada].horas += Math.max(0, (d - abierta) / 3600000);
-          abierta = null;
-        }
-      });
-      // Entrada sin salida (se olvidó de fichar): la dejamos visible sin horas
-      if (abierta) {
-        const dia = abierta.getDate();
-        if (!porDia[dia]) porDia[dia] = { tramos: [], horas: 0 };
-        porDia[dia].tramos.push({ entrada: abierta, salida: null });
-      }
-    })();
-
     // Detectar año y mes desde el código de la firma para saber cuántos días tiene el mes y festivos
     const mm = (firma.documento_codigo || '').match(/jornada-(\d{4})-(\d{2})/);
     const anioNum = mm ? parseInt(mm[1]) : new Date().getFullYear();
     const mesNum  = mm ? parseInt(mm[2]) - 1 : new Date().getMonth();
     const diasEnMes = new Date(anioNum, mesNum + 1, 0).getDate();
+
+    // Horas: se calculan con el módulo ÚNICO window.PSJornada, el mismo que usa
+    // el modal donde firma el socorrista. Es lo que garantiza que este documento
+    // y el que él firmó digan exactamente lo mismo. NO calcular aquí las horas
+    // por tu cuenta: antes esta hoja repartía con tope de 8 h/día mientras el
+    // socorrista firmaba con tope de 40 h/semana, y con 6 días de 7 h uno decía
+    // 42 h ordinarias y el otro 40 h.
+    // `hasta` limita el cálculo al mismo corte que se firmó (firma a mitad de
+    // mes solicitada por el coordinador).
+    const PSJ = window.PSJornada;
+    const calc = PSJ.calcular(fichajesMes || [], {
+      hasta: (firma.campos_json || {}).hasta || null
+    });
+    // Reindexar por número de día para pintar la tabla del mes.
+    const porDia = {};
+    Object.keys(calc.porDia).forEach(k => {
+      const d = calc.porDia[k];
+      if (d.fecha.getFullYear() === anioNum && d.fecha.getMonth() === mesNum) {
+        porDia[d.fecha.getDate()] = d;
+      }
+    });
     const nombresDia = ['Do','Lu','Ma','Mi','Ju','Vi','Sa'];
 
     // Tabla — añadida columna "Día sem." + espacio para nombre festivo
@@ -580,7 +565,10 @@ window.PSPdf = (function () {
       { titulo: 'Hora salida',          w: 22 },
       { titulo: 'Horas ord. pactadas',  w: 28 },
       { titulo: 'Complem. voluntarias', w: 30 },
-      { titulo: 'Firma trabajador',     w: 58 }
+      // Antes esta columna se titulaba "Firma trabajador" pero lo que se
+      // imprimía dentro era "FESTIVO ..." o "Turno partido". En una hoja que
+      // lee la inspección eso no puede llamarse firma.
+      { titulo: 'Observaciones',        w: 58 }
     ];
     const totalAncho = cols.reduce((a,c) => a + c.w, 0);
     const xInicio = 15;
@@ -601,8 +589,8 @@ window.PSPdf = (function () {
 
     // Filas
     doc.setFontSize(7.5);
-    let totalOrd = 0, totalCompl = 0;
-    let totalOrdFest = 0, totalComplFest = 0; // horas trabajadas en festivo/finde
+    let totalOrd = 0;
+    let totalOrdFest = 0; // horas ordinarias en festivo/domingo
     for (let dia = 1; dia <= diasEnMes; dia++) {
       y = checkPage(doc, y, 8);
       const fecha = new Date(anioNum, mesNum, dia);
@@ -625,23 +613,26 @@ window.PSPdf = (function () {
         // Turno partido: se listan todas las entradas y todas las salidas
         entrada = d.tramos.map(t => hhmm(t.entrada)).join(' / ');
         salida  = d.tramos.map(t => t.salida ? hhmm(t.salida) : '—').join(' / ');
-        // El tope de 8 h ordinarias se aplica al TOTAL DEL DÍA, no a cada tramo
-        const ord  = Math.min(8, d.horas);
-        const comp = Math.max(0, d.horas - 8);
-        if (d.horas > 0) {
-          horasOrd = ord.toFixed(1);
-          horasCompl = comp > 0 ? comp.toFixed(1) : '';
-          totalOrd += ord;
-          totalCompl += comp;
-          if (especial) { totalOrdFest += ord; totalComplFest += comp; }
+        // Ordinarias/complementarias YA vienen repartidas por PSJornada con el
+        // tope de 40 h/semana, igual que en el modal de firma del socorrista.
+        // La hoja de inspección refleja SOLO jornada ordinaria, con el tope de
+        // 40 h/semana ya aplicado. La columna de complementarias se mantiene
+        // porque forma parte del formato oficial, pero va SIEMPRE VACÍA: el
+        // exceso sobre 40 h no aparece en este documento, solo en la hoja de
+        // nómina del administrador.
+        if (d.ordinarias > 0) {
+          horasOrd = PSJ.fmtH(d.ordinarias);
+          horasCompl = '';
+          totalOrd += d.ordinarias;
+          if (especial) totalOrdFest += d.ordinarias;
         }
       }
 
       // Marca de festivo o aviso de turno partido / fichaje incompleto
       let marcaFestivo = '';
       if (festivo) marcaFestivo = `FESTIVO · ${festivo}`;
+      else if (d && d.incompleto) marcaFestivo = 'SIN FICHAR SALIDA';
       else if (d && d.tramos.length > 1) marcaFestivo = 'Turno partido';
-      else if (d && d.tramos.some(t => !t.salida)) marcaFestivo = 'Sin fichar salida';
 
       const valores = [String(dia), nombresDia[diaSemIdx], entrada, salida, horasOrd, horasCompl, marcaFestivo];
       xh = xInicio;
@@ -673,14 +664,29 @@ window.PSPdf = (function () {
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
-    doc.text(`Total horas ordinarias: ${totalOrd.toFixed(1)}h`, 15, y);
-    doc.text(`Total horas complementarias: ${totalCompl.toFixed(1)}h`, 110, y);
+    doc.text(`Total horas ordinarias: ${PSJ.fmtH(totalOrd)}h`, 15, y);
+    doc.text('Total horas complementarias: 0h', 110, y);
     y += 5;
-    if (totalOrdFest + totalComplFest > 0) {
+    if (totalOrdFest > 0) {
       doc.setTextColor(155, 28, 28);
-      doc.text(`De las cuales, en festivo/domingo: ${(totalOrdFest + totalComplFest).toFixed(1)}h`, 15, y);
+      doc.text(`De las cuales, en festivo/domingo: ${PSJ.fmtH(totalOrdFest)}h`, 15, y);
       doc.setTextColor(0, 0, 0);
       y += 5;
+    }
+    // Criterio, para que quien lea la hoja sepa de dónde salen las cifras
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(120, 120, 120);
+    doc.text('Jornada ordinaria con maximo de 40 h por semana natural (lunes a domingo). Esta hoja recoge unicamente jornada ordinaria.', 15, y);
+    doc.setTextColor(0, 0, 0);
+    y += 4;
+    if (calc.incompletos.length) {
+      doc.setTextColor(180, 83, 9);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Atencion: ${calc.incompletos.length} dia(s) con entrada sin salida fichada. Esas horas NO estan computadas.`, 15, y);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      y += 4;
     }
     y += 3;
 

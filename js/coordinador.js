@@ -1534,39 +1534,18 @@
         .select('empleado_id, tipo, hora')
         .gte('hora', desde).lt('hora', hasta)
         .order('hora', { ascending: true });
-      // 3. Agrupar por empleado → días trabajados + horas ordinarias + extras
-      //    El tope de 8 h ordinarias se aplica al TOTAL DEL DÍA, no a cada tramo.
-      //    Si no, un turno partido de 4,5 h + 4,5 h (9 h) contaría las 9 como
-      //    ordinarias, porque ningún tramo suelto llega a 8.
-      const OBJ_DIA = 8;
-      const stats = {};
-      empleados.forEach(e => { stats[e.id] = { dias: new Set(), ord: 0, extra: 0, porDia: {} }; });
-      const entradaTmp = {};
-      (fichs || []).forEach(f => {
-        const s = stats[f.empleado_id];
-        if (!s) return;
-        const d = new Date(f.hora);
-        if (f.tipo === 'entrada') {
-          entradaTmp[f.empleado_id] = d;
-          s.dias.add(d.toDateString());
-        } else if (f.tipo === 'salida' && entradaTmp[f.empleado_id]) {
-          const ini = entradaTmp[f.empleado_id];
-          const h = Math.max(0, (d - ini) / 3600000);
-          const clave = ini.toDateString();               // acumulamos por día natural
-          s.porDia[clave] = (s.porDia[clave] || 0) + h;
-          delete entradaTmp[f.empleado_id];
-        }
-      });
-      // Con el total de cada día ya cerrado, repartimos entre ordinarias y extras
-      Object.values(stats).forEach(s => {
-        Object.values(s.porDia).forEach(hDia => {
-          s.ord   += Math.min(OBJ_DIA, hDia);
-          s.extra += Math.max(0, hDia - OBJ_DIA);
-        });
-      });
+      // 3. Horas con la MISMA regla que firma el socorrista y que sale en la hoja
+      //    de inspección: window.PSJornada, tope de 40 h por semana natural.
+      //    Antes este panel repartía con tope de 8 h/día y daba un tercer número
+      //    distinto de los otros dos (con 6 días de 7 h decía 42 h "normales" y
+      //    0 extras, mientras el trabajador firmaba 40 h + 2 h complementarias).
+      const fmtH = window.PSJornada.fmtH;
+      const porEmp = {};
+      (fichs || []).forEach(f => { (porEmp[f.empleado_id] = porEmp[f.empleado_id] || []).push(f); });
+
       // 4. Construir filas
       let list = empleados.map(e => {
-        const s = stats[e.id];
+        const calc = window.PSJornada.calcular(porEmp[e.id] || []);
         const puesto = (e.puestos && e.puestos.nombre) || '—';
         const iniciales = (e.nombre || '?').split(' ').map(p => p[0]).join('').substring(0,2).toUpperCase();
         return {
@@ -1574,10 +1553,11 @@
           nombre: e.nombre,
           iniciales,
           puesto,
-          dias: s.dias.size,
-          normales: Math.round(s.ord),
-          extras: Math.round(s.extra),
-          total: Math.round(s.ord + s.extra)
+          dias: calc.diasTrabajados,
+          normales: calc.horasFirmadas,
+          extras: calc.horasComplementarias,
+          total: calc.horasReales,
+          sinCerrar: calc.incompletos.length
         };
       });
       // 5. Filtros
@@ -1588,10 +1568,17 @@
       const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long' });
       if (cnt) cnt.textContent = `${nombreMes} · ${list.length} de ${empleados.length}`;
       // 7. Pintar (columna Editar solo visible para admin=dueno)
+      // Las horas que exceden de 40 h/semana son información SOLO del
+      // administrador (su hoja de nómina). Los coordinadores ven las horas con
+      // el tope aplicado, lo mismo que firma el socorrista.
       const esAdmin = ((window.PS_SESSION || {}).rol || rol) === 'dueno';
-      const thAcc = document.getElementById('hoursTableActionsTh');
-      if (thAcc) thAcc.style.display = esAdmin ? '' : 'none';
-      const colspan = esAdmin ? 7 : 6;
+      ['hoursTableActionsTh', 'hoursThExtras', 'hoursThTotal'].forEach(id => {
+        const th = document.getElementById(id);
+        if (th) th.style.display = esAdmin ? '' : 'none';
+      });
+      const optExtra = document.querySelector('#hourFilter option[value="extra"]');
+      if (optExtra) optExtra.hidden = !esAdmin;
+      const colspan = esAdmin ? 7 : 4;
       if (list.length === 0) {
         tbody.innerHTML = `<tr><td colspan="${colspan}" style="padding:30px;text-align:center;color:var(--ink-500,#6B7280);">Sin resultados con este filtro.</td></tr>`;
         return;
@@ -1602,15 +1589,16 @@
             <div class="hours-name">
               <div class="mini-av sky">${s.iniciales}</div>
               <span style="font-weight:500;">${s.nombre}</span>
+              ${s.sinCerrar ? `<span title="${s.sinCerrar} día(s) con entrada sin salida fichada: esas horas no cuentan. Corrígelas en la ficha." style="margin-left:6px;background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap;">⚠ ${s.sinCerrar} sin cerrar</span>` : ''}
             </div>
           </td>
           <td class="text-muted">${s.puesto}</td>
           <td class="num">${s.dias}</td>
-          <td class="num">${s.normales}</td>
-          <td class="num">
-            <span class="hours-extras ${s.extras > 0 ? '' : 'zero'}">${s.extras}</span>
+          <td class="num"><span class="hours-total">${fmtH(s.normales)}h</span></td>
+          ${esAdmin ? `<td class="num">
+            <span class="hours-extras ${s.extras > 0 ? '' : 'zero'}">${fmtH(s.extras)}</span>
           </td>
-          <td class="num"><span class="hours-total">${s.total}h</span></td>
+          <td class="num">${fmtH(s.total)}h</td>` : ''}
           ${esAdmin ? `<td class="num">
             <button class="btn-icon" title="Editar fichajes del mes" onclick="abrirEditorHorasMes('${s.id}','${s.nombre.replace(/'/g,"\\'")}')"
               style="width:32px;height:32px;background:#FEF3C7;color:#92400E;border-radius:8px;border:none;cursor:pointer;">
@@ -1624,8 +1612,241 @@
     }
   }
   window.renderHours = renderHours;
+  /* ==========================================================================
+     HOJA DE NÓMINA · SOLO ADMIN (rol 'dueno')
+     Tercera hoja, deliberadamente separada de las otras dos:
+       · Lo que firma el socorrista y la hoja de inspección llevan las horas
+         ORDINARIAS (tope 40 h/semana natural) — y coinciden entre sí.
+       · Esta lleva las horas REALES fichadas, que es lo que necesita la
+         gestoría para calcular la nómina, con el exceso separado.
+     Los coordinadores NO la ven.
+     ========================================================================== */
+  let nominaCacheFilas = [];
+  let nominaCacheMes = '';
+
+  function nominaEsAdmin() {
+    return ((window.PS_SESSION || {}).rol || rol) === 'dueno';
+  }
+
+  function nominaRellenarSelectorMeses() {
+    const sel = document.getElementById('nominaMes');
+    if (!sel || sel.options.length) return;
+    const hoy = new Date();
+    for (let atras = 0; atras < 6; atras++) {
+      const d = new Date(hoy.getFullYear(), hoy.getMonth() - atras, 1);
+      const cod = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const opt = document.createElement('option');
+      opt.value = cod;
+      opt.textContent = d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+      sel.appendChild(opt);
+    }
+    sel.addEventListener('change', () => renderNomina());
+  }
+
+  async function renderNomina() {
+    const sec = document.getElementById('nominaSection');
+    if (!sec) return;
+    if (!nominaEsAdmin()) { sec.style.display = 'none'; return; }
+    sec.style.display = '';
+    nominaRellenarSelectorMeses();
+
+    const tbody = document.querySelector('#nominaTable tbody');
+    if (!tbody || !window.sb) return;
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--ink-500,#6B7280);">Cargando…</td></tr>';
+    try {
+      const cod = document.getElementById('nominaMes')?.value || new Date().toISOString().slice(0, 7);
+      const [anio, mes] = cod.split('-').map(Number);
+      const desde = new Date(anio, mes - 1, 1).toISOString();
+      const hasta = new Date(anio, mes, 1).toISOString();
+      nominaCacheMes = cod;
+
+      const { data: emps, error: e1 } = await window.sb.from('empleados')
+        .select('id, nombre, puesto_id, puestos(nombre)')
+        .neq('estado', 'eliminado')
+        .order('nombre');
+      if (e1) throw e1;
+      const empleados = emps || [];
+
+      const { data: fichs } = await window.sb.from('fichajes')
+        .select('empleado_id, tipo, hora')
+        .gte('hora', desde).lt('hora', hasta)
+        .order('hora', { ascending: true });
+
+      // Un cálculo por empleado, con el módulo compartido: así la columna
+      // "Ordinarias" de esta hoja es EXACTAMENTE la que firmó el trabajador.
+      const porEmp = {};
+      (fichs || []).forEach(f => {
+        (porEmp[f.empleado_id] = porEmp[f.empleado_id] || []).push(f);
+      });
+
+      const fmtH = window.PSJornada.fmtH;
+      const hhmm = d => d ? d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—';
+      const filas = empleados.map(e => {
+        const calc = window.PSJornada.calcular(porEmp[e.id] || []);
+        // Detalle DÍA A DÍA: es lo que Adam necesita para la gestoría. Se
+        // recalcula en cada render desde los fichajes, así que va al día.
+        const dias = Object.keys(calc.porDia).sort().map(k => {
+          const d = calc.porDia[k];
+          return {
+            fecha: d.fecha,
+            fechaTxt: d.fecha.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+            horario: d.tramos.map(t => `${hhmm(t.entrada)}–${t.salida ? hhmm(t.salida) : '?'}`).join(' · '),
+            reales: d.horas,
+            ordinarias: d.ordinarias,
+            extras: d.complementarias,
+            incompleto: d.incompleto
+          };
+        });
+        return {
+          id: e.id,
+          nombre: e.nombre,
+          puesto: (e.puestos && e.puestos.nombre) || '—',
+          iniciales: (e.nombre || '?').split(' ').map(p => p[0]).join('').substring(0, 2).toUpperCase(),
+          dias: calc.diasTrabajados,
+          reales: calc.horasReales,
+          ordinarias: calc.horasFirmadas,
+          compl: calc.horasComplementarias,
+          incompletos: calc.incompletos.length,
+          detalle: dias
+        };
+      }).filter(x => x.dias > 0 || x.incompletos > 0);
+
+      nominaCacheFilas = filas;
+      const cnt = document.getElementById('nominaCount');
+      if (cnt) cnt.textContent = `${filas.length} con actividad`;
+
+      if (!filas.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--ink-500,#6B7280);">Nadie fichó en este mes.</td></tr>';
+        return;
+      }
+      const totalMes = {
+        dias: filas.reduce((a, x) => a + x.dias, 0),
+        reales: window.PSJornada.r1(filas.reduce((a, x) => a + x.reales, 0)),
+        ord: window.PSJornada.r1(filas.reduce((a, x) => a + x.ordinarias, 0)),
+        compl: window.PSJornada.r1(filas.reduce((a, x) => a + x.compl, 0))
+      };
+
+      tbody.innerHTML = filas.map(s => `
+        <tr class="nomina-row" onclick="toggleNominaDetalle('${s.id}')" style="cursor:pointer;" title="Ver el detalle día a día">
+          <td>
+            <div class="hours-name">
+              <span id="nom-caret-${s.id}" style="display:inline-block;width:14px;color:#64748B;font-size:11px;">▸</span>
+              <div class="mini-av sky">${s.iniciales}</div>
+              <span style="font-weight:500;">${s.nombre}</span>
+            </div>
+          </td>
+          <td class="text-muted">${s.puesto}</td>
+          <td class="num">${s.dias}</td>
+          <td class="num"><b>${fmtH(s.reales)}h</b></td>
+          <td class="num">${fmtH(s.ordinarias)}h</td>
+          <td class="num"><span class="hours-extras ${s.compl > 0 ? '' : 'zero'}">${fmtH(s.compl)}</span></td>
+          <td class="num">${s.incompletos ? `<span style="color:#B45309;font-weight:700;" title="Días con entrada sin salida fichada">⚠ ${s.incompletos}</span>` : '—'}</td>
+        </tr>
+        <tr id="nom-det-${s.id}" style="display:none;">
+          <td colspan="7" style="padding:0 0 10px;background:#F8FAFC;">
+            <div style="padding:10px 14px;">
+              <div class="small" style="font-weight:700;color:#1E3A8A;margin-bottom:6px;">Día a día · ${s.nombre}</div>
+              <div style="overflow-x:auto;">
+              <table class="hours-table" style="width:100%;font-size:12px;">
+                <thead><tr>
+                  <th style="text-align:left;">Día</th>
+                  <th style="text-align:left;">Horario fichado</th>
+                  <th class="num">Reales</th>
+                  <th class="num">Ordinarias</th>
+                  <th class="num">Extras</th>
+                </tr></thead>
+                <tbody>
+                  ${s.detalle.map(d => `
+                    <tr${d.incompleto ? ' style="background:#FEF3C7;"' : ''}>
+                      <td>${d.fechaTxt}${d.incompleto ? ' <b style="color:#92400E;">⚠ sin salida</b>' : ''}</td>
+                      <td class="text-muted">${d.horario || '—'}</td>
+                      <td class="num">${fmtH(d.reales)}h</td>
+                      <td class="num">${fmtH(d.ordinarias)}h</td>
+                      <td class="num">${d.extras > 0 ? `<b style="color:#B45309;">${fmtH(d.extras)}h</b>` : '—'}</td>
+                    </tr>`).join('')}
+                  <tr style="background:#DBEAFE;font-weight:700;">
+                    <td colspan="2">TOTAL DEL MES · ${s.dias} días</td>
+                    <td class="num">${fmtH(s.reales)}h</td>
+                    <td class="num">${fmtH(s.ordinarias)}h</td>
+                    <td class="num">${fmtH(s.compl)}h</td>
+                  </tr>
+                </tbody>
+              </table>
+              </div>
+            </div>
+          </td>
+        </tr>`).join('') + `
+        <tr style="background:#1D4ED8;color:#fff;font-weight:700;">
+          <td colspan="2">TOTAL EQUIPO</td>
+          <td class="num">${totalMes.dias}</td>
+          <td class="num">${fmtH(totalMes.reales)}h</td>
+          <td class="num">${fmtH(totalMes.ord)}h</td>
+          <td class="num">${fmtH(totalMes.compl)}h</td>
+          <td></td>
+        </tr>`;
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="7" style="padding:20px;text-align:center;color:#B91C1C;">Error: ${err.message}</td></tr>`;
+    }
+  }
+  window.renderNomina = renderNomina;
+
+  window.toggleNominaDetalle = function (empId) {
+    const tr = document.getElementById('nom-det-' + empId);
+    const caret = document.getElementById('nom-caret-' + empId);
+    if (!tr) return;
+    const abierto = tr.style.display !== 'none';
+    tr.style.display = abierto ? 'none' : '';
+    if (caret) caret.textContent = abierto ? '▸' : '▾';
+  };
+
+  window.descargarNominaCSV = function () {
+    if (!nominaEsAdmin()) return;
+    if (!nominaCacheFilas.length) { toast('No hay datos que descargar'); return; }
+    const linea = v => `"${String(v).replace(/"/g, '""')}"`;
+    const fila = arr => arr.map(linea).join(';');
+    const out = [
+      fila(['Calculo de nomina · horas reales', nominaCacheMes]),
+      fila(['Ordinarias = horas reales con tope de 40 h por semana natural. Extras = lo que excede de ese tope.']),
+      '',
+      fila(['RESUMEN POR TRABAJADOR']),
+      fila(['Socorrista', 'Puesto', 'Dias', 'Horas reales', 'Ordinarias (40h/sem)', 'Extras', 'Dias sin cerrar'])
+    ];
+    nominaCacheFilas.forEach(s => out.push(fila([s.nombre, s.puesto, s.dias, s.reales, s.ordinarias, s.compl, s.incompletos])));
+    out.push(fila(['TOTAL EQUIPO', '',
+      nominaCacheFilas.reduce((a, x) => a + x.dias, 0),
+      window.PSJornada.r1(nominaCacheFilas.reduce((a, x) => a + x.reales, 0)),
+      window.PSJornada.r1(nominaCacheFilas.reduce((a, x) => a + x.ordinarias, 0)),
+      window.PSJornada.r1(nominaCacheFilas.reduce((a, x) => a + x.compl, 0)),
+      nominaCacheFilas.reduce((a, x) => a + x.incompletos, 0)]));
+
+    // Detalle día a día por trabajador (lo que pide la gestoría para cuadrar)
+    out.push('');
+    out.push(fila(['DETALLE DIA A DIA']));
+    out.push(fila(['Socorrista', 'Dia', 'Horario fichado', 'Horas reales', 'Ordinarias', 'Extras', 'Incidencia']));
+    nominaCacheFilas.forEach(s => {
+      (s.detalle || []).forEach(d => out.push(fila([
+        s.nombre, d.fechaTxt, d.horario || '', d.reales, d.ordinarias, d.extras,
+        d.incompleto ? 'Entrada sin salida fichada' : ''
+      ])));
+      out.push(fila([s.nombre, 'TOTAL MES', s.dias + ' dias', s.reales, s.ordinarias, s.compl, '']));
+    });
+    const csv = out.join('\r\n');
+    // BOM para que Excel en español abra bien los acentos
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `nomina-horas-reales-${nominaCacheMes}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    toast('✓ CSV descargado');
+  };
+
   setTimeout(() => renderHours('all'), 1200);
-  document.querySelectorAll('[data-section="horas"]').forEach(el => el.addEventListener('click', () => setTimeout(() => renderHours(document.getElementById('hourFilter')?.value || 'all'), 200)));
+  setTimeout(() => renderNomina(), 1400);
+  document.querySelectorAll('[data-section="horas"]').forEach(el => el.addEventListener('click', () => setTimeout(() => {
+    renderHours(document.getElementById('hourFilter')?.value || 'all');
+    renderNomina();
+  }, 200)));
   document.getElementById('hourFilter')?.addEventListener('change', e => renderHours(e.target.value));
 
   /* ==========================================================================
@@ -2421,37 +2642,38 @@
         .select('empleado_id, tipo, hora, fuera_de_zona')
         .gte('hora', desde).lt('hora', hasta).order('hora');
 
-      // Igual que en el panel: el tope de 8 h ordinarias es POR DÍA, no por
-      // tramo, para que los turnos partidos se repartan bien.
-      const OBJ_DIA = 8;
-      const stats = {};
-      (emps || []).forEach(e => { stats[e.id] = { dias: new Set(), ord: 0, extra: 0, fueraZona: 0, porDia: {} }; });
-      const entradaTmp = {};
+      // Mismas horas que el panel, que la firma del socorrista y que la hoja de
+      // inspección: window.PSJornada, tope de 40 h por semana natural.
+      const porEmp = {}, fueraZonaPorEmp = {};
       (fichs || []).forEach(f => {
-        const s = stats[f.empleado_id]; if (!s) return;
-        const d = new Date(f.hora);
-        if (f.tipo === 'entrada') { entradaTmp[f.empleado_id] = d; s.dias.add(d.toDateString()); if (f.fuera_de_zona) s.fueraZona++; }
-        else if (f.tipo === 'salida' && entradaTmp[f.empleado_id]) {
-          const ini = entradaTmp[f.empleado_id];
-          const h = Math.max(0, (d - ini) / 3600000);
-          const clave = ini.toDateString();
-          s.porDia[clave] = (s.porDia[clave] || 0) + h;
-          delete entradaTmp[f.empleado_id];
-        }
+        (porEmp[f.empleado_id] = porEmp[f.empleado_id] || []).push(f);
+        if (f.tipo === 'entrada' && f.fuera_de_zona) fueraZonaPorEmp[f.empleado_id] = (fueraZonaPorEmp[f.empleado_id] || 0) + 1;
       });
-      Object.values(stats).forEach(s => {
-        Object.values(s.porDia).forEach(hDia => {
-          s.ord   += Math.min(OBJ_DIA, hDia);
-          s.extra += Math.max(0, hDia - OBJ_DIA);
-        });
+      const stats = {};
+      (emps || []).forEach(e => {
+        const calc = window.PSJornada.calcular(porEmp[e.id] || []);
+        stats[e.id] = {
+          dias: calc.diasTrabajados,
+          ord: calc.horasFirmadas,
+          extra: calc.horasComplementarias,
+          reales: calc.horasReales,
+          sinCerrar: calc.incompletos.length,
+          fueraZona: fueraZonaPorEmp[e.id] || 0
+        };
       });
 
       const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+      // Las horas por encima del tope solo salen en el informe del administrador.
+      const esAdminCsv = ((window.PS_SESSION || {}).rol || rol) === 'dueno';
       const filas = [
         ['Informe de horas del mes', nombreMes],
         ['Pool Safety Des Llevant, S.L. · CIF B75828418'],
         [],
-        ['Socorrista', 'DNI', 'Email', 'Teléfono', 'Puesto', 'Días', 'Horas ordinarias', 'Horas extras', 'Total', 'Fuera de zona']
+        ['Criterio: horas reales por semana natural (lunes-domingo), con tope de 40 h.'],
+        [],
+        esAdminCsv
+          ? ['Socorrista', 'DNI', 'Email', 'Teléfono', 'Puesto', 'Días', 'Horas (tope 40h/sem)', 'Extras', 'Total real', 'Días sin cerrar', 'Fuera de zona']
+          : ['Socorrista', 'DNI', 'Email', 'Teléfono', 'Puesto', 'Días', 'Horas (tope 40h/sem)', 'Días sin cerrar', 'Fuera de zona']
       ];
       (emps || []).forEach(e => {
         const s = stats[e.id];
@@ -2461,18 +2683,22 @@
           e.email || '',
           e.telefono || '',
           (e.puestos && e.puestos.nombre) || '',
-          s.dias.size,
-          Math.round(s.ord),
-          Math.round(s.extra),
-          Math.round(s.ord + s.extra),
+          s.dias,
+          s.ord,
+          ...(esAdminCsv ? [s.extra, s.reales] : []),
+          s.sinCerrar,
           s.fueraZona
         ]);
       });
       // Fila total
-      const totOrd = Object.values(stats).reduce((a, s) => a + s.ord, 0);
-      const totExtra = Object.values(stats).reduce((a, s) => a + s.extra, 0);
+      const r1 = window.PSJornada.r1;
+      const sum = (campo) => r1(Object.values(stats).reduce((a, s) => a + s[campo], 0));
       filas.push([]);
-      filas.push(['TOTAL EMPRESA', '', '', '', '', '', Math.round(totOrd), Math.round(totExtra), Math.round(totOrd + totExtra), '']);
+      // 11 columnas, las mismas que la cabecera.
+      filas.push(['TOTAL EMPRESA', '', '', '', '',
+        sum('dias'), sum('ord'),
+        ...(esAdminCsv ? [sum('extra'), sum('reales')] : []),
+        sum('sinCerrar'), sum('fueraZona')]);
 
       // Serializar como CSV (separador ; para Excel español) con BOM UTF-8
       const csv = '﻿' + filas.map(r => r.map(c => {
@@ -3954,6 +4180,12 @@
 
         const kitFirma = firmasBD.find(f => f.documento_codigo === 'kit-alta');
         const jornadas = firmasBD.filter(f => f.documento_codigo.startsWith('jornada'));
+        // Mes anterior: para poder cerrar un mes que se pasó sin firmar. Antes,
+        // pasada la medianoche del último día, ese mes ya no había forma de
+        // firmarlo desde la app.
+        const _refAnt = new Date(); _refAnt.setDate(1); _refAnt.setMonth(_refAnt.getMonth() - 1);
+        const codigoMesAnterior = `jornada-${_refAnt.getFullYear()}-${String(_refAnt.getMonth() + 1).padStart(2, '0')}`;
+        const nombreMesAnterior = _refAnt.toLocaleDateString('es-ES', { month: 'long' });
         const finiquitos = firmasBD.filter(f => f.documento_codigo.startsWith('finiquito'));
 
         body.innerHTML = `
@@ -4001,9 +4233,10 @@
                 <div class="ficha-action-title">${j.documento_codigo}</div>
                 <div class="ficha-action-sub">Firmado el ${new Date(j.fecha_firma).toLocaleString('es-ES')}</div>
                 <div class="small text-muted mt-1">
-                  Firmadas <b>${c.horas_firmadas || '—'}h</b>
-                  ${c.horas_reales && c.horas_reales > (c.horas_firmadas || 0) ? ` · Reales ${c.horas_reales}h (${c.horas_reales - (c.horas_firmadas || 0)}h extra)` : ''}
+                  Firmadas <b>${c.horas_firmadas != null ? window.PSJornada.fmtH(c.horas_firmadas) + 'h' : '—'}</b> ordinarias
+                  ${c.horas_reales && c.horas_reales > (c.horas_firmadas || 0) ? ` · Reales ${window.PSJornada.fmtH(c.horas_reales)}h (${window.PSJornada.fmtH(c.horas_reales - (c.horas_firmadas || 0))}h complementarias)` : ''}
                   ${c.dias_trabajados ? ' · ' + c.dias_trabajados + ' días' : ''}
+                  ${c.regla ? `<br><span style="color:#64748B;">Regla: ${c.regla}</span>` : ''}
                 </div>
                 ${j.firma_imagen ? `<img src="${j.firma_imagen}" class="firma-imagen" style="max-width:180px;margin-top:8px;" alt="Firma"/>` : ''}
               </div>
@@ -4056,10 +4289,14 @@
             <div class="icon"><svg class="ic ic-18"><use href="#ic-bell"/></svg></div>
             <div class="ficha-action-body">
               <div class="ficha-action-title">Solicitar firma de registro mensual</div>
-              <div class="ficha-action-sub">Genera una solicitud para que ${(e.nombre||'el trabajador').replace(/'/g,'\\\'')} firme las horas trabajadas hasta hoy. Le aparece EN EL ACTO en su app (Realtime).</div>
+              <div class="ficha-action-sub">Genera una solicitud para que ${(e.nombre||'el trabajador').replace(/'/g,'\\\'')} firme las horas trabajadas. Le aparece EN EL ACTO en su app (Realtime). Las horas se calculan con el tope de 40 h por semana natural, igual que en la hoja de inspección.</div>
             </div>
           </div>
           <div class="row gap-2 mt-3" style="justify-content:flex-end;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="solicitarRegistroMensual('${e.id}','${(e.nombre||'').replace(/'/g,'\\\'')}','${codigoMesAnterior}')">
+              <svg class="ic ic-16"><use href="#ic-clock"/></svg>
+              Pedir firma de ${nombreMesAnterior}
+            </button>
             <button class="btn btn-primary btn-sm" onclick="solicitarRegistroMensual('${e.id}','${(e.nombre||'').replace(/'/g,'\\\'')}')">
               <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
               Mandar horas para firmar ahora
@@ -6231,30 +6468,40 @@
   // Solicitar firma de registro mensual: calcula horas hasta HOY y crea tarea
   // "Firmar registro mensual pendiente" en tabla tareas. El socorrista lo verá
   // en la sección Docs y podrá firmarlo con las horas reales trabajadas hasta la fecha.
-  window.solicitarRegistroMensual = async function (empId, nombre) {
+  // `codigoMes` opcional ('jornada-YYYY-MM'). Sin él, el mes en curso.
+  // Se puede pedir la firma de un mes ya cerrado: el código viaja dentro de la
+  // descripción de la tarea y la app del socorrista lo lee de ahí.
+  window.solicitarRegistroMensual = async function (empId, nombre, codigoMes) {
     try {
-      // Calcular horas hasta HOY del mes actual
       const hoy = new Date();
-      const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
-      const hasta = hoy.toISOString();
+      const mm = (codigoMes || '').match(/jornada-(\d{4})-(\d{2})/);
+      const anio = mm ? parseInt(mm[1]) : hoy.getFullYear();
+      const mesIdx = mm ? parseInt(mm[2]) - 1 : hoy.getMonth();
+      const codigo = `jornada-${anio}-${String(mesIdx + 1).padStart(2, '0')}`;
+      const desde = new Date(anio, mesIdx, 1).toISOString();
+      const finMes = new Date(anio, mesIdx + 1, 1).getTime();
+      // Nunca más allá del fin del mes que se pide firmar.
+      const hasta = new Date(Math.min(Date.now(), finMes)).toISOString();
       const { data: fichs } = await window.sb.from('fichajes')
         .select('id, tipo, hora').eq('empleado_id', empId)
         .gte('hora', desde).lt('hora', hasta).order('hora', { ascending: true });
-      let totalMins = 0, entrada = null;
-      (fichs || []).forEach(f => {
-        if (f.tipo === 'entrada') entrada = new Date(f.hora);
-        else if (f.tipo === 'salida' && entrada) {
-          totalMins += Math.max(0, (new Date(f.hora) - entrada) / 60000);
-          entrada = null;
-        }
-      });
-      const horas = Math.round(totalMins / 60);
-      const dias = new Set((fichs || []).filter(f => f.tipo === 'entrada').map(f => new Date(f.hora).toDateString())).size;
-      const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+      // MISMO cálculo que verá el socorrista al firmar y que saldrá en la hoja
+      // de inspección. Antes aquí se sumaba el total en bruto sin el tope de
+      // 40 h/semana, así que el coordinador leía un número (42 h) y el
+      // trabajador firmaba otro (40 h).
+      const calc = window.PSJornada.calcular(fichs || [], { hasta });
+      const fmtH = window.PSJornada.fmtH;
+      const horas = calc.horasFirmadas;
+      const dias = calc.diasTrabajados;
+      const nombreMes = new Date(anio, mesIdx, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
       const msg = `Solicitar a ${nombre} que firme el registro mensual de ${nombreMes}?\n\n` +
-        `• Horas hasta hoy: ${horas}h\n• Días trabajados: ${dias}\n\n` +
-        `Le saltará el aviso EN EL ACTO en su app (Realtime).`;
+        `• Horas ordinarias a firmar: ${fmtH(horas)}h (tope 40 h/semana)\n` +
+        `• Horas reales trabajadas: ${fmtH(calc.horasReales)}h\n` +
+        (calc.horasComplementarias > 0 ? `• Complementarias: ${fmtH(calc.horasComplementarias)}h\n` : '') +
+        `• Días trabajados: ${dias}\n` +
+        (calc.incompletos.length ? `\n⚠ ${calc.incompletos.length} día(s) con entrada SIN SALIDA fichada. Esas horas no cuentan: corrígelas antes de pedir la firma.\n` : '') +
+        `\nLe saltará el aviso EN EL ACTO en su app (Realtime).`;
       if (!confirm(msg)) return;
 
       // Borrar solicitud previa idéntica para no duplicar
@@ -6263,12 +6510,12 @@
       const { error: errT } = await window.sb.from('tareas').insert({
         empleado_id: empId,
         titulo: 'Firmar registro mensual pendiente',
-        descripcion: `Firma tu registro de jornada de ${nombreMes} con las horas trabajadas hasta hoy (${horas}h en ${dias} días).`,
+        descripcion: `Firma tu registro de jornada de ${nombreMes} [${codigo}]: ${fmtH(horas)}h ordinarias en ${dias} días.`,
         prioridad: 'alta',
         hecha: false
       });
       if (errT) throw errT;
-      toast(`✓ ${nombre}: le llega la solicitud de firma de ${horas}h`);
+      toast(`✓ ${nombre}: le llega la solicitud de firma de ${fmtH(horas)}h`);
       if (window.renderFicha && fichaActualId === empId) renderFicha();
     } catch (err) { toast('Error: ' + err.message); }
   };
