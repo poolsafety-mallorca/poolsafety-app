@@ -1449,11 +1449,13 @@
       // Mismo cálculo que todo lo demás (window.PSJornada). Aquí se muestran las
       // horas REALES trabajadas, que es lo que el socorrista espera ver en su
       // pantalla; las ordinarias con tope de 40 h/semana salen al firmar.
+      // El socorrista ve SIEMPRE sus horas con el tope de 40 h/semana aplicado,
+      // nunca las reales por encima del tope: es lo mismo que firmará.
       const calc = window.PSJornada.calcular(fichs || []);
       const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long' });
       if (elDias) elDias.textContent = String(calc.diasTrabajados);
       if (elDiasSub) elDiasSub.textContent = `en ${nombreMes}`;
-      if (elHoras) elHoras.innerHTML = `${window.PSJornada.fmtH(calc.horasReales)}<span class="unit">h</span>`;
+      if (elHoras) elHoras.innerHTML = `${window.PSJornada.fmtH(calc.horasFirmadas)}<span class="unit">h</span>`;
       if (elHorasSub) {
         elHorasSub.textContent = calc.incompletos.length
           ? `en ${nombreMes} · ⚠ ${calc.incompletos.length} día(s) sin cerrar`
@@ -2877,10 +2879,12 @@
     const filasSemanas = semanas.length === 0
       ? '<div class="jornada-note small">Este mes aún no tienes ningún fichaje registrado.</div>'
       : semanas.map(s => {
-          const cap = s.horas_complementarias > 0 ? ` <span class="small" style="color:#B45309;">(+${fmtH(s.horas_complementarias)}h complementarias)</span>` : '';
+          // Al socorrista NO se le muestran ni las horas reales por encima del tope
+          // ni las complementarias: firma sus horas reales con tope de 40 h/semana
+          // y punto. El exceso es cosa del admin (hoja de nómina).
           return `<div class="jornada-row">
-            <span>Semana ${s.rangoTxt} · ${s.dias} día${s.dias===1?'':'s'} · ${fmtH(s.horas_reales)}h reales</span>
-            <b>${fmtH(s.horas_firmadas)}h</b>${cap}
+            <span>Semana ${s.rangoTxt} · ${s.dias} día${s.dias===1?'':'s'}</span>
+            <b>${fmtH(s.horas_firmadas)}h</b>
           </div>`;
         }).join('');
 
@@ -2888,14 +2892,13 @@
       <div class="jornada-summary">
         <div class="jornada-row"><span>Mes</span><b>${nombreMes}</b></div>
         <div class="jornada-row"><span>Días trabajados</span><b>${diasTrabajados}</b></div>
-        <div style="margin:8px 0;padding-top:8px;border-top:1px dashed #cbd5e1;"><b>Desglose semanal (cap 40h/sem)</b></div>
+        <div style="margin:8px 0;padding-top:8px;border-top:1px dashed #cbd5e1;"><b>Desglose semanal (máx. 40 h/semana)</b></div>
         ${filasSemanas}
         <div class="jornada-row total" style="border-top:1px solid #cbd5e1;padding-top:6px;margin-top:6px;">
           <span>Total del mes que firmas</span>
           <b>${fmtH(horasFirmadas)}h ordinarias</b>
         </div>
-        ${horasCompl > 0 ? `<div class="jornada-note small">Horas reales trabajadas: ${fmtH(horasReales)}h. Las ${fmtH(horasCompl)}h de exceso son horas complementarias.</div>` : ''}
-        <div class="jornada-note small" style="color:#475569;">Estas cifras son exactamente las mismas que salen en la hoja mensual oficial que recibe tu coordinador.</div>
+        <div class="jornada-note small" style="color:#475569;">Máximo 40 h por semana. Estas cifras son exactamente las mismas que salen en la hoja mensual oficial.</div>
         ${incompletos.length ? `<div class="jornada-note small" style="background:#FEF3C7;border:1px solid #F59E0B;color:#92400E;padding:8px;border-radius:8px;margin-top:8px;">
           <b>⚠ ${incompletos.length} día${incompletos.length===1?'':'s'} sin fichar la salida</b><br>
           ${incompletos.map(t => new Date(t.entrada).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit' }) + ' (entrada ' + new Date(t.entrada).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) + ')').join(', ')}.

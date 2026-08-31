@@ -1568,10 +1568,17 @@
       const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long' });
       if (cnt) cnt.textContent = `${nombreMes} · ${list.length} de ${empleados.length}`;
       // 7. Pintar (columna Editar solo visible para admin=dueno)
+      // Las horas que exceden de 40 h/semana son información SOLO del
+      // administrador (su hoja de nómina). Los coordinadores ven las horas con
+      // el tope aplicado, lo mismo que firma el socorrista.
       const esAdmin = ((window.PS_SESSION || {}).rol || rol) === 'dueno';
-      const thAcc = document.getElementById('hoursTableActionsTh');
-      if (thAcc) thAcc.style.display = esAdmin ? '' : 'none';
-      const colspan = esAdmin ? 7 : 6;
+      ['hoursTableActionsTh', 'hoursThExtras', 'hoursThTotal'].forEach(id => {
+        const th = document.getElementById(id);
+        if (th) th.style.display = esAdmin ? '' : 'none';
+      });
+      const optExtra = document.querySelector('#hourFilter option[value="extra"]');
+      if (optExtra) optExtra.hidden = !esAdmin;
+      const colspan = esAdmin ? 7 : 4;
       if (list.length === 0) {
         tbody.innerHTML = `<tr><td colspan="${colspan}" style="padding:30px;text-align:center;color:var(--ink-500,#6B7280);">Sin resultados con este filtro.</td></tr>`;
         return;
@@ -1587,11 +1594,11 @@
           </td>
           <td class="text-muted">${s.puesto}</td>
           <td class="num">${s.dias}</td>
-          <td class="num">${fmtH(s.normales)}</td>
-          <td class="num">
+          <td class="num"><span class="hours-total">${fmtH(s.normales)}h</span></td>
+          ${esAdmin ? `<td class="num">
             <span class="hours-extras ${s.extras > 0 ? '' : 'zero'}">${fmtH(s.extras)}</span>
           </td>
-          <td class="num"><span class="hours-total">${fmtH(s.total)}h</span></td>
+          <td class="num">${fmtH(s.total)}h</td>` : ''}
           ${esAdmin ? `<td class="num">
             <button class="btn-icon" title="Editar fichajes del mes" onclick="abrirEditorHorasMes('${s.id}','${s.nombre.replace(/'/g,"\\'")}')"
               style="width:32px;height:32px;background:#FEF3C7;color:#92400E;border-radius:8px;border:none;cursor:pointer;">
@@ -1673,8 +1680,23 @@
       });
 
       const fmtH = window.PSJornada.fmtH;
+      const hhmm = d => d ? d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—';
       const filas = empleados.map(e => {
         const calc = window.PSJornada.calcular(porEmp[e.id] || []);
+        // Detalle DÍA A DÍA: es lo que Adam necesita para la gestoría. Se
+        // recalcula en cada render desde los fichajes, así que va al día.
+        const dias = Object.keys(calc.porDia).sort().map(k => {
+          const d = calc.porDia[k];
+          return {
+            fecha: d.fecha,
+            fechaTxt: d.fecha.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+            horario: d.tramos.map(t => `${hhmm(t.entrada)}–${t.salida ? hhmm(t.salida) : '?'}`).join(' · '),
+            reales: d.horas,
+            ordinarias: d.ordinarias,
+            extras: d.complementarias,
+            incompleto: d.incompleto
+          };
+        });
         return {
           id: e.id,
           nombre: e.nombre,
@@ -1684,7 +1706,8 @@
           reales: calc.horasReales,
           ordinarias: calc.horasFirmadas,
           compl: calc.horasComplementarias,
-          incompletos: calc.incompletos.length
+          incompletos: calc.incompletos.length,
+          detalle: dias
         };
       }).filter(x => x.dias > 0 || x.incompletos > 0);
 
@@ -1696,30 +1719,118 @@
         tbody.innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--ink-500,#6B7280);">Nadie fichó en este mes.</td></tr>';
         return;
       }
+      const totalMes = {
+        dias: filas.reduce((a, x) => a + x.dias, 0),
+        reales: window.PSJornada.r1(filas.reduce((a, x) => a + x.reales, 0)),
+        ord: window.PSJornada.r1(filas.reduce((a, x) => a + x.ordinarias, 0)),
+        compl: window.PSJornada.r1(filas.reduce((a, x) => a + x.compl, 0))
+      };
+
       tbody.innerHTML = filas.map(s => `
-        <tr>
-          <td><div class="hours-name"><div class="mini-av sky">${s.iniciales}</div><span style="font-weight:500;">${s.nombre}</span></div></td>
+        <tr class="nomina-row" onclick="toggleNominaDetalle('${s.id}')" style="cursor:pointer;" title="Ver el detalle día a día">
+          <td>
+            <div class="hours-name">
+              <span id="nom-caret-${s.id}" style="display:inline-block;width:14px;color:#64748B;font-size:11px;">▸</span>
+              <div class="mini-av sky">${s.iniciales}</div>
+              <span style="font-weight:500;">${s.nombre}</span>
+            </div>
+          </td>
           <td class="text-muted">${s.puesto}</td>
           <td class="num">${s.dias}</td>
           <td class="num"><b>${fmtH(s.reales)}h</b></td>
           <td class="num">${fmtH(s.ordinarias)}h</td>
           <td class="num"><span class="hours-extras ${s.compl > 0 ? '' : 'zero'}">${fmtH(s.compl)}</span></td>
           <td class="num">${s.incompletos ? `<span style="color:#B45309;font-weight:700;" title="Días con entrada sin salida fichada">⚠ ${s.incompletos}</span>` : '—'}</td>
-        </tr>`).join('');
+        </tr>
+        <tr id="nom-det-${s.id}" style="display:none;">
+          <td colspan="7" style="padding:0 0 10px;background:#F8FAFC;">
+            <div style="padding:10px 14px;">
+              <div class="small" style="font-weight:700;color:#1E3A8A;margin-bottom:6px;">Día a día · ${s.nombre}</div>
+              <div style="overflow-x:auto;">
+              <table class="hours-table" style="width:100%;font-size:12px;">
+                <thead><tr>
+                  <th style="text-align:left;">Día</th>
+                  <th style="text-align:left;">Horario fichado</th>
+                  <th class="num">Reales</th>
+                  <th class="num">Ordinarias</th>
+                  <th class="num">Extras</th>
+                </tr></thead>
+                <tbody>
+                  ${s.detalle.map(d => `
+                    <tr${d.incompleto ? ' style="background:#FEF3C7;"' : ''}>
+                      <td>${d.fechaTxt}${d.incompleto ? ' <b style="color:#92400E;">⚠ sin salida</b>' : ''}</td>
+                      <td class="text-muted">${d.horario || '—'}</td>
+                      <td class="num">${fmtH(d.reales)}h</td>
+                      <td class="num">${fmtH(d.ordinarias)}h</td>
+                      <td class="num">${d.extras > 0 ? `<b style="color:#B45309;">${fmtH(d.extras)}h</b>` : '—'}</td>
+                    </tr>`).join('')}
+                  <tr style="background:#DBEAFE;font-weight:700;">
+                    <td colspan="2">TOTAL DEL MES · ${s.dias} días</td>
+                    <td class="num">${fmtH(s.reales)}h</td>
+                    <td class="num">${fmtH(s.ordinarias)}h</td>
+                    <td class="num">${fmtH(s.compl)}h</td>
+                  </tr>
+                </tbody>
+              </table>
+              </div>
+            </div>
+          </td>
+        </tr>`).join('') + `
+        <tr style="background:#1D4ED8;color:#fff;font-weight:700;">
+          <td colspan="2">TOTAL EQUIPO</td>
+          <td class="num">${totalMes.dias}</td>
+          <td class="num">${fmtH(totalMes.reales)}h</td>
+          <td class="num">${fmtH(totalMes.ord)}h</td>
+          <td class="num">${fmtH(totalMes.compl)}h</td>
+          <td></td>
+        </tr>`;
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="7" style="padding:20px;text-align:center;color:#B91C1C;">Error: ${err.message}</td></tr>`;
     }
   }
   window.renderNomina = renderNomina;
 
+  window.toggleNominaDetalle = function (empId) {
+    const tr = document.getElementById('nom-det-' + empId);
+    const caret = document.getElementById('nom-caret-' + empId);
+    if (!tr) return;
+    const abierto = tr.style.display !== 'none';
+    tr.style.display = abierto ? 'none' : '';
+    if (caret) caret.textContent = abierto ? '▸' : '▾';
+  };
+
   window.descargarNominaCSV = function () {
     if (!nominaEsAdmin()) return;
     if (!nominaCacheFilas.length) { toast('No hay datos que descargar'); return; }
-    const cab = ['Socorrista', 'Puesto', 'Dias', 'Horas reales', 'Ordinarias (40h/sem)', 'Complementarias', 'Dias sin cerrar'];
     const linea = v => `"${String(v).replace(/"/g, '""')}"`;
-    const csv = [cab.map(linea).join(';')]
-      .concat(nominaCacheFilas.map(s => [s.nombre, s.puesto, s.dias, s.reales, s.ordinarias, s.compl, s.incompletos].map(linea).join(';')))
-      .join('\r\n');
+    const fila = arr => arr.map(linea).join(';');
+    const out = [
+      fila(['Calculo de nomina · horas reales', nominaCacheMes]),
+      fila(['Ordinarias = horas reales con tope de 40 h por semana natural. Extras = lo que excede de ese tope.']),
+      '',
+      fila(['RESUMEN POR TRABAJADOR']),
+      fila(['Socorrista', 'Puesto', 'Dias', 'Horas reales', 'Ordinarias (40h/sem)', 'Extras', 'Dias sin cerrar'])
+    ];
+    nominaCacheFilas.forEach(s => out.push(fila([s.nombre, s.puesto, s.dias, s.reales, s.ordinarias, s.compl, s.incompletos])));
+    out.push(fila(['TOTAL EQUIPO', '',
+      nominaCacheFilas.reduce((a, x) => a + x.dias, 0),
+      window.PSJornada.r1(nominaCacheFilas.reduce((a, x) => a + x.reales, 0)),
+      window.PSJornada.r1(nominaCacheFilas.reduce((a, x) => a + x.ordinarias, 0)),
+      window.PSJornada.r1(nominaCacheFilas.reduce((a, x) => a + x.compl, 0)),
+      nominaCacheFilas.reduce((a, x) => a + x.incompletos, 0)]));
+
+    // Detalle día a día por trabajador (lo que pide la gestoría para cuadrar)
+    out.push('');
+    out.push(fila(['DETALLE DIA A DIA']));
+    out.push(fila(['Socorrista', 'Dia', 'Horario fichado', 'Horas reales', 'Ordinarias', 'Extras', 'Incidencia']));
+    nominaCacheFilas.forEach(s => {
+      (s.detalle || []).forEach(d => out.push(fila([
+        s.nombre, d.fechaTxt, d.horario || '', d.reales, d.ordinarias, d.extras,
+        d.incompleto ? 'Entrada sin salida fichada' : ''
+      ])));
+      out.push(fila([s.nombre, 'TOTAL MES', s.dias + ' dias', s.reales, s.ordinarias, s.compl, '']));
+    });
+    const csv = out.join('\r\n');
     // BOM para que Excel en español abra bien los acentos
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
@@ -2552,13 +2663,17 @@
       });
 
       const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+      // Las horas por encima del tope solo salen en el informe del administrador.
+      const esAdminCsv = ((window.PS_SESSION || {}).rol || rol) === 'dueno';
       const filas = [
         ['Informe de horas del mes', nombreMes],
         ['Pool Safety Des Llevant, S.L. · CIF B75828418'],
         [],
-        ['Criterio: horas reales por semana natural (lunes-domingo), hasta 40 h ordinarias; el exceso es complementario.'],
+        ['Criterio: horas reales por semana natural (lunes-domingo), con tope de 40 h.'],
         [],
-        ['Socorrista', 'DNI', 'Email', 'Teléfono', 'Puesto', 'Días', 'Horas ordinarias', 'Horas complementarias', 'Total real', 'Días sin cerrar', 'Fuera de zona']
+        esAdminCsv
+          ? ['Socorrista', 'DNI', 'Email', 'Teléfono', 'Puesto', 'Días', 'Horas (tope 40h/sem)', 'Extras', 'Total real', 'Días sin cerrar', 'Fuera de zona']
+          : ['Socorrista', 'DNI', 'Email', 'Teléfono', 'Puesto', 'Días', 'Horas (tope 40h/sem)', 'Días sin cerrar', 'Fuera de zona']
       ];
       (emps || []).forEach(e => {
         const s = stats[e.id];
@@ -2570,8 +2685,7 @@
           (e.puestos && e.puestos.nombre) || '',
           s.dias,
           s.ord,
-          s.extra,
-          s.reales,
+          ...(esAdminCsv ? [s.extra, s.reales] : []),
           s.sinCerrar,
           s.fueraZona
         ]);
@@ -2581,7 +2695,10 @@
       const sum = (campo) => r1(Object.values(stats).reduce((a, s) => a + s[campo], 0));
       filas.push([]);
       // 11 columnas, las mismas que la cabecera.
-      filas.push(['TOTAL EMPRESA', '', '', '', '', sum('dias'), sum('ord'), sum('extra'), sum('reales'), sum('sinCerrar'), sum('fueraZona')]);
+      filas.push(['TOTAL EMPRESA', '', '', '', '',
+        sum('dias'), sum('ord'),
+        ...(esAdminCsv ? [sum('extra'), sum('reales')] : []),
+        sum('sinCerrar'), sum('fueraZona')]);
 
       // Serializar como CSV (separador ; para Excel español) con BOM UTF-8
       const csv = '﻿' + filas.map(r => r.map(c => {

@@ -367,7 +367,10 @@ window.PSPdf = (function () {
       doc.setTextColor(0, 0, 0);
     } else {
       // Tabla desglose semanal
-      const cols = [{ h: 'Semana', w: 60 }, { h: 'Días', w: 20, num: true }, { h: 'H. reales', w: 30, num: true }, { h: 'H. firmadas', w: 35, num: true }, { h: 'Extras', w: 25, num: true }];
+      // Este es el documento del TRABAJADOR: solo lo que firma, con el tope de
+      // 40 h/semana ya aplicado. Ni horas reales por encima del tope ni extras:
+      // eso solo existe en la hoja de nómina del administrador.
+      const cols = [{ h: 'Semana', w: 85 }, { h: 'Días', w: 30, num: true }, { h: 'Horas', w: 55, num: true }];
       // Header
       doc.setFillColor(240, 240, 240);
       doc.setDrawColor(200, 200, 200);
@@ -383,8 +386,7 @@ window.PSPdf = (function () {
         y = checkPage(doc, y, 6);
         doc.rect(15, y, anchoTot, 5.5, 'D');
         cx = 15;
-        const extras = Math.max(0, (s.horas_reales || 0) - (s.horas_firmadas || 0));
-        const valores = [s.rangoTxt || '—', String(s.dias || 0), `${fmtH(s.horas_reales)}h`, `${fmtH(s.horas_firmadas)}h`, extras > 0 ? `${fmtH(extras)}h` : '—'];
+        const valores = [s.rangoTxt || '—', String(s.dias || 0), `${fmtH(s.horas_firmadas)}h`];
         valores.forEach((v, i) => {
           const c = cols[i];
           doc.text(v, cx + (c.num ? c.w - 2 : 2), y + 4, c.num ? { align: 'right' } : {});
@@ -397,15 +399,9 @@ window.PSPdf = (function () {
       doc.rect(15, y, anchoTot, 6, 'FD');
       doc.setFont('helvetica', 'bold');
       cx = 15;
-      const totExtras = Math.max(0, (campos.horas_reales || 0) - (campos.horas_firmadas || 0));
-      const tots = [`TOTAL MES (${campos.dias_trabajados || 0} días)`, '', `${fmtH(campos.horas_reales)}h`, `${fmtH(campos.horas_firmadas)}h`, totExtras > 0 ? `${fmtH(totExtras)}h` : '—'];
-      // Combinar 1ª y 2ª columna para el label
-      doc.text(tots[0], 17, y + 4);
-      cx = 15 + cols[0].w + cols[1].w;
-      for (let i = 2; i < 5; i++) {
-        doc.text(tots[i], cx + cols[i].w - 2, y + 4, { align: 'right' });
-        cx += cols[i].w;
-      }
+      // Label ocupando las dos primeras columnas + total de horas firmadas
+      doc.text(`TOTAL MES (${campos.dias_trabajados || 0} días)`, 17, y + 4);
+      doc.text(`${fmtH(campos.horas_firmadas)}h`, 15 + cols[0].w + cols[1].w + cols[2].w - 2, y + 4, { align: 'right' });
       y += 8;
       doc.setFont('helvetica', 'normal');
     }
@@ -593,8 +589,8 @@ window.PSPdf = (function () {
 
     // Filas
     doc.setFontSize(7.5);
-    let totalOrd = 0, totalCompl = 0;
-    let totalOrdFest = 0, totalComplFest = 0; // horas trabajadas en festivo/finde
+    let totalOrd = 0;
+    let totalOrdFest = 0; // horas ordinarias en festivo/domingo
     for (let dia = 1; dia <= diasEnMes; dia++) {
       y = checkPage(doc, y, 8);
       const fecha = new Date(anioNum, mesNum, dia);
@@ -619,12 +615,16 @@ window.PSPdf = (function () {
         salida  = d.tramos.map(t => t.salida ? hhmm(t.salida) : '—').join(' / ');
         // Ordinarias/complementarias YA vienen repartidas por PSJornada con el
         // tope de 40 h/semana, igual que en el modal de firma del socorrista.
-        if (d.horas > 0) {
+        // La hoja de inspección refleja SOLO jornada ordinaria, con el tope de
+        // 40 h/semana ya aplicado. La columna de complementarias se mantiene
+        // porque forma parte del formato oficial, pero va SIEMPRE VACÍA: el
+        // exceso sobre 40 h no aparece en este documento, solo en la hoja de
+        // nómina del administrador.
+        if (d.ordinarias > 0) {
           horasOrd = PSJ.fmtH(d.ordinarias);
-          horasCompl = d.complementarias > 0 ? PSJ.fmtH(d.complementarias) : '';
+          horasCompl = '';
           totalOrd += d.ordinarias;
-          totalCompl += d.complementarias;
-          if (especial) { totalOrdFest += d.ordinarias; totalComplFest += d.complementarias; }
+          if (especial) totalOrdFest += d.ordinarias;
         }
       }
 
@@ -665,19 +665,19 @@ window.PSPdf = (function () {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.text(`Total horas ordinarias: ${PSJ.fmtH(totalOrd)}h`, 15, y);
-    doc.text(`Total horas complementarias: ${PSJ.fmtH(totalCompl)}h`, 110, y);
+    doc.text('Total horas complementarias: 0h', 110, y);
     y += 5;
-    if (totalOrdFest + totalComplFest > 0) {
+    if (totalOrdFest > 0) {
       doc.setTextColor(155, 28, 28);
-      doc.text(`De las cuales, en festivo/domingo: ${PSJ.fmtH(totalOrdFest + totalComplFest)}h`, 15, y);
+      doc.text(`De las cuales, en festivo/domingo: ${PSJ.fmtH(totalOrdFest)}h`, 15, y);
       doc.setTextColor(0, 0, 0);
       y += 5;
     }
-    // Criterio de reparto, para que quien lea la hoja sepa de dónde salen las cifras
+    // Criterio, para que quien lea la hoja sepa de dónde salen las cifras
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(120, 120, 120);
-    doc.text('Reparto: se suman las horas reales de cada semana natural (lunes a domingo); hasta 40 h son ordinarias y el exceso, complementario.', 15, y);
+    doc.text('Jornada ordinaria con maximo de 40 h por semana natural (lunes a domingo). Esta hoja recoge unicamente jornada ordinaria.', 15, y);
     doc.setTextColor(0, 0, 0);
     y += 4;
     if (calc.incompletos.length) {
