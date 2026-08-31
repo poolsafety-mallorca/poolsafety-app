@@ -4230,7 +4230,10 @@
             <div style="display:flex;gap:10px;align-items:flex-start;">
               <div class="icon"><svg class="ic ic-18"><use href="#ic-clock"/></svg></div>
               <div class="ficha-action-body">
-                <div class="ficha-action-title">${j.documento_codigo}</div>
+                <div class="ficha-action-title">Registro de jornada · ${(() => {
+                  const m = (j.documento_codigo || '').match(/jornada-(\d{4})-(\d{2})/);
+                  return m ? new Date(+m[1], +m[2] - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }) : j.documento_codigo;
+                })()}</div>
                 <div class="ficha-action-sub">Firmado el ${new Date(j.fecha_firma).toLocaleString('es-ES')}</div>
                 <div class="small text-muted mt-1">
                   Firmadas <b>${c.horas_firmadas != null ? window.PSJornada.fmtH(c.horas_firmadas) + 'h' : '—'}</b> ordinarias
