@@ -711,10 +711,11 @@
         <div class="panel-title-wrap">
           <h3 class="panel-title">Horas del mes por socorrista</h3>
           <span class="panel-count" id="hoursPanelCount">—</span>
+          <span class="small text-muted" style="margin-left:8px;">Horas reales con tope de 40 h/semana, igual que lo que firma el socorrista y que la hoja de inspección.</span>
         </div>
         <div class="row gap-2">
           <select id="hourFilter" style="padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; background: #fff; color: var(--ink-700); font-weight: 500;">
-            <option value="all">Todos (150)</option>
+            <option value="all">Todos</option>
             <option value="extra">Con horas extra</option>
             <option value="top">Top 10 más horas</option>
           </select>
@@ -730,10 +731,58 @@
               <th>Socorrista</th>
               <th>Puesto</th>
               <th class="num">Días</th>
-              <th class="num">Normales</th>
-              <th class="num">Extras</th>
-              <th class="num">Total</th>
+              <th class="num" title="Horas reales con tope de 40 h por semana natural">Horas</th>
+              <!-- Extras y total real: SOLO administrador. Se muestran desde JS. -->
+              <th class="num" id="hoursThExtras" style="display:none;" title="Lo que excede de 40 h en la semana">Extras</th>
+              <th class="num" id="hoursThTotal" style="display:none;">Total real</th>
               <th class="num" id="hoursTableActionsTh" style="display:none;">Editar</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ HOJA DE NÓMINA · SOLO ADMIN ============
+         Tercera hoja, distinta de las otras dos a propósito:
+           · Modal de firma del socorrista → lo que firma (40 h/sem)
+           · Hoja mensual de inspección    → lo mismo, día a día
+           · ESTA                          → horas REALES para calcular nómina
+         Solo la ve el administrador (rol 'dueno'). Se muestra desde JS. -->
+    <section class="panel" id="nominaSection" style="display:none;margin-top:18px;border:2px solid #1D4ED8;">
+      <div class="panel-head" style="background:#EFF6FF;">
+        <div class="panel-title-wrap">
+          <div class="kpi-icon" style="width:30px;height:30px;background:linear-gradient(135deg,#1D4ED8,#3B82F6);color:#fff;">
+            <svg class="ic ic-16"><use href="#ic-file-text"/></svg>
+          </div>
+          <h3 class="panel-title">Cálculo de nómina · horas reales</h3>
+          <span class="panel-count" id="nominaCount">—</span>
+        </div>
+        <div class="row gap-2" style="align-items:center;flex-wrap:wrap;">
+          <select id="nominaMes" style="padding:8px 12px;border-radius:999px;border:1px solid var(--line);font-size:13px;background:#fff;color:var(--ink-700);font-weight:500;"></select>
+          <button class="btn btn-outline btn-icon" title="Descargar CSV para la gestoría" onclick="descargarNominaCSV()">
+            <svg class="ic ic-16"><use href="#ic-download"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="panel-body" style="padding:10px 14px 0;">
+        <div class="small" style="background:#DBEAFE;border:1px solid #93C5FD;color:#1E3A8A;padding:8px 10px;border-radius:8px;">
+          <b>Solo tú ves esta tabla.</b> Aquí están las horas <b>reales</b> fichadas, sin el tope de 40 h/semana,
+          para pasarle a la gestoría. Lo que el socorrista firma y lo que aparece en la hoja de inspección son
+          las <b>ordinarias</b>; el exceso son <b>complementarias</b>.
+        </div>
+      </div>
+      <div class="panel-body" style="padding:0;overflow-x:auto;">
+        <table class="hours-table" id="nominaTable">
+          <thead>
+            <tr>
+              <th>Socorrista</th>
+              <th>Puesto</th>
+              <th class="num">Días</th>
+              <th class="num">Horas reales</th>
+              <th class="num">Ordinarias</th>
+              <th class="num">Complementarias</th>
+              <th class="num">Sin cerrar</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -1577,6 +1626,7 @@ socorrista,Ana López,ana@ejemplo.com"></textarea>
 <script src="js/ps-storage.js"></script>
 <script src="js/icons.js"></script>
 <script src="js/data.js"></script>
+<script src="js/ps-jornada.js"></script>
 <script src="js/ps-pdf.js"></script>
 <script src="js/titulaciones.js"></script>
 <script src="js/ps-horarios.js"></script>
