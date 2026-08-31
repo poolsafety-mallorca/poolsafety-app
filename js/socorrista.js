@@ -650,8 +650,107 @@
     return m === 0 ? `${h}h` : `${h}h ${m}min`;
   }
 
+  /* ------------------------------------------------------------------
+     Salida olvidada de un día anterior.
+     Si el socorrista se fue sin fichar salida, esas horas se perdían: la
+     entrada huérfana la pisaba la entrada del día siguiente, el día salía en
+     blanco en la hoja de inspección y no se computaba en lo que firmaba.
+     Ahora, antes de dejarle fichar una entrada nueva, se le obliga a cerrar
+     el día pendiente poniendo la hora de salida a mano.
+     Devuelve true si no queda nada pendiente (se puede seguir fichando).
+     ------------------------------------------------------------------ */
+  async function resolverSalidaPendiente() {
+    if (!empleadoReal || !window.sb) return true;
+    let previos = [];
+    try {
+      const desde = new Date(); desde.setDate(desde.getDate() - 14); desde.setHours(0, 0, 0, 0);
+      const { data } = await window.sb.from('fichajes')
+        .select('id, tipo, hora, puesto_id')
+        .eq('empleado_id', empleadoReal.id)
+        .gte('hora', desde.toISOString())
+        .order('hora', { ascending: true });
+      previos = data || [];
+    } catch (err) {
+      // Si no podemos comprobarlo, no bloqueamos el fichaje (mejor fichar que no fichar).
+      console.warn('[fichaje] no se pudo comprobar salidas pendientes:', err.message);
+      return true;
+    }
+
+    const { incompletos } = window.PSJornada.emparejarTramos(previos);
+    const hoyKey = window.PSJornada.claveDia(new Date());
+    // Solo las de días ANTERIORES: una entrada de hoy sin salida es un turno en curso.
+    const pendiente = incompletos
+      .map(t => t.entrada)
+      .filter(e => window.PSJornada.claveDia(e) < hoyKey)
+      .sort((a, b) => a - b)[0];
+    if (!pendiente) return true;
+
+    const fTxt = pendiente.toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: '2-digit' });
+    const hTxt = pendiente.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    alert(
+      `⛔ Tienes un día sin cerrar\n\n` +
+      `El ${fTxt} fichaste entrada a las ${hTxt} y no fichaste la salida.\n\n` +
+      `Antes de fichar hoy tienes que decir a qué hora saliste ese día. ` +
+      `Si no, esas horas no te cuentan y el día sale en blanco en tu registro.`
+    );
+
+    let horaSalida = null;
+    while (!horaSalida) {
+      const txt = prompt(
+        `¿A qué hora saliste el ${fTxt}?\n\n` +
+        `Escríbelo en formato HH:MM (por ejemplo 20:30).\n` +
+        `Entrada de ese día: ${hTxt}`,
+        ''
+      );
+      if (txt === null) {
+        // Cancelar: no se ficha. No podemos dejar el día abierto y seguir, o se
+        // repetiría el problema que estamos arreglando.
+        alert('No se ha fichado.\n\nTienes que cerrar el día pendiente para poder fichar. ' +
+              'Si no recuerdas la hora, avisa a tu coordinador para que la meta él.');
+        throw new Error('cancelado');
+      }
+      const m = txt.trim().match(/^(\d{1,2})[:.,h ]?(\d{2})$/);
+      if (!m) { alert('Formato no válido. Escribe la hora como HH:MM, por ejemplo 20:30.'); continue; }
+      const hh = parseInt(m[1], 10), mi = parseInt(m[2], 10);
+      if (hh > 23 || mi > 59) { alert('Esa hora no existe. Revísala.'); continue; }
+      const cand = new Date(pendiente.getFullYear(), pendiente.getMonth(), pendiente.getDate(), hh, mi);
+      // Turno de noche: si la salida es anterior a la entrada, es del día siguiente.
+      if (cand <= pendiente) cand.setDate(cand.getDate() + 1);
+      const horas = (cand - pendiente) / 3600000;
+      if (horas > 16) { alert('Salen más de 16 horas de turno. Revisa la hora; si es correcta, avisa a tu coordinador para que la meta él.'); continue; }
+      if (!confirm(`Vas a registrar la salida del ${fTxt} a las ${cand.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}.\n\nSon ${window.PSJornada.fmtH(horas)} h de turno.\n\n¿Es correcto?`)) continue;
+      horaSalida = cand;
+    }
+
+    // El puesto de la salida = el mismo de la entrada que estamos cerrando.
+    const entradaRow = previos.find(f => f.tipo === 'entrada' && new Date(f.hora).getTime() === pendiente.getTime());
+    const payload = {
+      empleado_id: empleadoReal.id,
+      puesto_id: entradaRow ? entradaRow.puesto_id : (puestoReal ? puestoReal.id : null),
+      tipo: 'salida',
+      hora: horaSalida.toISOString(),
+      gps_ok: false,
+      fuera_de_zona: false,
+      origen_manual: true,
+      motivo_manual: `[Salida añadida a mano por el trabajador el ${new Date().toLocaleDateString('es-ES')}] Olvidó fichar la salida ese día.`
+    };
+    let { error } = await window.sb.from('fichajes').insert(payload);
+    if (error && /origen_manual|registrado_por|motivo_manual|column/i.test(error.message)) {
+      const { origen_manual, motivo_manual, ...basico } = payload;
+      const { error: e2 } = await window.sb.from('fichajes').insert(basico);
+      if (e2) throw e2;
+    } else if (error) throw error;
+
+    toast('✓ Día pendiente cerrado. Ya puedes fichar.');
+    // Puede haber más de un día abierto: repetir hasta que no quede ninguno.
+    return await resolverSalidaPendiente();
+  }
+  window.resolverSalidaPendiente = resolverSalidaPendiente;
+
   async function insertarFichaje(tipo) {
     if (!empleadoReal) throw new Error('No tienes ficha de empleado (contacta con el coordinador)');
+    // Antes de abrir un turno nuevo, cerrar cualquier día anterior sin salida.
+    if (tipo === 'entrada') await resolverSalidaPendiente();
     // 1) Determinar el puesto contra el que se ficha:
     //    - Si el empleado es correturnos o no tiene puesto principal → elegir hotel manualmente
     //    - Si ya eligió uno hoy (sessionStorage) → usar ese (para que salida coincida con entrada)
@@ -2610,12 +2709,36 @@
       let trabajadoEsteMes = false;
       let codigoMesActual = `jornada-${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
       const yaFirmoEsteMes = (firmadas || []).some(f => f.documento_codigo === codigoMesActual);
+      const nombreDeCodigo = (cod) => {
+        const m = cod.match(/jornada-(\d{4})-(\d{2})/);
+        return m ? new Date(+m[1], +m[2] - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }) : cod;
+      };
       if (esUltimoDia && !yaFirmoEsteMes) {
         const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
         const hasta = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1).toISOString();
         const { data: f } = await window.sb.from('fichajes')
           .select('id').eq('empleado_id', empId).gte('hora', desde).lt('hora', hasta).limit(1);
         trabajadoEsteMes = (f || []).length > 0;
+      }
+
+      // (d) MESES ANTERIORES SIN FIRMAR.
+      // Antes la tarjeta de firma solo existía el último día del mes y el código
+      // se construía con la fecha de HOY: si el socorrista no entraba ese día
+      // concreto, ese mes ya no se podía firmar NUNCA desde la app (ni el botón
+      // del coordinador servía, porque también miraba el mes en curso). Eso deja
+      // un agujero en el registro horario, que es obligatorio conservar 4 años.
+      // Ahora se ofrecen los 3 meses anteriores que tengan fichajes y no estén
+      // firmados todavía.
+      const mesesPendientes = [];
+      for (let atras = 1; atras <= 3; atras++) {
+        const ref = new Date(hoy.getFullYear(), hoy.getMonth() - atras, 1);
+        const cod = `jornada-${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, '0')}`;
+        if ((firmadas || []).some(f => f.documento_codigo === cod)) continue;
+        const desde = new Date(ref.getFullYear(), ref.getMonth(), 1).toISOString();
+        const hasta = new Date(ref.getFullYear(), ref.getMonth() + 1, 1).toISOString();
+        const { data: f } = await window.sb.from('fichajes')
+          .select('id').eq('empleado_id', empId).gte('hora', desde).lt('hora', hasta).limit(1);
+        if ((f || []).length) mesesPendientes.push({ codigo: cod, nombre: nombreDeCodigo(cod) });
       }
 
       docsJornadaList.innerHTML = '';
@@ -2629,7 +2752,13 @@
           estado: 'warn',
           badge: `<span class="badge badge-warn"><span class="dot"></span>Solicitado</span>`,
           cta: 'Firmar ahora',
-          onClick: () => openJornadaSignReal({ codigo: codigoMesActual, motivo: 'solicitud', tareaId: solic[0].id })
+          // El coordinador deja el mes codificado en la descripción de la tarea
+          // (puede pedir la firma de un mes ya cerrado). Si no viene, mes en curso.
+          onClick: () => openJornadaSignReal({
+            codigo: (solic[0].descripcion || '').match(/jornada-\d{4}-\d{2}/)?.[0] || codigoMesActual,
+            motivo: 'solicitud',
+            tareaId: solic[0].id
+          })
         });
         docsJornadaList.appendChild(card);
       }
@@ -2648,6 +2777,19 @@
         docsJornadaList.appendChild(card);
       }
 
+      // Meses anteriores pendientes de firmar (rojo: van con retraso)
+      mesesPendientes.forEach(mp => {
+        const card = docCard({
+          titulo: `Registro jornada · ${mp.nombre}`,
+          subtitulo: 'Mes cerrado sin firmar. Es obligatorio dejarlo firmado: revisa las horas y fírmalo.',
+          estado: 'warn',
+          badge: `<span class="badge badge-warn"><span class="dot"></span>Pendiente</span>`,
+          cta: 'Firmar ahora',
+          onClick: () => openJornadaSignReal({ codigo: mp.codigo, motivo: 'cierre-mes' })
+        });
+        docsJornadaList.appendChild(card);
+      });
+
       // Historial de firmadas
       (firmadas || []).forEach(f => {
         const m = f.documento_codigo.match(/jornada-(\d{4})-(\d{2})/);
@@ -2655,7 +2797,7 @@
           ? new Date(parseInt(m[1]), parseInt(m[2]) - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
           : f.documento_codigo;
         const c = f.campos_json || {};
-        const hh = c.horas_firmadas ? `${c.horas_firmadas}h firmadas` : 'firmado';
+        const hh = c.horas_firmadas != null ? `${window.PSJornada.fmtH(c.horas_firmadas)}h firmadas` : 'firmado';
         const card = docCard({
           titulo: `Registro jornada · ${nombreMes}`,
           subtitulo: `Firmado el ${new Date(f.fecha_firma).toLocaleDateString('es-ES')} · ${hh}`,
@@ -2681,83 +2823,47 @@
   // Empareja entrada+salida; agrupa por semana en la que cayó la entrada.
   // Devuelve { semanas:[{lunes, domingo, rangoTxt, dias, horas_reales, horas_firmadas}],
   //           horasReales, horasFirmadas (suma capada), diasTrabajados }
-  function calcularSemanasMes(fichajes, anio, mesIdx) {
-    const pares = [];
-    let entrada = null;
-    (fichajes || []).forEach(f => {
-      if (f.tipo === 'entrada') entrada = new Date(f.hora);
-      else if (f.tipo === 'salida' && entrada) {
-        pares.push({ entrada, salida: new Date(f.hora) });
-        entrada = null;
-      }
-    });
-
-    // Devuelve el lunes 00:00 de la semana a la que pertenece la fecha
-    const lunesDe = (d) => {
-      const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      const dia = (x.getDay() + 6) % 7; // 0=lun … 6=dom
-      x.setDate(x.getDate() - dia);
-      x.setHours(0, 0, 0, 0);
-      return x;
-    };
-    const fmt = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
-
-    const mapSem = new Map(); // keyLunesISO -> {lunes, minutos, dias:Set}
-    pares.forEach(p => {
-      const lun = lunesDe(p.entrada);
-      const key = lun.toISOString();
-      const mins = Math.max(0, (p.salida - p.entrada) / 60000);
-      const dia = p.entrada.toDateString();
-      const cur = mapSem.get(key) || { lunes: lun, minutos: 0, dias: new Set() };
-      cur.minutos += mins;
-      cur.dias.add(dia);
-      mapSem.set(key, cur);
-    });
-
-    const semanas = Array.from(mapSem.values())
-      .sort((a, b) => a.lunes - b.lunes)
-      .map(s => {
-        const dom = new Date(s.lunes); dom.setDate(dom.getDate() + 6);
-        const horas = Math.round(s.minutos / 60);
-        return {
-          lunes: s.lunes.toISOString().slice(0, 10),
-          domingo: dom.toISOString().slice(0, 10),
-          rangoTxt: `${fmt(s.lunes)}–${fmt(dom)}`,
-          dias: s.dias.size,
-          horas_reales: horas,
-          horas_firmadas: Math.min(40, horas)
-        };
-      });
-
-    const horasReales = semanas.reduce((s, x) => s + x.horas_reales, 0);
-    const horasFirmadas = semanas.reduce((s, x) => s + x.horas_firmadas, 0);
-    const diasTrabajados = semanas.reduce((s, x) => s + x.dias, 0);
-    return { semanas, horasReales, horasFirmadas, diasTrabajados };
+  // El cálculo de horas vive en js/ps-jornada.js (window.PSJornada) y lo comparten
+  // este modal, la hoja mensual de inspección y la hoja de nómina del admin.
+  // Antes había una copia aquí con tope de 40 h/semana mientras el PDF repartía
+  // con tope de 8 h/día: con 6 días de 7 h el socorrista firmaba 40 h y la hoja
+  // de inspección decía 42 h. Si hay que tocar la regla, se toca allí y punto.
+  function calcularSemanasMes(fichajes, anio, mesIdx, opts) {
+    return window.PSJornada.calcular(fichajes, opts);
   }
-  window.PSJornada = { calcularSemanasMes };
 
   // Firmar jornada real (usa el modal docViewModal + canvas + fichajes del mes hasta hoy)
   async function openJornadaSignReal({ codigo, motivo, tareaId }) {
     const empId = empleadoReal?.id;
     if (!empId || !window.sb) { toast('Aún no hay ficha lista'); return; }
     document.getElementById('docViewTitle').textContent = 'Firmar registro mensual';
-    document.getElementById('docViewSub').textContent = motivo === 'solicitud'
-      ? 'Tu coordinador ha solicitado la firma con las horas trabajadas hasta hoy.'
-      : 'Firma tu registro mensual antes del cierre.';
     document.getElementById('docViewModal').classList.add('open');
 
     // Detectar mes/año del código (formato jornada-YYYY-MM)
     const mm = codigo.match(/jornada-(\d{4})-(\d{2})/);
     const anio = mm ? parseInt(mm[1]) : new Date().getFullYear();
     const mes = mm ? parseInt(mm[2]) - 1 : new Date().getMonth();
+    const _hoyRef = new Date();
+    const esMesPasado = (anio < _hoyRef.getFullYear()) || (anio === _hoyRef.getFullYear() && mes < _hoyRef.getMonth());
+    const _nombreMesSub = new Date(anio, mes, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    document.getElementById('docViewSub').textContent = motivo === 'solicitud'
+      ? `Tu coordinador ha solicitado la firma de ${_nombreMesSub}.`
+      : (esMesPasado
+          ? `${_nombreMesSub} se cerró sin firmar. Revisa las horas y fírmalo.`
+          : 'Firma tu registro mensual antes del cierre.');
     const desde = new Date(anio, mes, 1).toISOString();
     const hastaFin = new Date(anio, mes + 1, 1).toISOString();
     // Para "solicitud" el corte es HOY (horas hasta la fecha); para cierre de mes es fin de mes.
-    const hastaCorte = motivo === 'solicitud' ? new Date().toISOString() : hastaFin;
+    // OJO: nunca más allá del fin del mes que se firma. Si el coordinador pide
+    // la firma de un mes ya cerrado, "hasta hoy" se iría a meses posteriores y
+    // se colarían fichajes que no son de este registro.
+    const hastaCorte = motivo === 'solicitud'
+      ? new Date(Math.min(Date.now(), new Date(hastaFin).getTime())).toISOString()
+      : hastaFin;
 
     // Cargar fichajes y calcular horas REALES agrupadas por semana ISO (lunes-domingo)
     // con cap de 40h/sem (las extras no se firman por el trabajador, quedan para admin).
-    let semanas = [], horasReales = 0, horasFirmadas = 0, diasTrabajados = 0;
+    let semanas = [], horasReales = 0, horasFirmadas = 0, horasCompl = 0, diasTrabajados = 0, incompletos = [];
     try {
       const { data: fichajes } = await window.sb.from('fichajes')
         .select('id, tipo, hora').eq('empleado_id', empId)
@@ -2766,17 +2872,20 @@
       semanas = res.semanas;
       horasReales = res.horasReales;
       horasFirmadas = res.horasFirmadas;
+      horasCompl = res.horasComplementarias;
       diasTrabajados = res.diasTrabajados;
+      incompletos = res.incompletos || [];
     } catch (_) {}
+    const fmtH = window.PSJornada.fmtH;
 
     const nombreMes = new Date(anio, mes, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
     const filasSemanas = semanas.length === 0
       ? '<div class="jornada-note small">Este mes aún no tienes ningún fichaje registrado.</div>'
       : semanas.map(s => {
-          const cap = s.horas_reales > 40 ? ` <span class="small" style="color:#B45309;">(${s.horas_reales - 40}h extra no firmadas)</span>` : '';
+          const cap = s.horas_complementarias > 0 ? ` <span class="small" style="color:#B45309;">(+${fmtH(s.horas_complementarias)}h complementarias)</span>` : '';
           return `<div class="jornada-row">
-            <span>Semana ${s.rangoTxt} · ${s.dias} día${s.dias===1?'':'s'}</span>
-            <b>${s.horas_firmadas}h</b>${cap}
+            <span>Semana ${s.rangoTxt} · ${s.dias} día${s.dias===1?'':'s'} · ${fmtH(s.horas_reales)}h reales</span>
+            <b>${fmtH(s.horas_firmadas)}h</b>${cap}
           </div>`;
         }).join('');
 
@@ -2788,9 +2897,15 @@
         ${filasSemanas}
         <div class="jornada-row total" style="border-top:1px solid #cbd5e1;padding-top:6px;margin-top:6px;">
           <span>Total del mes que firmas</span>
-          <b>${horasFirmadas}h ordinarias</b>
+          <b>${fmtH(horasFirmadas)}h ordinarias</b>
         </div>
-        ${horasReales > horasFirmadas ? `<div class="jornada-note small">Horas reales trabajadas: ${horasReales}h. Las ${horasReales - horasFirmadas}h de exceso son horas complementarias (solo visibles para tu coordinador en el informe oficial de inspección).</div>` : ''}
+        ${horasCompl > 0 ? `<div class="jornada-note small">Horas reales trabajadas: ${fmtH(horasReales)}h. Las ${fmtH(horasCompl)}h de exceso son horas complementarias.</div>` : ''}
+        <div class="jornada-note small" style="color:#475569;">Estas cifras son exactamente las mismas que salen en la hoja mensual oficial que recibe tu coordinador.</div>
+        ${incompletos.length ? `<div class="jornada-note small" style="background:#FEF3C7;border:1px solid #F59E0B;color:#92400E;padding:8px;border-radius:8px;margin-top:8px;">
+          <b>⚠ ${incompletos.length} día${incompletos.length===1?'':'s'} sin fichar la salida</b><br>
+          ${incompletos.map(t => new Date(t.entrada).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit' }) + ' (entrada ' + new Date(t.entrada).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) + ')').join(', ')}.
+          Esas horas <b>no están contadas</b> aquí. Avisa a tu coordinador para que las corrija antes de firmar si te faltan.
+        </div>` : ''}
       </div>
       <div class="field mt-3">
         <label>Nombre completo</label>
@@ -2829,7 +2944,19 @@
           firma_imagen: firmaImagen,
           ubicacion_lat: ultimaPosicion?.lat || null,
           ubicacion_lng: ultimaPosicion?.lng || null,
-          campos_json: { horas_firmadas: horasFirmadas, horas_reales: horasReales, dias_trabajados: diasTrabajados, motivo, semanas }
+          // `hasta` deja grabado el corte exacto con el que se firmó. La hoja
+          // mensual de inspección lo respeta, de forma que el documento que
+          // descarga el coordinador cubre el mismo periodo que se firmó y no
+          // aparecen días posteriores que el trabajador nunca vio.
+          campos_json: {
+            horas_firmadas: horasFirmadas,
+            horas_reales: horasReales,
+            horas_complementarias: horasCompl,
+            dias_trabajados: diasTrabajados,
+            motivo, semanas,
+            hasta: hastaCorte,
+            regla: '40h/semana natural'
+          }
         });
         if (error) throw error;
         // Cerrar tarea si venía de solicitud

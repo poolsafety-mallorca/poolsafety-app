@@ -1624,8 +1624,137 @@
     }
   }
   window.renderHours = renderHours;
+  /* ==========================================================================
+     HOJA DE NÓMINA · SOLO ADMIN (rol 'dueno')
+     Tercera hoja, deliberadamente separada de las otras dos:
+       · Lo que firma el socorrista y la hoja de inspección llevan las horas
+         ORDINARIAS (tope 40 h/semana natural) — y coinciden entre sí.
+       · Esta lleva las horas REALES fichadas, que es lo que necesita la
+         gestoría para calcular la nómina, con el exceso separado.
+     Los coordinadores NO la ven.
+     ========================================================================== */
+  let nominaCacheFilas = [];
+  let nominaCacheMes = '';
+
+  function nominaEsAdmin() {
+    return ((window.PS_SESSION || {}).rol || rol) === 'dueno';
+  }
+
+  function nominaRellenarSelectorMeses() {
+    const sel = document.getElementById('nominaMes');
+    if (!sel || sel.options.length) return;
+    const hoy = new Date();
+    for (let atras = 0; atras < 6; atras++) {
+      const d = new Date(hoy.getFullYear(), hoy.getMonth() - atras, 1);
+      const cod = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const opt = document.createElement('option');
+      opt.value = cod;
+      opt.textContent = d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+      sel.appendChild(opt);
+    }
+    sel.addEventListener('change', () => renderNomina());
+  }
+
+  async function renderNomina() {
+    const sec = document.getElementById('nominaSection');
+    if (!sec) return;
+    if (!nominaEsAdmin()) { sec.style.display = 'none'; return; }
+    sec.style.display = '';
+    nominaRellenarSelectorMeses();
+
+    const tbody = document.querySelector('#nominaTable tbody');
+    if (!tbody || !window.sb) return;
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--ink-500,#6B7280);">Cargando…</td></tr>';
+    try {
+      const cod = document.getElementById('nominaMes')?.value || new Date().toISOString().slice(0, 7);
+      const [anio, mes] = cod.split('-').map(Number);
+      const desde = new Date(anio, mes - 1, 1).toISOString();
+      const hasta = new Date(anio, mes, 1).toISOString();
+      nominaCacheMes = cod;
+
+      const { data: emps, error: e1 } = await window.sb.from('empleados')
+        .select('id, nombre, puesto_id, puestos(nombre)')
+        .neq('estado', 'eliminado')
+        .order('nombre');
+      if (e1) throw e1;
+      const empleados = emps || [];
+
+      const { data: fichs } = await window.sb.from('fichajes')
+        .select('empleado_id, tipo, hora')
+        .gte('hora', desde).lt('hora', hasta)
+        .order('hora', { ascending: true });
+
+      // Un cálculo por empleado, con el módulo compartido: así la columna
+      // "Ordinarias" de esta hoja es EXACTAMENTE la que firmó el trabajador.
+      const porEmp = {};
+      (fichs || []).forEach(f => {
+        (porEmp[f.empleado_id] = porEmp[f.empleado_id] || []).push(f);
+      });
+
+      const fmtH = window.PSJornada.fmtH;
+      const filas = empleados.map(e => {
+        const calc = window.PSJornada.calcular(porEmp[e.id] || []);
+        return {
+          id: e.id,
+          nombre: e.nombre,
+          puesto: (e.puestos && e.puestos.nombre) || '—',
+          iniciales: (e.nombre || '?').split(' ').map(p => p[0]).join('').substring(0, 2).toUpperCase(),
+          dias: calc.diasTrabajados,
+          reales: calc.horasReales,
+          ordinarias: calc.horasFirmadas,
+          compl: calc.horasComplementarias,
+          incompletos: calc.incompletos.length
+        };
+      }).filter(x => x.dias > 0 || x.incompletos > 0);
+
+      nominaCacheFilas = filas;
+      const cnt = document.getElementById('nominaCount');
+      if (cnt) cnt.textContent = `${filas.length} con actividad`;
+
+      if (!filas.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--ink-500,#6B7280);">Nadie fichó en este mes.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = filas.map(s => `
+        <tr>
+          <td><div class="hours-name"><div class="mini-av sky">${s.iniciales}</div><span style="font-weight:500;">${s.nombre}</span></div></td>
+          <td class="text-muted">${s.puesto}</td>
+          <td class="num">${s.dias}</td>
+          <td class="num"><b>${fmtH(s.reales)}h</b></td>
+          <td class="num">${fmtH(s.ordinarias)}h</td>
+          <td class="num"><span class="hours-extras ${s.compl > 0 ? '' : 'zero'}">${fmtH(s.compl)}</span></td>
+          <td class="num">${s.incompletos ? `<span style="color:#B45309;font-weight:700;" title="Días con entrada sin salida fichada">⚠ ${s.incompletos}</span>` : '—'}</td>
+        </tr>`).join('');
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="7" style="padding:20px;text-align:center;color:#B91C1C;">Error: ${err.message}</td></tr>`;
+    }
+  }
+  window.renderNomina = renderNomina;
+
+  window.descargarNominaCSV = function () {
+    if (!nominaEsAdmin()) return;
+    if (!nominaCacheFilas.length) { toast('No hay datos que descargar'); return; }
+    const cab = ['Socorrista', 'Puesto', 'Dias', 'Horas reales', 'Ordinarias (40h/sem)', 'Complementarias', 'Dias sin cerrar'];
+    const linea = v => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = [cab.map(linea).join(';')]
+      .concat(nominaCacheFilas.map(s => [s.nombre, s.puesto, s.dias, s.reales, s.ordinarias, s.compl, s.incompletos].map(linea).join(';')))
+      .join('\r\n');
+    // BOM para que Excel en español abra bien los acentos
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `nomina-horas-reales-${nominaCacheMes}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    toast('✓ CSV descargado');
+  };
+
   setTimeout(() => renderHours('all'), 1200);
-  document.querySelectorAll('[data-section="horas"]').forEach(el => el.addEventListener('click', () => setTimeout(() => renderHours(document.getElementById('hourFilter')?.value || 'all'), 200)));
+  setTimeout(() => renderNomina(), 1400);
+  document.querySelectorAll('[data-section="horas"]').forEach(el => el.addEventListener('click', () => setTimeout(() => {
+    renderHours(document.getElementById('hourFilter')?.value || 'all');
+    renderNomina();
+  }, 200)));
   document.getElementById('hourFilter')?.addEventListener('change', e => renderHours(e.target.value));
 
   /* ==========================================================================
@@ -3954,6 +4083,12 @@
 
         const kitFirma = firmasBD.find(f => f.documento_codigo === 'kit-alta');
         const jornadas = firmasBD.filter(f => f.documento_codigo.startsWith('jornada'));
+        // Mes anterior: para poder cerrar un mes que se pasó sin firmar. Antes,
+        // pasada la medianoche del último día, ese mes ya no había forma de
+        // firmarlo desde la app.
+        const _refAnt = new Date(); _refAnt.setDate(1); _refAnt.setMonth(_refAnt.getMonth() - 1);
+        const codigoMesAnterior = `jornada-${_refAnt.getFullYear()}-${String(_refAnt.getMonth() + 1).padStart(2, '0')}`;
+        const nombreMesAnterior = _refAnt.toLocaleDateString('es-ES', { month: 'long' });
         const finiquitos = firmasBD.filter(f => f.documento_codigo.startsWith('finiquito'));
 
         body.innerHTML = `
@@ -4001,9 +4136,10 @@
                 <div class="ficha-action-title">${j.documento_codigo}</div>
                 <div class="ficha-action-sub">Firmado el ${new Date(j.fecha_firma).toLocaleString('es-ES')}</div>
                 <div class="small text-muted mt-1">
-                  Firmadas <b>${c.horas_firmadas || '—'}h</b>
-                  ${c.horas_reales && c.horas_reales > (c.horas_firmadas || 0) ? ` · Reales ${c.horas_reales}h (${c.horas_reales - (c.horas_firmadas || 0)}h extra)` : ''}
+                  Firmadas <b>${c.horas_firmadas != null ? window.PSJornada.fmtH(c.horas_firmadas) + 'h' : '—'}</b> ordinarias
+                  ${c.horas_reales && c.horas_reales > (c.horas_firmadas || 0) ? ` · Reales ${window.PSJornada.fmtH(c.horas_reales)}h (${window.PSJornada.fmtH(c.horas_reales - (c.horas_firmadas || 0))}h complementarias)` : ''}
                   ${c.dias_trabajados ? ' · ' + c.dias_trabajados + ' días' : ''}
+                  ${c.regla ? `<br><span style="color:#64748B;">Regla: ${c.regla}</span>` : ''}
                 </div>
                 ${j.firma_imagen ? `<img src="${j.firma_imagen}" class="firma-imagen" style="max-width:180px;margin-top:8px;" alt="Firma"/>` : ''}
               </div>
@@ -4056,10 +4192,14 @@
             <div class="icon"><svg class="ic ic-18"><use href="#ic-bell"/></svg></div>
             <div class="ficha-action-body">
               <div class="ficha-action-title">Solicitar firma de registro mensual</div>
-              <div class="ficha-action-sub">Genera una solicitud para que ${(e.nombre||'el trabajador').replace(/'/g,'\\\'')} firme las horas trabajadas hasta hoy. Le aparece EN EL ACTO en su app (Realtime).</div>
+              <div class="ficha-action-sub">Genera una solicitud para que ${(e.nombre||'el trabajador').replace(/'/g,'\\\'')} firme las horas trabajadas. Le aparece EN EL ACTO en su app (Realtime). Las horas se calculan con el tope de 40 h por semana natural, igual que en la hoja de inspección.</div>
             </div>
           </div>
           <div class="row gap-2 mt-3" style="justify-content:flex-end;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="solicitarRegistroMensual('${e.id}','${(e.nombre||'').replace(/'/g,'\\\'')}','${codigoMesAnterior}')">
+              <svg class="ic ic-16"><use href="#ic-clock"/></svg>
+              Pedir firma de ${nombreMesAnterior}
+            </button>
             <button class="btn btn-primary btn-sm" onclick="solicitarRegistroMensual('${e.id}','${(e.nombre||'').replace(/'/g,'\\\'')}')">
               <svg class="ic ic-16"><use href="#ic-arrow-up-right"/></svg>
               Mandar horas para firmar ahora
@@ -6231,30 +6371,40 @@
   // Solicitar firma de registro mensual: calcula horas hasta HOY y crea tarea
   // "Firmar registro mensual pendiente" en tabla tareas. El socorrista lo verá
   // en la sección Docs y podrá firmarlo con las horas reales trabajadas hasta la fecha.
-  window.solicitarRegistroMensual = async function (empId, nombre) {
+  // `codigoMes` opcional ('jornada-YYYY-MM'). Sin él, el mes en curso.
+  // Se puede pedir la firma de un mes ya cerrado: el código viaja dentro de la
+  // descripción de la tarea y la app del socorrista lo lee de ahí.
+  window.solicitarRegistroMensual = async function (empId, nombre, codigoMes) {
     try {
-      // Calcular horas hasta HOY del mes actual
       const hoy = new Date();
-      const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
-      const hasta = hoy.toISOString();
+      const mm = (codigoMes || '').match(/jornada-(\d{4})-(\d{2})/);
+      const anio = mm ? parseInt(mm[1]) : hoy.getFullYear();
+      const mesIdx = mm ? parseInt(mm[2]) - 1 : hoy.getMonth();
+      const codigo = `jornada-${anio}-${String(mesIdx + 1).padStart(2, '0')}`;
+      const desde = new Date(anio, mesIdx, 1).toISOString();
+      const finMes = new Date(anio, mesIdx + 1, 1).getTime();
+      // Nunca más allá del fin del mes que se pide firmar.
+      const hasta = new Date(Math.min(Date.now(), finMes)).toISOString();
       const { data: fichs } = await window.sb.from('fichajes')
         .select('id, tipo, hora').eq('empleado_id', empId)
         .gte('hora', desde).lt('hora', hasta).order('hora', { ascending: true });
-      let totalMins = 0, entrada = null;
-      (fichs || []).forEach(f => {
-        if (f.tipo === 'entrada') entrada = new Date(f.hora);
-        else if (f.tipo === 'salida' && entrada) {
-          totalMins += Math.max(0, (new Date(f.hora) - entrada) / 60000);
-          entrada = null;
-        }
-      });
-      const horas = Math.round(totalMins / 60);
-      const dias = new Set((fichs || []).filter(f => f.tipo === 'entrada').map(f => new Date(f.hora).toDateString())).size;
-      const nombreMes = hoy.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+      // MISMO cálculo que verá el socorrista al firmar y que saldrá en la hoja
+      // de inspección. Antes aquí se sumaba el total en bruto sin el tope de
+      // 40 h/semana, así que el coordinador leía un número (42 h) y el
+      // trabajador firmaba otro (40 h).
+      const calc = window.PSJornada.calcular(fichs || [], { hasta });
+      const fmtH = window.PSJornada.fmtH;
+      const horas = calc.horasFirmadas;
+      const dias = calc.diasTrabajados;
+      const nombreMes = new Date(anio, mesIdx, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
       const msg = `Solicitar a ${nombre} que firme el registro mensual de ${nombreMes}?\n\n` +
-        `• Horas hasta hoy: ${horas}h\n• Días trabajados: ${dias}\n\n` +
-        `Le saltará el aviso EN EL ACTO en su app (Realtime).`;
+        `• Horas ordinarias a firmar: ${fmtH(horas)}h (tope 40 h/semana)\n` +
+        `• Horas reales trabajadas: ${fmtH(calc.horasReales)}h\n` +
+        (calc.horasComplementarias > 0 ? `• Complementarias: ${fmtH(calc.horasComplementarias)}h\n` : '') +
+        `• Días trabajados: ${dias}\n` +
+        (calc.incompletos.length ? `\n⚠ ${calc.incompletos.length} día(s) con entrada SIN SALIDA fichada. Esas horas no cuentan: corrígelas antes de pedir la firma.\n` : '') +
+        `\nLe saltará el aviso EN EL ACTO en su app (Realtime).`;
       if (!confirm(msg)) return;
 
       // Borrar solicitud previa idéntica para no duplicar
@@ -6263,12 +6413,12 @@
       const { error: errT } = await window.sb.from('tareas').insert({
         empleado_id: empId,
         titulo: 'Firmar registro mensual pendiente',
-        descripcion: `Firma tu registro de jornada de ${nombreMes} con las horas trabajadas hasta hoy (${horas}h en ${dias} días).`,
+        descripcion: `Firma tu registro de jornada de ${nombreMes} [${codigo}]: ${fmtH(horas)}h ordinarias en ${dias} días.`,
         prioridad: 'alta',
         hecha: false
       });
       if (errT) throw errT;
-      toast(`✓ ${nombre}: le llega la solicitud de firma de ${horas}h`);
+      toast(`✓ ${nombre}: le llega la solicitud de firma de ${fmtH(horas)}h`);
       if (window.renderFicha && fichaActualId === empId) renderFicha();
     } catch (err) { toast('Error: ' + err.message); }
   };
