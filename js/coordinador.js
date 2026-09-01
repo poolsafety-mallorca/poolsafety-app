@@ -4150,7 +4150,23 @@
     if ('esCorreturnos' in patch) dbPatch.es_correturnos = !!patch.esCorreturnos;
 
     try {
-      const { error } = await window.sb.from('empleados').update(dbPatch).eq('id', id);
+      let { error } = await window.sb.from('empleados').update(dbPatch).eq('id', id);
+      // Si sql/25 aún no se ha ejecutado, las columnas del contacto de emergencia
+      // no existen y Postgres rechaza el UPDATE ENTERO: se perderían también el
+      // nombre, el teléfono y la dirección. Se reintenta sin ellas para que
+      // guardar la ficha siga funcionando mientras tanto.
+      if (error && /emergencia_nombre|emergencia_telefono|column/i.test(error.message)) {
+        const { emergencia_nombre, emergencia_telefono, ...sinEmergencia } = dbPatch;
+        if (Object.keys(sinEmergencia).length) {
+          const r2 = await window.sb.from('empleados').update(sinEmergencia).eq('id', id);
+          error = r2.error;
+        } else {
+          error = null;
+        }
+        if (!error && (dbPatch.emergencia_nombre !== undefined || dbPatch.emergencia_telefono !== undefined)) {
+          toast('Guardado, pero el contacto de emergencia no: falta ejecutar sql/25 en Supabase.');
+        }
+      }
       if (error) throw error;
       // Actualiza cache local para respuesta inmediata
       const idx = empleadosDB.findIndex(e => e.id === id);

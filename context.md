@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v136 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v136`**
+Última actualización: 2026-08-31 (v137 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v137`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -975,7 +975,12 @@ sensibles (estado, puesto, contrato…) cuando quien edita no es admin — las d
 nuevas no están en esa lista, así que el socorrista puede tocarlas y sigue sin poder
 tocar lo demás.
 
-El guardado usa `.select()` y **falla ruidosamente si vuelven 0 filas**: es el fallo
+`actualizarEmpleado` **reintenta sin las columnas nuevas** si Postgres las rechaza: sin
+eso, con `sql/25` sin ejecutar, guardar la ficha de un empleado fallaba ENTERA y se
+perdían también nombre, teléfono y dirección. Postgres rechaza el UPDATE completo si una
+sola columna no existe.
+
+El guardado del socorrista usa `.select()` y **falla ruidosamente si vuelven 0 filas**: es el fallo
 clásico de este proyecto (RLS bloquea, Postgres no da error, todo aparenta ir bien). Si
 `sql/25` no está ejecutado, el socorrista ve un mensaje que lo dice, no un falso OK.
 
