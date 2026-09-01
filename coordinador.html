@@ -721,6 +721,11 @@
             <option value="extra">Con horas extra</option>
             <option value="top">Top 10 más horas</option>
           </select>
+          <!-- Cerrar días sin salida: lo ve también coordinación (se muestra desde JS). -->
+          <button class="btn btn-outline btn-sm" id="btnCerrarDias" onclick="abrirCerrarDiasSinSalida()" style="display:none;color:#B45309;border-color:#F59E0B;">
+            <svg class="ic ic-14"><use href="#ic-clock"/></svg>
+            Cerrar días sin salida
+          </button>
           <button class="btn btn-outline btn-icon" title="Descargar informe del mes" onclick="descargarInformeHoras()">
             <svg class="ic ic-16"><use href="#ic-download"/></svg>
           </button>
@@ -762,10 +767,6 @@
         </div>
         <div class="row gap-2" style="align-items:center;flex-wrap:wrap;">
           <select id="nominaMes" style="padding:8px 12px;border-radius:999px;border:1px solid var(--line);font-size:13px;background:#fff;color:var(--ink-700);font-weight:500;"></select>
-          <button class="btn btn-outline btn-sm" id="btnCerrarDias" onclick="abrirCerrarDiasSinSalida()" style="color:#B45309;border-color:#F59E0B;">
-            <svg class="ic ic-14"><use href="#ic-clock"/></svg>
-            Cerrar días sin salida
-          </button>
           <button class="btn btn-outline btn-icon" title="Descargar CSV para la gestoría" onclick="descargarNominaCSV()">
             <svg class="ic ic-16"><use href="#ic-download"/></svg>
           </button>
