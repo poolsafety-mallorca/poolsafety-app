@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v128 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v128`**
+Última actualización: 2026-08-31 (v129 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v129`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -861,6 +861,25 @@ El modal de reportar material (`rep-*`, `reportItemsCache`) sigue con `it.id` **
 ---
 
 ## 11. Decisiones importantes (histórico)
+
+### 2026-08-31 · Horas por hotel para facturar (ficha del hotel → "Horas y facturación")
+Adam factura a cada hotel por horas de servicio y no tenía de dónde sacarlas. Nueva
+pestaña en la ficha del hotel: día a día con nº de socorristas, horario y horas, con
+selector de mes y CSV.
+
+**Regla de relleno** (la app entró en marcha a mitad de temporada y de los primeros
+días de agosto no hay fichajes aunque se trabajaron):
+- Día CON fichajes en el hotel → mandan los fichajes. Dato real.
+- Día SIN ningún fichaje → se rellena con el horario asignado al hotel y la fila queda
+  marcada como **PREVISTO** (ámbar).
+
+Los dos totales van **separados a propósito** (Fichadas / Previstas / Total), con aviso
+en pantalla de cuántas horas del total no están fichadas. Una hora prevista no es una
+hora medida y quien factura tiene que saber qué parte es cada cosa. **No juntar los dos
+totales en uno solo.**
+
+Aquí se usan **horas REALES sin el tope de 40 h/semana**: ese tope es de la jornada del
+trabajador (lo que firma y lo que ve la inspección), no de lo que se presta al hotel.
 
 ### 2026-08-31 · "Cerrar días sin salida" en bloque (admin)
 Un día con entrada y sin salida cuenta CERO horas. A Victoria le pasó con el 24 y el
