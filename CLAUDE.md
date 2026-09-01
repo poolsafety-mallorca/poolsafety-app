@@ -62,7 +62,11 @@ necesita saber siempre es: **qué falla, por qué, qué has hecho y qué tiene q
 
 ## 🎯 Prioridades del proyecto
 
-1. **Piloto real en marcha** con 4 usuarios (Adam admin, Alex + Óscar coordinadores, Carlos socorrista)
+1. **YA NO ES UN PILOTO DE 4 PERSONAS.** A 2026-08-31 el panel de Documentación cuenta
+   **51 empleados activos** (sin baja ni eliminados). Adam sigue siendo el admin y Alex y
+   Óscar los coordinadores, pero la plantilla real es de decenas de socorristas repartidos
+   por los hoteles. Tenlo presente al estimar volúmenes: cualquier consulta que traiga
+   datos "de todo el equipo" se multiplica por 51, no por 4. Ahí se fue la cuota de Egress.
 2. **Sin romper producción**: la app está en poolsafety-app.netlify.app con datos reales
 3. **Cliente quiere lanzar y cobrar** — evitar sobre-ingeniería, priorizar cosas útiles
 4. **Cumplimiento normativa Baleares** (Decreto 53/1995 botiquín, 137/2008 DESA, RGPD, RD-ley 8/2019 registro horario)
