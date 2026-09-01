@@ -27,9 +27,11 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/20-revisiones-diarias.sql` — auditoría revisiones botiquín/DESA/oxígeno
 - ✅ `sql/21-rls-correturnos-inventario.sql` — correturnos leen/escriben inventario del hotel donde fichan
 - ✅ `sql/22-diagnostico-reparar-unidades.sql` — reparar Botiquín 2/3 sin items (Cala Gran)
-- ⏳ **`sql/26-documentos-a-storage.sql` — PENDIENTE DE EJECUTAR**: columna
-  `documento_storage_path` + bucket **privado** `documentos-laborales` con sus políticas.
-  Sin esto no se pueden migrar ni subir documentos al almacén.
+- ✅ `sql/26-documentos-a-storage.sql` — columna `documento_storage_path` + bucket
+  **privado** `documentos-laborales` con sus 4 políticas. **Ejecutado el 2026-08-31.**
+  Queda pendiente lanzar la migración desde la app: panel Titulaciones → "Documentos"
+  → Paso 1 (copiar y verificar) y, tras comprobar a mano que los documentos se abren,
+  Paso 2 (liberar el base64 de la BD).
 - ✅ `sql/25-contacto-emergencia.sql` — contacto de emergencia del socorrista
   (`emergencia_nombre`, `emergencia_telefono`). **Ejecutado el 2026-08-31 por Adam.**
 - ✅ `sql/23-botiquin-hotel-nuevo-y-ticks.sql` — RLS inventario por empresa (ticks del 2º socorrista) + siembra hoteles creados vacíos
