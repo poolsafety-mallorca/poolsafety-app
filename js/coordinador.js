@@ -5941,6 +5941,253 @@
     });
   });
 
+  /* ==========================================================================
+     HORAS POR HOTEL · para facturar al hotel
+     Día a día: cuántos socorristas, en qué horario y cuántas horas.
+
+     REGLA DE RELLENO (importante, y se dice en pantalla):
+       · Si ese día hay FICHAJES en el hotel → mandan los fichajes. Es el dato real.
+       · Si ese día NO hay ningún fichaje → se rellena con el HORARIO asignado al
+         hotel y la fila queda marcada como PREVISTO.
+     Se hace así porque la app entró en marcha a mitad de temporada: los primeros
+     días de agosto se trabajaron pero no hay fichajes de ellos. Los dos totales
+     van SEPARADOS a propósito: una hora prevista no es una hora medida, y quien
+     factura tiene que saber cuánto de la factura es cada cosa.
+
+     Aquí se usan HORAS REALES, sin el tope de 40 h/semana: ese tope es de la
+     jornada del trabajador (lo que firma y lo que ve la inspección), no de lo
+     que se le presta al hotel.
+     ========================================================================== */
+  let factCache = null;   // { hotel, mes, filas, totales }
+
+  function horasDeHorario(h) {
+    // Horas que cubre un horario asignado, contando el segundo tramo si es partido.
+    const dif = (ini, fin) => {
+      if (!ini || !fin) return 0;
+      const [hi, mi] = ini.split(':').map(Number);
+      const [hf, mf] = fin.split(':').map(Number);
+      let m = (hf * 60 + mf) - (hi * 60 + mi);
+      if (m < 0) m += 24 * 60;               // turno que cruza medianoche
+      return m / 60;
+    };
+    let t = dif(h.hora_inicio, h.hora_fin);
+    if (h.es_partido) t += dif(h.hora_inicio_2, h.hora_fin_2);
+    // Si no hay hora_fin configurada, se usa la duración pactada del horario.
+    if (!t && h.duracion) t = h.duracion;
+    return t;
+  }
+
+  async function renderFacturacionHotel(hotel) {
+    const body = document.getElementById('hotelBody');
+    try {
+      const sel = document.getElementById('factMes');
+      const cod = (sel && sel.value) || new Date().toISOString().slice(0, 7);
+      const [anio, mes] = cod.split('-').map(Number);
+      const desde = new Date(anio, mes - 1, 1);
+      const hasta = new Date(anio, mes, 1);
+      const diasEnMes = new Date(anio, mes, 0).getDate();
+      const nombreMes = desde.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+      const fmtH = window.PSJornada.fmtH;
+      const hhmm = d => d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+      const [{ data: fichs }, { data: horarios }, { data: emps }] = await Promise.all([
+        window.sb.from('fichajes')
+          .select('empleado_id, tipo, hora, origen_manual')
+          .eq('puesto_id', hotel.id)
+          .gte('hora', desde.toISOString()).lt('hora', hasta.toISOString())
+          .order('hora'),
+        window.sb.from('horarios')
+          .select('empleado_id, hora_inicio, hora_fin, duracion, es_partido, hora_inicio_2, hora_fin_2, dias, fecha_desde, fecha_hasta')
+          .eq('puesto_id', hotel.id).eq('activo', true),
+        window.sb.from('empleados').select('id, nombre')
+      ]);
+      const nombreEmp = {};
+      (emps || []).forEach(e => { nombreEmp[e.id] = e.nombre; });
+
+      // Fichajes agrupados por día y por empleado
+      const porDiaEmp = {};
+      (fichs || []).forEach(f => {
+        const d = new Date(f.hora);
+        const k = d.getDate();
+        porDiaEmp[k] = porDiaEmp[k] || {};
+        (porDiaEmp[k][f.empleado_id] = porDiaEmp[k][f.empleado_id] || []).push(f);
+      });
+
+      const filas = [];
+      let totFichado = 0, totPrevisto = 0;
+      for (let dia = 1; dia <= diasEnMes; dia++) {
+        const fecha = new Date(anio, mes - 1, dia);
+        const diaSem = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'][fecha.getDay()];
+        const delDia = porDiaEmp[dia] || {};
+        const empsConFichaje = Object.keys(delDia);
+
+        if (empsConFichaje.length) {
+          // --- Día con datos reales ---
+          let horas = 0; const detalles = []; let hayEstimada = false, haySinCerrar = false;
+          empsConFichaje.forEach(empId => {
+            const calc = window.PSJornada.calcular(delDia[empId]);
+            horas += calc.horasReales;
+            Object.keys(calc.porDia).forEach(k => {
+              const d = calc.porDia[k];
+              if (d.salidaManual) hayEstimada = true;
+              if (d.incompleto) haySinCerrar = true;
+              d.tramos.forEach(t => detalles.push(
+                hhmm(t.entrada) + '–' + (t.salida ? hhmm(t.salida) : '?')
+              ));
+            });
+          });
+          totFichado += horas;
+          filas.push({
+            dia, diaSem, socorristas: empsConFichaje.length,
+            horario: detalles.join(' · ') || '—',
+            horas: window.PSJornada.r1(horas),
+            origen: 'fichado', hayEstimada, haySinCerrar,
+            nombres: empsConFichaje.map(id => nombreEmp[id] || '—').join(', ')
+          });
+        } else {
+          // --- Sin fichajes: se rellena con el horario asignado ---
+          const aplican = (horarios || []).filter(x =>
+            horarioAplicaEnDiaCoord(x, fecha.getDay()) &&
+            (!x.fecha_desde || new Date(x.fecha_desde) <= fecha) &&
+            (!x.fecha_hasta || new Date(x.fecha_hasta) >= fecha)
+          );
+          if (!aplican.length) {
+            filas.push({ dia, diaSem, socorristas: 0, horario: '—', horas: 0, origen: 'vacio' });
+            continue;
+          }
+          let horas = 0; const detalles = [];
+          aplican.forEach(x => {
+            horas += horasDeHorario(x);
+            const txt = (x.hora_inicio || '').slice(0, 5) + '–' + (x.hora_fin || '').slice(0, 5) +
+              (x.es_partido && x.hora_inicio_2 ? ` · ${(x.hora_inicio_2||'').slice(0,5)}–${(x.hora_fin_2||'').slice(0,5)}` : '');
+            detalles.push(txt);
+          });
+          totPrevisto += horas;
+          filas.push({
+            dia, diaSem, socorristas: aplican.length,
+            horario: detalles.join(' · '),
+            horas: window.PSJornada.r1(horas),
+            origen: 'previsto',
+            nombres: aplican.map(x => nombreEmp[x.empleado_id] || '—').join(', ')
+          });
+        }
+      }
+
+      totFichado = window.PSJornada.r1(totFichado);
+      totPrevisto = window.PSJornada.r1(totPrevisto);
+      const totalMes = window.PSJornada.r1(totFichado + totPrevisto);
+      factCache = { hotel: hotel.nombre, mes: cod, nombreMes, filas, totFichado, totPrevisto, totalMes };
+
+      const opciones = [];
+      const hoyRef = new Date();
+      for (let a = 0; a < 6; a++) {
+        const d = new Date(hoyRef.getFullYear(), hoyRef.getMonth() - a, 1);
+        const c = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        opciones.push(`<option value="${c}"${c === cod ? ' selected' : ''}>${d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</option>`);
+      }
+
+      body.innerHTML = `
+        <div class="row gap-2" style="align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:10px;">
+          <div class="ficha-body-title" style="margin:0;">Horas de ${hotel.nombre} · ${nombreMes}</div>
+          <div class="row gap-2">
+            <select id="factMes" style="padding:8px 12px;border-radius:999px;border:1px solid var(--line);font-size:13px;background:#fff;font-weight:500;">${opciones.join('')}</select>
+            <button class="btn btn-outline btn-sm" onclick="descargarFacturacionCSV()">
+              <svg class="ic ic-14"><use href="#ic-download"/></svg> CSV
+            </button>
+          </div>
+        </div>
+
+        <div class="row gap-2" style="flex-wrap:wrap;margin-bottom:12px;">
+          <div style="flex:1;min-width:150px;background:#ECFDF5;border:1px solid #10B981;border-radius:10px;padding:10px 12px;">
+            <div class="small" style="color:#047857;">Horas fichadas</div>
+            <div style="font-size:22px;font-weight:800;color:#065F46;">${fmtH(totFichado)}h</div>
+          </div>
+          <div style="flex:1;min-width:150px;background:#FFFBEB;border:1px solid #F59E0B;border-radius:10px;padding:10px 12px;">
+            <div class="small" style="color:#92400E;">Horas previstas (sin fichar)</div>
+            <div style="font-size:22px;font-weight:800;color:#78350F;">${fmtH(totPrevisto)}h</div>
+          </div>
+          <div style="flex:1;min-width:150px;background:#EFF6FF;border:2px solid #1D4ED8;border-radius:10px;padding:10px 12px;">
+            <div class="small" style="color:#1E3A8A;">TOTAL DEL MES</div>
+            <div style="font-size:22px;font-weight:800;color:#1E3A8A;">${fmtH(totalMes)}h</div>
+          </div>
+        </div>
+
+        ${totPrevisto > 0 ? `<div class="small" style="background:#FFFBEB;border:1px solid #F59E0B;color:#92400E;padding:9px 11px;border-radius:8px;margin-bottom:10px;">
+          <b>${fmtH(totPrevisto)}h de este total no están fichadas.</b> Son días sin ningún fichaje en el hotel,
+          rellenados con el horario asignado. Van en ámbar en la tabla. Si facturas el total, ten presente qué
+          parte es medida y qué parte es prevista.
+        </div>` : ''}
+
+        <div style="overflow-x:auto;">
+        <table class="hours-table" style="width:100%;font-size:12.5px;">
+          <thead><tr>
+            <th style="text-align:left;">Día</th>
+            <th class="num">Socorristas</th>
+            <th style="text-align:left;">Horario</th>
+            <th class="num">Horas</th>
+            <th style="text-align:left;">Origen</th>
+          </tr></thead>
+          <tbody>
+            ${filas.map(f => {
+              const bg = f.origen === 'previsto' ? 'background:#FFFBEB;'
+                       : f.origen === 'vacio' ? 'background:#F8FAFC;color:#94A3B8;' : '';
+              const origenTxt = f.origen === 'fichado'
+                ? `<span style="color:#047857;font-weight:600;">Fichado</span>${f.hayEstimada ? ' <span class="small" style="color:#B45309;">· salida estimada</span>' : ''}${f.haySinCerrar ? ' <span class="small" style="color:#B45309;">· sin cerrar</span>' : ''}`
+                : f.origen === 'previsto' ? '<span style="color:#B45309;font-weight:600;">Previsto (horario)</span>' : '—';
+              return `<tr style="${bg}">
+                <td><b>${String(f.dia).padStart(2,'0')}</b> ${f.diaSem}</td>
+                <td class="num">${f.socorristas || '—'}</td>
+                <td class="text-muted" title="${(f.nombres || '').replace(/"/g,'&quot;')}">${f.horario}</td>
+                <td class="num"><b>${f.horas ? fmtH(f.horas) + 'h' : '—'}</b></td>
+                <td>${origenTxt}</td>
+              </tr>`;
+            }).join('')}
+            <tr style="background:#1D4ED8;color:#fff;font-weight:800;">
+              <td colspan="3">TOTAL ${nombreMes.toUpperCase()}</td>
+              <td class="num">${fmtH(totalMes)}h</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+        </div>`;
+
+      const selNuevo = document.getElementById('factMes');
+      if (selNuevo) selNuevo.addEventListener('change', () => renderFacturacionHotel(hotel));
+    } catch (err) {
+      body.innerHTML = `<div style="padding:24px;color:#B91C1C;">Error al calcular las horas: ${err.message}</div>`;
+    }
+  }
+
+  window.descargarFacturacionCSV = function () {
+    if (!factCache) { toast('No hay datos que descargar'); return; }
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const fila = a => a.map(q).join(';');
+    const out = [
+      fila([`Horas de servicio · ${factCache.hotel}`, factCache.nombreMes]),
+      fila(['Pool Safety Des Llevant, S.L. · CIF B75828418']),
+      fila(['Fichado = horas reales registradas por los socorristas.']),
+      fila(['Previsto = dias sin ningun fichaje, rellenados con el horario asignado al hotel.']),
+      '',
+      fila(['Dia', 'Dia sem.', 'Socorristas', 'Horario', 'Horas', 'Origen', 'Personal'])
+    ];
+    factCache.filas.forEach(f => out.push(fila([
+      f.dia, f.diaSem, f.socorristas || 0, f.horario, f.horas || 0,
+      f.origen === 'fichado' ? 'Fichado' : f.origen === 'previsto' ? 'Previsto (horario)' : '',
+      f.nombres || ''
+    ])));
+    out.push('');
+    out.push(fila(['TOTAL FICHADO', '', '', '', factCache.totFichado]));
+    out.push(fila(['TOTAL PREVISTO', '', '', '', factCache.totPrevisto]));
+    out.push(fila(['TOTAL DEL MES', '', '', '', factCache.totalMes]));
+    const blob = new Blob(['﻿' + out.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `horas-${factCache.hotel.replace(/[^a-zA-Z0-9]+/g, '-')}-${factCache.mes}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(a.href);
+    toast('✓ CSV descargado');
+  };
+
   function renderHotelFicha() {
     const h = hotelesCache.find(x => x.id === hotelActualId);
     if (!h) return;
@@ -6109,6 +6356,11 @@
           </button>
         </div>`;
     }
+    else if (hotelTabActual === 'facturacion') {
+      body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--ink-500);">Calculando horas del hotel…</div>';
+      renderFacturacionHotel(h);
+    }
+
     else if (hotelTabActual === 'acciones') {
       body.innerHTML = `
         <div class="ficha-action-row ${h.activo ? 'warn' : 'ok'}">
