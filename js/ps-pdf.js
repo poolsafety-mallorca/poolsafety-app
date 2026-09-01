@@ -1184,5 +1184,155 @@ window.PSPdf = (function () {
     doc.save(nombreArchivo || `finiquito-${(empleado.nombre || 'empleado').replace(/\s+/g,'_')}.pdf`);
   }
 
-  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarIncidencia, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito, descargarIncidencia };
+  /* ==========================================================================
+     HORAS DE SERVICIO POR HOTEL · el papel que se adjunta a la factura
+     Lo genera la pestaña "Horas y facturación" de la ficha del hotel.
+     Lleva SIEMPRE las dos cifras separadas — facturadas y de control — porque
+     son cosas distintas: una es lo que se cobra (horario contratado) y la otra
+     lo que registró la app. Si un hotel discute la factura, este papel es el
+     que la sostiene.
+     ========================================================================== */
+  function generarHorasHotel(datos) {
+    const doc = nuevoPdf();
+    const fmtH = window.PSJornada.fmtH;
+    header(doc, 'Horas de servicio de socorrismo', `${limpiarTexto(datos.hotel)} · ${datos.nombreMes}`);
+
+    let y = 60;
+
+    // Resumen destacado arriba: lo primero que mira quien recibe la factura
+    doc.setFillColor(239, 246, 255);
+    doc.setDrawColor(29, 78, 216);
+    doc.setLineWidth(0.5);
+    doc.rect(15, y, 180, 22, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(30, 58, 138);
+    doc.text('HORAS TOTALES FACTURADAS', 20, y + 8);
+    doc.setFontSize(16);
+    doc.text(`${fmtH(datos.totFacturado)} h`, 190, y + 9, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(6, 95, 70);
+    doc.text('Horas de control y fichaje', 20, y + 17);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`${fmtH(datos.totFichado)} h`, 190, y + 17, { align: 'right' });
+    doc.setTextColor(0, 0, 0);
+    y += 27;
+
+    if (datos.totImputado > 0) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(146, 64, 14);
+      doc.text(`De las facturadas, ${fmtH(datos.totImputado)} h corresponden a dias sin fichaje, imputados por el horario contratado.`, 15, y);
+      doc.setTextColor(0, 0, 0);
+      y += 5;
+    }
+    doc.setFontSize(7.5);
+    doc.setTextColor(120, 120, 120);
+    doc.text('Criterio: se factura el tiempo de servicio dentro del horario contratado del hotel. Los minutos fuera de ese horario no se facturan.', 15, y);
+    doc.setTextColor(0, 0, 0);
+    y += 7;
+
+    // Tabla día a día
+    const cols = [
+      { t: 'Dia',    w: 16 },
+      { t: 'Socorr.', w: 16, num: true },
+      { t: 'Horario contratado', w: 44 },
+      { t: 'Fichaje real', w: 48 },
+      { t: 'Control', w: 18, num: true },
+      { t: 'Facturado', w: 22, num: true },
+      { t: 'Estado', w: 16 }
+    ];
+    const ancho = cols.reduce((a, c) => a + c.w, 0);
+
+    function cabecera() {
+      doc.setFillColor(240, 240, 240);
+      doc.setDrawColor(170, 170, 170);
+      doc.setLineWidth(0.2);
+      doc.rect(15, y, ancho, 7, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      let x = 15;
+      cols.forEach(c => {
+        doc.text(c.t, c.num ? x + c.w - 2 : x + 2, y + 4.6, c.num ? { align: 'right' } : {});
+        x += c.w;
+      });
+      y += 7;
+      doc.setFont('helvetica', 'normal');
+    }
+    cabecera();
+
+    doc.setFontSize(7);
+    datos.filas.forEach(f => {
+      if (f.estado === 'vacio' && !f.socorristas) return;   // días sin servicio: no ensucian el papel
+      const antes = y;
+      y = checkPage(doc, y, 6);
+      if (y !== antes) cabecera();
+
+      if (f.estado === 'imputada') doc.setFillColor(254, 243, 199);
+      else doc.setFillColor(255, 255, 255);
+      doc.rect(15, y, ancho, 5.5, 'FD');
+
+      const valores = [
+        String(f.dia).padStart(2, '0') + ' ' + f.diaSem,
+        String(f.socorristas || 0),
+        limpiarTexto(f.horarioTxt || '—'),
+        limpiarTexto(f.fichadoTxt || '—'),
+        f.fichado ? fmtH(f.fichado) : '—',
+        f.facturado ? fmtH(f.facturado) : '—',
+        f.estado === 'fichado' ? 'Fichado' : f.estado === 'imputada' ? 'Imputada' : ''
+      ];
+      let x = 15;
+      cols.forEach((c, i) => {
+        let txt = valores[i];
+        // Recorta lo que no quepa en la celda en vez de pisar la siguiente
+        while (txt.length > 4 && doc.getTextWidth(txt) > c.w - 3) txt = txt.slice(0, -2) + '…';
+        doc.text(txt, c.num ? x + c.w - 2 : x + 2, y + 3.7, c.num ? { align: 'right' } : {});
+        x += c.w;
+      });
+      y += 5.5;
+    });
+
+    // Fila de totales
+    y = checkPage(doc, y, 10);
+    doc.setFillColor(29, 78, 216);
+    doc.rect(15, y, ancho, 8, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.text(`TOTAL ${datos.nombreMes.toUpperCase()}`, 17, y + 5.4);
+    let xt = 15 + cols[0].w + cols[1].w + cols[2].w + cols[3].w;
+    doc.text(fmtH(datos.totFichado), xt + cols[4].w - 2, y + 5.4, { align: 'right' });
+    xt += cols[4].w;
+    doc.text(fmtH(datos.totFacturado), xt + cols[5].w - 2, y + 5.4, { align: 'right' });
+    doc.setTextColor(0, 0, 0);
+    y += 14;
+
+    // Leyenda
+    y = checkPage(doc, y, 24);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text('Como leer este documento', 15, y); y += 4.5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(90, 90, 90);
+    [
+      'Facturado: tiempo de servicio prestado dentro del horario contratado del hotel. Es la cifra que se factura.',
+      'Control: horas efectivamente registradas por los socorristas en la aplicacion, con GPS y hora de entrada y salida.',
+      'Imputada: dia sin registro en la aplicacion, facturado por el horario contratado.',
+      'Las dos cifras no coinciden por definicion: los minutos trabajados fuera del horario contratado no se facturan al hotel.'
+    ].forEach(t => { doc.text('- ' + t, 15, y); y += 4; });
+    doc.setTextColor(0, 0, 0);
+
+    numerarPaginas(doc);
+    return doc;
+  }
+
+  function descargarHorasHotel(datos) {
+    const doc = generarHorasHotel(datos);
+    const limpio = (datos.hotel || 'hotel').replace(/[^a-zA-Z0-9]+/g, '-');
+    doc.save(`PoolSafety-Horas-${limpio}-${datos.mes}.pdf`);
+  }
+
+  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarIncidencia, generarHorasHotel, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito, descargarIncidencia, descargarHorasHotel };
 })();
