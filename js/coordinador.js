@@ -6121,7 +6121,12 @@
       totFacturado = r1(totFacturado);
       totFichado = r1(totFichado);
       totImputado = r1(totImputado);
-      factCache = { hotel: hotel.nombre, mes: cod, nombreMes, filas, totFacturado, totFichado, totImputado };
+      factCache = {
+        hotel: hotel.nombre, mes: cod, nombreMes, filas,
+        totFacturado, totFichado, totImputado,
+        contacto: hotel.contacto_hotel_nombre || '',
+        tel: hotel.contacto_hotel_tel || ''
+      };
 
       const opciones = [];
       const hoyRef = new Date();
@@ -6136,8 +6141,11 @@
           <div class="ficha-body-title" style="margin:0;">Horas de ${hotel.nombre} · ${nombreMes}</div>
           <div class="row gap-2">
             <select id="factMes" style="padding:8px 12px;border-radius:999px;border:1px solid var(--line);font-size:13px;background:#fff;font-weight:500;">${opciones.join('')}</select>
-            <button class="btn btn-primary btn-sm" onclick="descargarFacturacionPDF()">
-              <svg class="ic ic-14"><use href="#ic-file-text"/></svg> PDF para el hotel
+            <button class="btn btn-primary btn-sm" onclick="enviarFacturacionPDF()">
+              <svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg> Enviar al hotel
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="descargarFacturacionPDF()">
+              <svg class="ic ic-14"><use href="#ic-file-text"/></svg> PDF
             </button>
             <button class="btn btn-outline btn-sm" onclick="descargarFacturacionCSV()">
               <svg class="ic ic-14"><use href="#ic-download"/></svg> CSV
@@ -6228,6 +6236,43 @@
       body.innerHTML = `<div style="padding:24px;color:#B91C1C;">Error al calcular las horas: ${err.message}</div>`;
     }
   }
+
+  /* Enviar el parte de horas al hotel desde el propio móvil.
+     Usa la hoja de compartir nativa (WhatsApp, Mail, AirDrop…) con el PDF ya
+     adjunto: el hotel tiene teléfono de contacto guardado, no email, así que
+     lo normal es mandárselo por WhatsApp. Si el navegador no soporta compartir
+     ficheros (escritorio, sobre todo), se descarga y se avisa. */
+  window.enviarFacturacionPDF = async function () {
+    if (!factCache) { toast('No hay datos que enviar'); return; }
+    if (!window.PSPdf || !window.PSPdf.blobHorasHotel) { toast('Generador de PDF no disponible'); return; }
+    let blob, nombre;
+    try {
+      ({ blob, nombre } = window.PSPdf.blobHorasHotel(factCache));
+    } catch (err) { toast('Error al generar el PDF: ' + err.message); return; }
+
+    const texto = `Parte de horas de socorrismo · ${factCache.hotel} · ${factCache.nombreMes}. ` +
+                  `Total facturado: ${window.PSJornada.fmtH(factCache.totFacturado)} h.`;
+    try {
+      const archivo = new File([blob], nombre, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+        await navigator.share({ files: [archivo], title: nombre, text: texto });
+        return;   // el usuario elige la app en la hoja nativa
+      }
+    } catch (err) {
+      // El usuario canceló la hoja de compartir: no es un error que reportar.
+      if (err && err.name === 'AbortError') return;
+      console.warn('[facturación] compartir falló, se descarga:', err.message);
+    }
+    // Sin compartir nativo: descargar y decir qué hacer.
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = nombre;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    alert('Este navegador no permite compartir el archivo directamente.\n\n' +
+          'El PDF se ha descargado: adjúntalo tú al correo o al WhatsApp del hotel' +
+          (factCache.tel ? `\n\nContacto de ${factCache.hotel}: ${factCache.contacto || ''} ${factCache.tel}` : '') + '.');
+  };
 
   // PDF con membrete de la empresa, para adjuntar a la factura del hotel.
   window.descargarFacturacionPDF = function () {
