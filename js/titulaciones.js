@@ -28,18 +28,30 @@ window.PSTit = (function () {
      En su lugar se listan las columnas ligeras y se pregunta aparte qué filas
      TIENEN documento, trayendo solo los `id` (unos bytes). El contenido se
      descarga al pulsar "Ver", que es cuando de verdad hace falta. */
+  // `documento_storage_path` es ligero (una ruta de texto) y sí se pide en el
+  // listado: dice si el documento ya vive en Storage sin traer su contenido.
   const COLS_LIGERAS = 'id, empleado_id, tipo, nombre, entidad_emisora, numero_referencia, ' +
-                       'fecha_obtencion, fecha_caducidad, fecha_reciclaje, notas, documento_nombre, created_at';
+                       'fecha_obtencion, fecha_caducidad, fecha_reciclaje, notas, documento_nombre, ' +
+                       'documento_storage_path, created_at';
 
   async function cargar(empleadoId) {
     if (!window.sb || !empleadoId) return [];
     try {
-      const { data, error } = await window.sb
+      let { data, error } = await window.sb
         .from('titulaciones_empleado')
         .select(COLS_LIGERAS)
         .eq('empleado_id', empleadoId)
         .order('tipo')
         .order('fecha_caducidad', { ascending: false });
+      // Si sql/26 todavía no está ejecutado, la columna no existe: se reintenta
+      // sin ella para que la app siga funcionando igual que antes.
+      if (error && /documento_storage_path|column/i.test(error.message)) {
+        const sinCol = COLS_LIGERAS.replace('documento_storage_path, ', '');
+        const r2 = await window.sb.from('titulaciones_empleado')
+          .select(sinCol).eq('empleado_id', empleadoId)
+          .order('tipo').order('fecha_caducidad', { ascending: false });
+        data = r2.data; error = r2.error;
+      }
       if (error) throw error;
       const filas = data || [];
 
@@ -51,7 +63,7 @@ window.PSTit = (function () {
           .eq('empleado_id', empleadoId)
           .not('documento_url', 'is', null);
         const set = new Set((conDoc || []).map(x => x.id));
-        filas.forEach(f => { f.tieneDocumento = set.has(f.id); });
+        filas.forEach(f => { f.tieneDocumento = set.has(f.id) || !!f.documento_storage_path; });
       } catch (_) {
         // Si falla, se asume que sí hay documento: mejor mostrar el botón de más
         // que esconder un documento que existe.
@@ -64,10 +76,30 @@ window.PSTit = (function () {
     }
   }
 
-  /* Descarga el documento SOLO cuando el usuario lo pide. */
+  /* Abre el documento SOLO cuando el usuario lo pide.
+     Prioridad: Storage (enlace firmado, ligero) → base64 en la BD (lo antiguo,
+     mientras queden sin migrar). */
   async function abrirDocumento(id) {
     if (!window.sb) return;
     try {
+      // Primero, la ruta en Storage: es una consulta minúscula.
+      let ruta = null, nombre = null;
+      try {
+        const { data: meta } = await window.sb
+          .from('titulaciones_empleado')
+          .select('documento_storage_path, documento_nombre')
+          .eq('id', id).single();
+        ruta = meta?.documento_storage_path || null;
+        nombre = meta?.documento_nombre || null;
+      } catch (_) { /* sql/26 sin ejecutar: se tira del camino antiguo */ }
+
+      if (ruta && window.PSStorage?.urlFirmadaDocumento) {
+        const url = await window.PSStorage.urlFirmadaDocumento(ruta, 300);
+        window.open(url, '_blank');
+        return;
+      }
+
+      // Camino antiguo: el fichero sigue en base64 dentro de la base de datos.
       const { data, error } = await window.sb
         .from('titulaciones_empleado')
         .select('documento_url, documento_nombre')
@@ -79,7 +111,7 @@ window.PSTit = (function () {
       }
       const a = document.createElement('a');
       a.href = data.documento_url;
-      a.download = data.documento_nombre || 'documento';
+      a.download = data.documento_nombre || nombre || 'documento';
       a.target = '_blank';
       document.body.appendChild(a); a.click(); a.remove();
     } catch (err) {
@@ -99,23 +131,49 @@ window.PSTit = (function () {
       fecha_reciclaje: payload.fecha_reciclaje || null,
       notas: payload.notas || null
     };
+    /* Fichero nuevo → a Storage, no a la base de datos.
+       `payload.documento_file` es el File del input. Se sube al bucket privado
+       y en la BD queda solo la ruta. Si Storage falla, NO se guarda a medias:
+       se avisa y no se toca el documento que hubiera. */
+    if (payload.documento_file && window.PSStorage?.subirDocumento) {
+      const f = payload.documento_file;
+      const ext = (f.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const idDoc = payload.id || (window.crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()));
+      const ruta = `titulaciones/${empleadoId}/${idDoc}.${ext}`;
+      await window.PSStorage.subirDocumento(ruta, f, f.type);
+      await window.PSStorage.verificarDocumento(ruta, f.size);
+      row.documento_storage_path = ruta;
+      row.documento_nombre = f.name;
+      row.documento_url = null;          // ya no hace falta el base64
+    }
+
     /* El documento SOLO se toca si viene uno nuevo.
        Antes se hacía `documento_url: payload.documento_url || null`, y quien
        edita una titulación sin volver a subir el fichero manda `undefined`:
        el UPDATE ponía la columna a null y BORRABA el DNI o el contrato ya
        subido. Pérdida de datos silenciosa al corregir una simple fecha.
        Pasando `null` explícito sí se puede quitar el documento a propósito. */
-    if (payload.documento_url !== undefined) {
+    else if (payload.documento_url !== undefined) {
       row.documento_url = payload.documento_url || null;
       row.documento_nombre = payload.documento_nombre || null;
     }
-    if (payload.id) {
-      const { error } = await window.sb.from('titulaciones_empleado').update(row).eq('id', payload.id);
-      if (error) throw error;
-    } else {
-      const { error } = await window.sb.from('titulaciones_empleado').insert(row);
-      if (error) throw error;
+    // Si sql/26 aún no está ejecutado, la columna de la ruta no existe y
+    // Postgres rechazaría el guardado ENTERO. Se reintenta sin ella para no
+    // dejar al usuario sin poder guardar sus datos.
+    async function escribir(fila) {
+      if (payload.id) return window.sb.from('titulaciones_empleado').update(fila).eq('id', payload.id);
+      return window.sb.from('titulaciones_empleado').insert(fila);
     }
+    let { error } = await escribir(row);
+    if (error && /documento_storage_path|column/i.test(error.message)) {
+      const { documento_storage_path, ...sinRuta } = row;
+      const r2 = await escribir(sinRuta);
+      error = r2.error;
+      if (!error && documento_storage_path) {
+        throw new Error('El documento se ha subido pero no se ha podido enlazar: falta ejecutar sql/26 en Supabase.');
+      }
+    }
+    if (error) throw error;
   }
 
   async function eliminar(id) {

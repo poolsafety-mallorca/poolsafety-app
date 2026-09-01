@@ -847,6 +847,11 @@
             <button class="btn btn-outline btn-sm" onclick="exportarTitulacionesCSV()">
               <svg class="ic ic-14"><use href="#ic-download"/></svg> Exportar
             </button>
+            <!-- Migración de documentos a Storage. Solo admin: se muestra desde JS. -->
+            <button class="btn btn-outline btn-sm" id="btnMigrarDocs" onclick="abrirMigracionDocs()"
+              style="display:none;color:#1D4ED8;border-color:#93C5FD;">
+              <svg class="ic ic-14"><use href="#ic-upload"/></svg> Documentos
+            </button>
           </div>
         </div>
         <div class="panel-body">
@@ -1616,6 +1621,11 @@ socorrista,Ana López,ana@ejemplo.com"></textarea>
 </div>
 
 <!-- Modal Titulaciones (compartido con socorrista) -->
+<!-- Migración de documentos de la base de datos a Storage. Solo admin. -->
+<div class="modal-backdrop" id="migrarDocsModal">
+  <div class="modal" id="migrarDocsBody" style="max-width:640px;"></div>
+</div>
+
 <!-- Añadir los fichajes que faltan de un hotel (días en que se trabajó sin fichar). -->
 <div class="modal-backdrop" id="faltanFichajesModal">
   <div class="modal" id="faltanFichajesBody" style="max-width:820px;"></div>

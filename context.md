@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v138 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v138`**
+Última actualización: 2026-08-31 (v139 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v139`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -27,6 +27,9 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/20-revisiones-diarias.sql` — auditoría revisiones botiquín/DESA/oxígeno
 - ✅ `sql/21-rls-correturnos-inventario.sql` — correturnos leen/escriben inventario del hotel donde fichan
 - ✅ `sql/22-diagnostico-reparar-unidades.sql` — reparar Botiquín 2/3 sin items (Cala Gran)
+- ⏳ **`sql/26-documentos-a-storage.sql` — PENDIENTE DE EJECUTAR**: columna
+  `documento_storage_path` + bucket **privado** `documentos-laborales` con sus políticas.
+  Sin esto no se pueden migrar ni subir documentos al almacén.
 - ✅ `sql/25-contacto-emergencia.sql` — contacto de emergencia del socorrista
   (`emergencia_nombre`, `emergencia_telefono`). **Ejecutado el 2026-08-31 por Adam.**
 - ✅ `sql/23-botiquin-hotel-nuevo-y-ticks.sql` — RLS inventario por empresa (ticks del 2º socorrista) + siembra hoteles creados vacíos
@@ -96,7 +99,7 @@ documento (trayendo solo `id`) y el contenido se descarga al pulsar "Ver"
 (`PSTit.abrirDocumento`). **Nunca volver a meter `documento_url` en una consulta de
 listado.**
 
-**Causa de fondo, aún pendiente:** las titulaciones y documentos del
+**Causa de fondo — solución construida (v139), pendiente de ejecutar `sql/26`:** las titulaciones y documentos del
 socorrista (DNI, PRL, contrato, certificados) se guardan como **data URL en base64
 dentro de la propia base de datos** (`titulaciones_empleado.documento_url`, columna de
 texto), no en Storage. El límite por fichero es de **20 MB**, y base64 infla un ~33%:
@@ -107,9 +110,22 @@ Ver `js/socorrista.js` (`readAsDataURL` → `documento_url`) y `js/titulaciones.
 Las firmas (`firma_imagen`) también van en base64 pero son de canvas 500×180, pesan
 poco y no son el problema.
 
-**Arreglo pendiente de decidir con el cliente**: mover esos documentos a Supabase
-Storage (el bucket y el wrapper `PSStorage` YA existen y se usan para fotos y PDFs) y
-guardar solo la URL. Es una migración de datos reales, así que hay que acordarla antes.
+**Autorizado por el cliente y ya construido.** Los documentos van a un bucket
+**PRIVADO nuevo** (`documentos-laborales`), NO al `empleados-media` existente: ese es
+público y un DNI o un contrato ahí quedarían accesibles con solo tener el enlace. Hoy
+están protegidos por RLS, así que meterlos en un bucket público habría EMPEORADO su
+protección. Se leen con enlaces firmados de 5 minutos (`PSStorage.urlFirmadaDocumento`).
+
+**La migración va en DOS FASES a propósito** (panel Titulaciones → botón "Documentos",
+solo admin):
+- **Paso 1 · Copiar**: sube a Storage, **se lo vuelve a descargar y compara el tamaño**,
+  y solo entonces guarda `documento_storage_path`. **No borra nada**: durante un tiempo
+  el documento existe en los dos sitios. Relanzable: se salta los ya hechos.
+- **Paso 2 · Liberar**: pone `documento_url` a null **solo** en las filas cuya copia en
+  Storage se verifica de nuevo en ese preciso momento. Lo que no verifica, no se toca.
+
+Las subidas nuevas ya van directas a Storage. **Nunca volver a guardar ficheros en
+base64 dentro de la BD.**
 
 ---
 
