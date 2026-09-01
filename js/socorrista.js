@@ -369,7 +369,7 @@
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') sincronizarEstadoFichajeDesdeBD();
   });
-  setInterval(sincronizarEstadoFichajeDesdeBD, 60_000);
+  window.PSPoll.cada(sincronizarEstadoFichajeDesdeBD, 60_000);
 
   function aplicarPuestoEnUI() {
     const mapName = document.getElementById('mapName');
@@ -1498,7 +1498,7 @@
   }
   document.addEventListener('ps-session-updated', () => setTimeout(renderPendientesYCampana, 700));
   setTimeout(renderPendientesYCampana, 1200);
-  setInterval(renderPendientesYCampana, 60_000);
+  window.PSPoll.cada(renderPendientesYCampana, 120_000);
 
   /* ---------- Métricas mes: días trabajados + horas trabajadas (real de BD) ---------- */
   async function renderMetricasMes() {
@@ -1539,7 +1539,7 @@
   }
   document.addEventListener('ps-session-updated', () => setTimeout(renderMetricasMes, 900));
   setTimeout(renderMetricasMes, 1400);
-  setInterval(renderMetricasMes, 60_000);
+  window.PSPoll.cada(renderMetricasMes, 300_000);
 
   /* ---------- Ranking de puntualidad del mes ----------
      Compara cada fichaje de ENTRADA con la hora de inicio del turno
@@ -1669,7 +1669,7 @@
   }
   document.addEventListener('ps-session-updated', () => setTimeout(renderRankingPuntualidad, 1500));
   setTimeout(renderRankingPuntualidad, 2200);
-  setInterval(renderRankingPuntualidad, 120_000);
+  window.PSPoll.cada(renderRankingPuntualidad, 300_000);
 
   /* ---------- Subir mi documentación (socorrista) ---------- */
   let misubidaBlob = null, misubidaTipo = null;
@@ -3537,7 +3537,11 @@
   setTimeout(() => comprobarKitAltaObligatorio('init'), 1500);
 
   // Polling cada 10s (antes 30s — muy lento para piloto real)
-  setInterval(() => comprobarKitAltaObligatorio('polling'), 10_000);
+  // Cada 10 s × 51 móviles eran cientos de peticiones por minuto todo el día.
+  // Esto es solo el RESPALDO: el Realtime de arriba ya hace saltar el wizard al
+  // instante cuando el admin pide la firma. Con 2 minutos y solo con la app en
+  // pantalla, el respaldo sigue cumpliendo y el gasto baja un orden de magnitud.
+  window.PSPoll.cada(() => comprobarKitAltaObligatorio('polling'), 120_000);
 
   // Realtime: escucha cambios de firmas_documentos y tareas del empleado
   // Cuando admin archiva firma o inserta tarea → dispara comprobación INMEDIATA
@@ -3785,7 +3789,7 @@
   document.addEventListener('ps-session-updated', () => setTimeout(renderContactCoord, 300));
   setTimeout(renderContactCoord, 900);
   // Refresca cada 2 min para reflejar quién está Libre
-  setInterval(renderContactCoord, 120_000);
+  window.PSPoll.cada(renderContactCoord, 600_000);
 
   /* ==========================================================================
      PARTE DE INCIDENCIA · wizard 6 pasos con silueta + material + firma

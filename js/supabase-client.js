@@ -86,3 +86,38 @@ window.PSDB = {
     return window.sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
   }
 };
+
+/* ==========================================================================
+   PSPoll · sondeos que no gastan cuota cuando nadie mira
+   ==========================================================================
+   La app repregunta a la base de datos con setInterval en varios sitios. El
+   problema no es cada consulta, es multiplicarlas: 51 socorristas con la app
+   abierta y un sondeo cada 10 s son cientos de peticiones por minuto, todo el
+   día, aunque el móvil esté en el bolsillo con la pantalla apagada. Eso es lo
+   que se come el Egress del plan.
+
+   `cada(fn, ms)` hace dos cosas:
+     · No ejecuta nada si la pestaña NO está visible (móvil bloqueado, app en
+       segundo plano, otra pestaña delante).
+     · Al volver a primer plano ejecuta una vez enseguida, para que el usuario
+       no vea datos viejos.
+
+   Usar SIEMPRE esto en vez de setInterval para cualquier cosa que consulte la
+   base de datos.
+   ========================================================================== */
+window.PSPoll = (function () {
+  function visible() {
+    return typeof document === 'undefined' || document.visibilityState !== 'hidden';
+  }
+
+  function cada(fn, ms) {
+    const id = setInterval(() => { if (visible()) fn(); }, ms);
+    // Al volver a la app, refrescar ya: si no, se quedaría hasta `ms` con datos viejos.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') fn();
+    });
+    return id;
+  }
+
+  return { cada, visible };
+})();

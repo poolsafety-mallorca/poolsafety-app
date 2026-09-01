@@ -398,7 +398,10 @@
   renderPosts();
   // Refrescar cada 25s + al recuperar foco. Realtime subscription para entrada/salida
   // inmediatas cuando el socorrista ficha desde el móvil.
-  setInterval(renderPosts, 25_000);
+  // Tiene Realtime sobre `fichajes` justo debajo: esto es solo el respaldo por
+  // si el socket se cae. Cada 25 s traía todos los fichajes del día de las 51
+  // personas, con su empleado enlazado, en cada uno de los paneles abiertos.
+  window.PSPoll.cada(renderPosts, 90_000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderPosts(); });
   try {
     window.sb.channel('fichajes-realtime')
@@ -871,7 +874,7 @@
   };
   renderAlertas();
   // Refrescar cada 60 seg y al volver a foco
-  setInterval(renderAlertas, 60_000);
+  window.PSPoll.cada(renderAlertas, 120_000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderAlertas(); });
 
   // Badge campana admin/coord = nº de alertas abiertas
@@ -1005,7 +1008,7 @@
   });
 
   refrescarCampana();
-  setInterval(refrescarCampana, 30_000);
+  window.PSPoll.cada(refrescarCampana, 120_000);
 
   /* ---------- Push local (Notification API + Realtime) ---------- */
   // Banner rojo persistente arriba del dashboard cuando el coord/dueño aún NO
@@ -3608,7 +3611,7 @@
     } catch (_) { badge.style.display = 'none'; }
   }
   actualizarBadgeDocs();
-  setInterval(actualizarBadgeDocs, 120_000);
+  window.PSPoll.cada(actualizarBadgeDocs, 300_000);
   document.addEventListener('ps-session-updated', () => setTimeout(actualizarBadgeDocs, 500));
 
   /* ==========================================================================
@@ -7814,7 +7817,7 @@
   }
   setTimeout(refrescarDashSubStats, 1600);
   document.addEventListener('ps-session-updated', () => setTimeout(refrescarDashSubStats, 400));
-  setInterval(refrescarDashSubStats, 120_000);
+  window.PSPoll.cada(refrescarDashSubStats, 300_000);
 
   /* ==========================================================================
      MI PERFIL (admin + coord) — editar nombre, teléfono, subir docs propios
