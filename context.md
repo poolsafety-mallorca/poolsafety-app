@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v129 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v129`**
+Última actualización: 2026-08-31 (v130 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v130`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -867,16 +867,23 @@ Adam factura a cada hotel por horas de servicio y no tenía de dónde sacarlas. 
 pestaña en la ficha del hotel: día a día con nº de socorristas, horario y horas, con
 selector de mes y CSV.
 
-**Regla de relleno** (la app entró en marcha a mitad de temporada y de los primeros
-días de agosto no hay fichajes aunque se trabajaron):
-- Día CON fichajes en el hotel → mandan los fichajes. Dato real.
-- Día SIN ningún fichaje → se rellena con el horario asignado al hotel y la fila queda
-  marcada como **PREVISTO** (ámbar).
+**AL HOTEL SE LE FACTURA SU HORARIO CONTRATADO, NO EL FICHAJE.** Si el socorrista entra
+a las 09:55 y el horario empieza a las 10:00, esos 5 minutos no se facturan; igual a la
+salida. Se calcula por **solape** (`solapeHoras`) entre lo trabajado y los tramos
+contratados de ese día: nunca más de lo contratado, nunca más de lo realmente trabajado.
+Si llega tarde o se va antes, se factura menos — el solape lo recorta solo.
 
-Los dos totales van **separados a propósito** (Fichadas / Previstas / Total), con aviso
-en pantalla de cuántas horas del total no están fichadas. Una hora prevista no es una
-hora medida y quien factura tiene que saber qué parte es cada cosa. **No juntar los dos
-totales en uno solo.**
+- Día CON fichajes → `Facturado` = solape con el horario. `Control` = horas fichadas reales.
+- Día SIN ningún fichaje → **IMPUTADA**: se factura el horario contratado entero (la app
+  entró a mitad de temporada y de los primeros días de agosto no hay fichajes aunque se
+  trabajaron).
+- Quien fichó pero no tiene horario asignado → se usa `puestos.hora_inicio_default` /
+  `hora_fin_default` como referencia y la fila avisa "sin horario asignado". Nunca se
+  deja el día a cero por falta de configuración.
+
+Dos totales, siempre a la vista y al pie del informe:
+**Horas totales facturadas: X** · **Horas de control y fichaje: Y**, más cuántas de las
+facturadas son imputadas. Son cifras distintas por definición y no deben cuadrar.
 
 Aquí se usan **horas REALES sin el tope de 40 h/semana**: ese tope es de la jornada del
 trabajador (lo que firma y lo que ve la inspección), no de lo que se presta al hotel.
