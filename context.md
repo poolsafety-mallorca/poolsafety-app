@@ -91,7 +91,7 @@ móviles), no el tamaño de la BD. Plan **Free**, organización *PoolSafety Mall
 **402** y la app deja de funcionar.
 
 **Causa encontrada y ya corregida (v138)**: `js/coordinador.js` pedía `documento_url` de
-las titulaciones de **TODO el equipo** en cada carga del panel — y no usaba ese dato para
+las titulaciones de **TODO el equipo — 51 personas activas, no 4** — en cada carga del panel — y no usaba ese dato para
 nada. Esa columna guarda el fichero entero en base64 (hasta ~27 MB por documento), así
 que se descargaban todos los DNI, contratos y certificados del equipo una y otra vez.
 `PSTit.cargar` hacía lo mismo con `select('*')` para un trabajador.
