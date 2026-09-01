@@ -13,6 +13,77 @@ window.PSPdf = (function () {
     ccc: '07132352204'
   };
 
+  /* ==========================================================================
+     GUARDAR UN PDF QUE TAMBIÉN FUNCIONE EN EL IPHONE
+     jsPDF guarda con un <a download>. En iOS con la app instalada en la pantalla
+     de inicio (modo standalone) ese atributo se ignora y además no hay pestañas
+     donde abrir el archivo: el botón de descargar parecía no hacer NADA.
+     Fuera de ese caso se descarga como siempre.
+     ========================================================================== */
+  function esIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+           (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
+  function esStandalone() {
+    return window.navigator.standalone === true ||
+           (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  }
+
+  async function guardarPdf(doc, nombre) {
+    if (!(esIOS() && esStandalone())) { doc.save(nombre); return; }
+
+    const blob = doc.output('blob');
+    // 1) Hoja de compartir de iOS: incluye "Guardar en Archivos", que es
+    //    exactamente lo que el usuario entiende por descargar.
+    try {
+      const archivo = new File([blob], nombre, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+        await navigator.share({ files: [archivo], title: nombre });
+        return;
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;   // canceló: no es un fallo
+      console.warn('[pdf] compartir no disponible:', err.message);
+    }
+    // 2) Abrirlo en una ventana nueva: iOS lo enseña con su visor de PDF, que
+    //    ya trae su propio botón de compartir y guardar.
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (!w) {
+      // 3) Ventanas emergentes bloqueadas: navegar en la propia app. Se pierde
+      //    la pantalla en la que estaba, pero es mejor que un botón inerte.
+      window.location.href = url;
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  // Los CSV se descargan con el mismo <a download>, así que en el iPhone
+  // instalado fallan igual. Se expone para que el resto de la app lo use.
+  async function guardarArchivo(blob, nombre) {
+    if (!(esIOS() && esStandalone())) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = nombre;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      return;
+    }
+    try {
+      const archivo = new File([blob], nombre, { type: blob.type || 'application/octet-stream' });
+      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+        await navigator.share({ files: [archivo], title: nombre });
+        return;
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+    }
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (!w) window.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
   function nuevoPdf() {
     if (!window.jspdf) throw new Error('jsPDF no está cargado');
     return new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' });
@@ -1142,7 +1213,7 @@ window.PSPdf = (function () {
 
   async function descargarIncidencia(inc, empleado, nombreArchivo) {
     const doc = await generarIncidencia(inc, empleado);
-    doc.save(nombreArchivo || `PoolSafety-incidencia-${inc.numero_parte || 'sin-num'}.pdf`);
+    await guardarPdf(doc, nombreArchivo || `PoolSafety-incidencia-${inc.numero_parte || 'sin-num'}.pdf`);
   }
 
   /* ==========================================================================
@@ -1171,17 +1242,17 @@ window.PSPdf = (function () {
 
   async function descargar(empleado, firma, subdocs, nombreArchivo) {
     const doc = await generarDocSegunTipo(empleado, firma, subdocs);
-    doc.save(nombreArchivo || `${firma.documento_codigo}-${empleado.nombre || 'empleado'}.pdf`);
+    await guardarPdf(doc, nombreArchivo || `${firma.documento_codigo}-${empleado.nombre || 'empleado'}.pdf`);
   }
 
   async function descargarJornadaOficial(empleado, firma, fichajesMes, mesAnio, nombreArchivo) {
     const doc = await generarJornadaOficial(empleado, firma, fichajesMes, mesAnio);
-    doc.save(nombreArchivo || `jornada-oficial-${empleado.nombre || 'empleado'}-${(mesAnio||'').replace(/[^\w]/g,'-')}.pdf`);
+    await guardarPdf(doc, nombreArchivo || `jornada-oficial-${empleado.nombre || 'empleado'}-${(mesAnio||'').replace(/[^\w]/g,'-')}.pdf`);
   }
 
   async function descargarFiniquito(empleado, firma, nombreArchivo) {
     const doc = await generarFiniquito(empleado, firma);
-    doc.save(nombreArchivo || `finiquito-${(empleado.nombre || 'empleado').replace(/\s+/g,'_')}.pdf`);
+    await guardarPdf(doc, nombreArchivo || `finiquito-${(empleado.nombre || 'empleado').replace(/\s+/g,'_')}.pdf`);
   }
 
   /* ==========================================================================
@@ -1368,8 +1439,8 @@ window.PSPdf = (function () {
     return `PoolSafety-Horas-${limpio}-${datos.mes}.pdf`;
   }
 
-  function descargarHorasHotel(datos) {
-    generarHorasHotel(datos).save(nombreArchivoHoras(datos));
+  async function descargarHorasHotel(datos) {
+    await guardarPdf(generarHorasHotel(datos), nombreArchivoHoras(datos));
   }
 
   // Blob del PDF, para poder compartirlo por WhatsApp o correo desde el móvil
@@ -1378,5 +1449,5 @@ window.PSPdf = (function () {
     return { blob: generarHorasHotel(datos).output('blob'), nombre: nombreArchivoHoras(datos) };
   }
 
-  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarIncidencia, generarHorasHotel, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito, descargarIncidencia, descargarHorasHotel, blobHorasHotel };
+  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarIncidencia, generarHorasHotel, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito, descargarIncidencia, descargarHorasHotel, blobHorasHotel, guardarArchivo };
 })();

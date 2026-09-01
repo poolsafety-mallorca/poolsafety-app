@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v133 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v133`**
+Última actualización: 2026-08-31 (v134 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v134`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -31,6 +31,24 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/24-diagnostico-cala-romani.sql` — SOLO LECTURA. Diagnóstico en UNA consulta (el SQL Editor de Supabase
   sólo muestra la última sentencia). Relanzable sin riesgo.
 - ⏳ `sql/10-asignaciones-temporales.sql` — cobertura del día (feature en curso, no urge)
+
+## 📱 iOS · descargas que no funcionan en la app instalada
+
+**Nunca uses `doc.save()` de jsPDF ni un `<a download>` directamente.** Usa
+`PSPdf.guardarPdf(doc, nombre)` o `PSPdf.guardarArchivo(blob, nombre)`.
+
+Motivo: en iOS con la app instalada en la pantalla de inicio (standalone), el atributo
+`download` se ignora y no hay pestañas donde abrir el fichero, así que el botón de
+descargar **no hacía absolutamente nada** — ni error ni aviso. Afectaba a los 5 PDF de
+la app y a los CSV.
+
+El guardador central detecta iOS+standalone y entonces: (1) hoja de compartir con el
+fichero, que en iOS incluye "Guardar en Archivos"; (2) si no, abrir en ventana nueva,
+donde el visor de iOS ya trae su botón de guardar; (3) si las emergentes están
+bloqueadas, navegar a la URL del blob. Fuera de ese caso descarga como siempre.
+Cancelar la hoja de compartir (`AbortError`) no es un fallo y no muestra nada.
+
+---
 
 ## 📱 iOS · barra de estado y safe-area (leer antes de tocar cabeceras)
 
