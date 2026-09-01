@@ -3705,7 +3705,9 @@
         fecha_obtencion: document.getElementById('titObt').value || null,
         fecha_caducidad: document.getElementById('titCad').value || null,
         fecha_reciclaje: document.getElementById('titRec').value || null,
-        documento_url: fileData || undefined,
+        // El fichero se pasa TAL CUAL: PSTit.guardar lo sube al bucket privado
+        // y en la base de datos solo queda la ruta. Ya no se manda base64.
+        documento_file: document.getElementById('titFile').files[0] || null,
         documento_nombre: fileName || undefined,
         notas: document.getElementById('titNotas').value.trim()
       });

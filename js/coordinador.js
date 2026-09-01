@@ -1857,6 +1857,192 @@
     return mins[Math.floor(mins.length / 2)];
   }
 
+  /* ==========================================================================
+     MIGRAR DOCUMENTOS DE LA BASE DE DATOS A STORAGE · solo admin
+     Los DNI, contratos y certificados se guardaron como base64 dentro de
+     `titulaciones_empleado.documento_url`. Esto los pasa al bucket privado.
+
+     EN DOS FASES A PROPÓSITO, para no perder ni un documento:
+       Fase 1 · MIGRAR   → sube a Storage, se lo vuelve a descargar para
+                           comprobar que llegó entero y con el mismo tamaño, y
+                           solo entonces guarda la ruta. NO borra nada.
+       Fase 2 · LIBERAR  → borra el base64 SOLO de las filas que ya tienen ruta
+                           y cuya copia en Storage vuelve a verificarse en ese
+                           mismo momento. Botón aparte, y con confirmación.
+
+     Entre las dos fases el documento existe por duplicado. Es lo que hace que
+     un fallo a mitad no cueste nada: se vuelve a lanzar y ya está.
+     ========================================================================== */
+  async function contarDocsPendientes() {
+    const out = { base64: 0, storage: 0, error: null };
+    try {
+      const { data, error } = await window.sb
+        .from('titulaciones_empleado')
+        .select('id, documento_nombre, documento_storage_path, empleado_id')
+        .not('documento_url', 'is', null);
+      if (error) throw error;
+      (data || []).forEach(t => {
+        if (t.documento_storage_path) out.storage++; else out.base64++;
+      });
+      out.filas = data || [];
+    } catch (err) {
+      out.error = err.message;
+    }
+    return out;
+  }
+
+  window.abrirMigracionDocs = async function () {
+    if (((window.PS_SESSION || {}).rol || rol) !== 'dueno') return;
+    const body = document.getElementById('migrarDocsBody');
+    document.getElementById('migrarDocsModal').classList.add('open');
+    body.innerHTML = '<div style="padding:30px;text-align:center;">Contando documentos…</div>';
+    const c = await contarDocsPendientes();
+    if (c.error) {
+      body.innerHTML = `<div style="padding:24px;color:#B91C1C;">No se ha podido consultar: ${c.error}
+        ${/documento_storage_path|column/i.test(c.error) ? '<div style="margin-top:10px;">Parece que falta ejecutar <b>sql/26</b> en Supabase.</div>' : ''}
+        <div style="margin-top:12px;text-align:right;"><button class="btn btn-outline" onclick="cerrarMigracionDocs()">Cerrar</button></div></div>`;
+      return;
+    }
+    body.innerHTML = `
+      <div class="modal-head">
+        <h3>Documentos laborales</h3>
+        <button class="modal-close" onclick="cerrarMigracionDocs()">✕</button>
+      </div>
+      <div style="padding:16px;">
+        <div class="row gap-2" style="flex-wrap:wrap;margin-bottom:14px;">
+          <div style="flex:1;min-width:150px;background:#FFFBEB;border:1px solid #F59E0B;border-radius:10px;padding:10px 12px;">
+            <div class="small" style="color:#92400E;">En la base de datos</div>
+            <div style="font-size:24px;font-weight:800;color:#78350F;">${c.base64}</div>
+          </div>
+          <div style="flex:1;min-width:150px;background:#ECFDF5;border:1px solid #10B981;border-radius:10px;padding:10px 12px;">
+            <div class="small" style="color:#047857;">Ya en Storage</div>
+            <div style="font-size:24px;font-weight:800;color:#065F46;">${c.storage}</div>
+          </div>
+        </div>
+
+        <div class="small" style="background:#EFF6FF;border:1px solid #93C5FD;color:#1E3A8A;padding:10px;border-radius:8px;">
+          <b>Paso 1 · Copiar a Storage.</b> Sube cada documento al almacén privado, se lo vuelve a
+          descargar para comprobar que llegó entero y solo entonces lo enlaza.
+          <b>No borra nada</b>: durante un rato el documento estará en los dos sitios.
+        </div>
+        <button class="btn btn-primary" id="btnMigrarPaso1" onclick="migrarDocsPaso1()" style="width:100%;margin-top:10px;"
+          ${c.base64 ? '' : 'disabled'}>
+          ${c.base64 ? `Copiar ${c.base64} documento(s) a Storage` : 'No queda ninguno por copiar'}
+        </button>
+
+        <div class="small" style="background:#FEF2F2;border:1px solid #FCA5A5;color:#7F1D1D;padding:10px;border-radius:8px;margin-top:16px;">
+          <b>Paso 2 · Liberar la base de datos.</b> Borra la copia en base64 <b>solo</b> de los
+          documentos que ya están en Storage y que se verifican de nuevo en ese momento.
+          Hazlo cuando hayas comprobado que se abren bien.
+        </div>
+        <button class="btn btn-outline" id="btnMigrarPaso2" onclick="migrarDocsPaso2()" style="width:100%;margin-top:10px;color:#B91C1C;border-color:#FCA5A5;"
+          ${c.storage ? '' : 'disabled'}>
+          ${c.storage ? `Liberar ${c.storage} documento(s) de la base de datos` : 'Nada que liberar todavía'}
+        </button>
+
+        <div id="migrarDocsLog" class="small" style="margin-top:14px;max-height:180px;overflow:auto;font-family:monospace;"></div>
+      </div>`;
+  };
+
+  window.cerrarMigracionDocs = () => document.getElementById('migrarDocsModal').classList.remove('open');
+
+  function logMigracion(txt, color) {
+    const el = document.getElementById('migrarDocsLog');
+    if (!el) return;
+    el.innerHTML += `<div style="color:${color || '#334155'};">${txt}</div>`;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  window.migrarDocsPaso1 = async function () {
+    const btn = document.getElementById('btnMigrarPaso1');
+    btn.disabled = true; btn.textContent = 'Copiando…';
+    let ok = 0, fallos = 0;
+    try {
+      const { data, error } = await window.sb.from('titulaciones_empleado')
+        .select('id, empleado_id, documento_nombre')
+        .not('documento_url', 'is', null).is('documento_storage_path', null);
+      if (error) throw error;
+      const pendientes = data || [];
+      logMigracion(`${pendientes.length} documento(s) por copiar.`);
+
+      for (const t of pendientes) {
+        // De uno en uno: son ficheros grandes y así el navegador no se ahoga.
+        try {
+          const { data: fila, error: e1 } = await window.sb.from('titulaciones_empleado')
+            .select('documento_url').eq('id', t.id).single();
+          if (e1) throw e1;
+          const dataUri = fila?.documento_url;
+          if (!dataUri || !/^data:/.test(dataUri)) { logMigracion(`· ${t.documento_nombre || t.id}: no es un fichero guardado en base64, se salta.`, '#64748B'); continue; }
+
+          const blob = await window.PSStorage.dataUriToBlob(dataUri);
+          const ext = (t.documento_nombre || '').split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
+          const ruta = `titulaciones/${t.empleado_id}/${t.id}.${ext}`;
+
+          await window.PSStorage.subirDocumento(ruta, blob, blob.type);
+          // Comprobación real: se descarga de vuelta y se compara el tamaño.
+          await window.PSStorage.verificarDocumento(ruta, blob.size);
+
+          const { error: e2 } = await window.sb.from('titulaciones_empleado')
+            .update({ documento_storage_path: ruta }).eq('id', t.id);
+          if (e2) throw e2;
+
+          ok++;
+          logMigracion(`✓ ${t.documento_nombre || t.id} · ${(blob.size / 1048576).toFixed(1)} MB verificado`, '#047857');
+        } catch (err) {
+          fallos++;
+          logMigracion(`✗ ${t.documento_nombre || t.id}: ${err.message}`, '#B91C1C');
+        }
+      }
+      logMigracion(`Terminado: ${ok} copiado(s), ${fallos} con problemas. No se ha borrado nada.`, '#1D4ED8');
+      if (fallos) alert(`${ok} documento(s) copiados. ${fallos} han fallado — revisa el detalle y vuelve a lanzarlo: los que ya están hechos se saltan solos.`);
+      else toast(`✓ ${ok} documento(s) copiados y verificados`);
+    } catch (err) {
+      logMigracion(`✗ ${err.message}`, '#B91C1C');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Volver a copiar los que falten';
+    }
+  };
+
+  window.migrarDocsPaso2 = async function () {
+    if (!confirm('Vas a borrar de la base de datos la copia en base64 de los documentos que YA están en Storage.\n\n' +
+      'Antes de borrar cada uno se comprueba que se descarga bien desde Storage. Si algo no cuadra, ese documento no se toca.\n\n' +
+      '¿Seguir?')) return;
+    const btn = document.getElementById('btnMigrarPaso2');
+    btn.disabled = true; btn.textContent = 'Liberando…';
+    let ok = 0, saltados = 0;
+    try {
+      const { data, error } = await window.sb.from('titulaciones_empleado')
+        .select('id, documento_nombre, documento_storage_path')
+        .not('documento_storage_path', 'is', null).not('documento_url', 'is', null);
+      if (error) throw error;
+      const filas = data || [];
+      logMigracion(`${filas.length} documento(s) candidatos a liberar.`);
+
+      for (const t of filas) {
+        try {
+          // Se verifica AHORA, justo antes de borrar. Sin esto, un fallo de
+          // subida antiguo se convertiría en un documento perdido.
+          await window.PSStorage.verificarDocumento(t.documento_storage_path, null);
+          const { error: e2 } = await window.sb.from('titulaciones_empleado')
+            .update({ documento_url: null }).eq('id', t.id);
+          if (e2) throw e2;
+          ok++;
+          logMigracion(`✓ ${t.documento_nombre || t.id} liberado`, '#047857');
+        } catch (err) {
+          saltados++;
+          logMigracion(`✗ ${t.documento_nombre || t.id} NO se toca: ${err.message}`, '#B45309');
+        }
+      }
+      logMigracion(`Terminado: ${ok} liberado(s), ${saltados} intacto(s).`, '#1D4ED8');
+      if (saltados) alert(`${ok} liberado(s). ${saltados} se han dejado como estaban porque no se pudo verificar su copia en Storage: siguen enteros en la base de datos.`);
+      else toast(`✓ ${ok} documento(s) liberados`);
+    } catch (err) {
+      logMigracion(`✗ ${err.message}`, '#B91C1C');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Volver a intentarlo';
+    }
+  };
+
   window.abrirCerrarDiasSinSalida = async function () {
     if (!puedeEditarFichajes()) return;
     const body = document.getElementById('cerrarDiasBody');
@@ -2102,6 +2288,9 @@
   let titulacionesCache = [];
 
   window.renderTitulacionesPanel = async function () {
+    // El botón de migrar documentos a Storage es solo del administrador.
+    const btnMig = document.getElementById('btnMigrarDocs');
+    if (btnMig) btnMig.style.display = ((window.PS_SESSION || {}).rol || rol) === 'dueno' ? '' : 'none';
     const cont = document.getElementById('titulacionesPanelBody');
     const countEl = document.getElementById('titPanelCount');
     if (!cont || !window.sb) return;
@@ -7586,7 +7775,9 @@
         fecha_obtencion: document.getElementById('titObt').value || null,
         fecha_caducidad: document.getElementById('titCad').value || null,
         fecha_reciclaje: document.getElementById('titRec').value || null,
-        documento_url: fileData || undefined,
+        // El fichero se pasa TAL CUAL: PSTit.guardar lo sube al bucket privado
+        // y en la base de datos solo queda la ruta. Ya no se manda base64.
+        documento_file: document.getElementById('titFile').files[0] || null,
         documento_nombre: fileName || undefined,
         notas: document.getElementById('titNotas').value.trim()
       });
