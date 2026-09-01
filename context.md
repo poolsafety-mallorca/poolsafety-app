@@ -101,7 +101,8 @@ documento (trayendo solo `id`) y el contenido se descarga al pulsar "Ver"
 (`PSTit.abrirDocumento`). **Nunca volver a meter `documento_url` en una consulta de
 listado.**
 
-**Causa de fondo — solución construida (v139), pendiente de ejecutar `sql/26`:** las titulaciones y documentos del
+**Causa de fondo — solución construida (v139), `sql/26` ya ejecutado; falta lanzar la
+migración desde la app (Titulaciones → "Documentos"):** las titulaciones y documentos del
 socorrista (DNI, PRL, contrato, certificados) se guardan como **data URL en base64
 dentro de la propia base de datos** (`titulaciones_empleado.documento_url`, columna de
 texto), no en Storage. El límite por fichero es de **20 MB**, y base64 infla un ~33%:
