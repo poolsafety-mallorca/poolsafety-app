@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v130 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v130`**
+Última actualización: 2026-08-31 (v131 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v131`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -880,6 +880,12 @@ Si llega tarde o se va antes, se factura menos — el solape lo recorta solo.
 - Quien fichó pero no tiene horario asignado → se usa `puestos.hora_inicio_default` /
   `hora_fin_default` como referencia y la fila avisa "sin horario asignado". Nunca se
   deja el día a cero por falta de configuración.
+
+**PDF para adjuntar a la factura**: botón "PDF para el hotel" →
+`PSPdf.generarHorasHotel(datos)` (recibe el mismo `factCache` que pinta la pantalla, así
+que papel y pantalla no pueden divergir). Membrete de la empresa, recuadro con las dos
+cifras, tabla día a día y una leyenda que explica qué es "Facturado", "Control" e
+"Imputada" — pensada para que la lea el hotel, no nosotros.
 
 Dos totales, siempre a la vista y al pie del informe:
 **Horas totales facturadas: X** · **Horas de control y fichaje: Y**, más cuántas de las

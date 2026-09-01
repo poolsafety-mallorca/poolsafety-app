@@ -6136,6 +6136,9 @@
           <div class="ficha-body-title" style="margin:0;">Horas de ${hotel.nombre} · ${nombreMes}</div>
           <div class="row gap-2">
             <select id="factMes" style="padding:8px 12px;border-radius:999px;border:1px solid var(--line);font-size:13px;background:#fff;font-weight:500;">${opciones.join('')}</select>
+            <button class="btn btn-primary btn-sm" onclick="descargarFacturacionPDF()">
+              <svg class="ic ic-14"><use href="#ic-file-text"/></svg> PDF para el hotel
+            </button>
             <button class="btn btn-outline btn-sm" onclick="descargarFacturacionCSV()">
               <svg class="ic ic-14"><use href="#ic-download"/></svg> CSV
             </button>
@@ -6225,6 +6228,16 @@
       body.innerHTML = `<div style="padding:24px;color:#B91C1C;">Error al calcular las horas: ${err.message}</div>`;
     }
   }
+
+  // PDF con membrete de la empresa, para adjuntar a la factura del hotel.
+  window.descargarFacturacionPDF = function () {
+    if (!factCache) { toast('No hay datos que descargar'); return; }
+    if (!window.PSPdf || !window.PSPdf.descargarHorasHotel) { toast('Generador de PDF no disponible'); return; }
+    try {
+      window.PSPdf.descargarHorasHotel(factCache);
+      toast('✓ PDF descargado');
+    } catch (err) { toast('Error al generar el PDF: ' + err.message); }
+  };
 
   window.descargarFacturacionCSV = function () {
     if (!factCache) { toast('No hay datos que descargar'); return; }
