@@ -228,6 +228,75 @@
   let puestoReal = null;         // puesto asignado (de tabla puestos)
   let ultimaPosicion = null;     // GPS más reciente
 
+  /* ==========================================================================
+     CONTACTO DE EMERGENCIA
+     A quién llamar si le pasa algo al socorrista durante el turno. Lo rellena
+     y lo mantiene él mismo, que es quien sabe el número; admin y coordinación
+     lo ven en su ficha, pero no lo tienen que ir persiguiendo.
+
+     En la BD no hace falta permiso nuevo: `empleados_self_update` ya deja al
+     empleado actualizar su propia fila, y el trigger `empleados_proteger_campos`
+     revierte los campos sensibles cuando quien edita no es admin — estas dos
+     columnas no están en esa lista. Requiere sql/25.
+     ========================================================================== */
+  function pintarContactoEmergencia() {
+    const iN = document.getElementById('emergNombre');
+    const iT = document.getElementById('emergTel');
+    const est = document.getElementById('emergEstado');
+    if (!iN || !iT) return;
+    iN.value = empleadoReal?.emergencia_nombre || '';
+    iT.value = empleadoReal?.emergencia_telefono || '';
+    if (est) {
+      est.innerHTML = (empleadoReal?.emergencia_telefono)
+        ? '<span style="color:#047857;">✓ Guardado. Puedes cambiarlo cuando quieras.</span>'
+        : '<span style="color:#B45309;">Aún no lo has puesto. Es importante: si te pasa algo, es el teléfono al que llamaremos.</span>';
+    }
+  }
+  window.pintarContactoEmergencia = pintarContactoEmergencia;
+
+  document.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest && ev.target.closest('#btnGuardarEmergencia');
+    if (!btn) return;
+    const iN = document.getElementById('emergNombre');
+    const iT = document.getElementById('emergTel');
+    const est = document.getElementById('emergEstado');
+    const nombre = (iN?.value || '').trim();
+    const tel = (iT?.value || '').trim();
+
+    // Un teléfono con menos de 9 dígitos no sirve para llamar en una urgencia.
+    const digitos = tel.replace(/\D/g, '');
+    if (tel && digitos.length < 9) { toast('Ese teléfono parece incompleto'); return; }
+    if (!tel && !nombre) { toast('Escribe al menos un teléfono'); return; }
+    if (!tel) { toast('Falta el teléfono: el nombre solo no sirve para llamar'); return; }
+    if (!empleadoReal?.id || !window.sb) { toast('Aún no ha cargado tu ficha, espera un momento'); return; }
+
+    btn.disabled = true;
+    const htmlPrevio = btn.innerHTML;
+    btn.innerHTML = '<svg class="ic ic-16"><use href="#ic-signal"/></svg> Guardando…';
+    try {
+      const { data, error } = await window.sb.from('empleados')
+        .update({ emergencia_nombre: nombre || null, emergencia_telefono: tel })
+        .eq('id', empleadoReal.id)
+        .select('id, emergencia_nombre, emergencia_telefono');
+      if (error) throw error;
+      // Sin filas devueltas = la política RLS lo bloqueó en silencio. Es el
+      // fallo clásico de este proyecto: no dejarlo pasar como si fuera bien.
+      if (!data || !data.length) {
+        throw new Error('No se ha podido guardar. Avisa a tu coordinador: falta ejecutar sql/25 en la base de datos.');
+      }
+      empleadoReal.emergencia_nombre = data[0].emergencia_nombre;
+      empleadoReal.emergencia_telefono = data[0].emergencia_telefono;
+      pintarContactoEmergencia();
+      toast('✓ Contacto de emergencia guardado');
+    } catch (err) {
+      if (est) est.innerHTML = `<span style="color:#B91C1C;">${err.message}</span>`;
+      toast('Error: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = htmlPrevio;
+    }
+  });
+
   async function cargarMiFicha() {
     if (!window.sb) return null;
     const psSes = window.PS_SESSION || {};
@@ -1032,6 +1101,7 @@
   // Cargar datos reales del empleado en BD
   (async () => {
     empleadoReal = await cargarMiFicha();
+    pintarContactoEmergencia();
     if (empleadoReal && empleadoReal.puestos) {
       puestoReal = empleadoReal.puestos;
     }
@@ -1214,6 +1284,7 @@
   document.addEventListener('ps-session-updated', async () => {
     if (!empleadoReal) {
       empleadoReal = await cargarMiFicha();
+    pintarContactoEmergencia();
       if (empleadoReal && empleadoReal.puestos) puestoReal = empleadoReal.puestos;
       aplicarPuestoEnUI();
       cargarFichajesHoyDeBd();

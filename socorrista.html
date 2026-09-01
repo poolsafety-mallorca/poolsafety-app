@@ -365,6 +365,28 @@
         </div>
       </div>
 
+      <!-- Contacto de emergencia: lo rellena el propio socorrista. Es a quién
+           llama la empresa si le pasa algo durante el turno. -->
+      <div class="section-eyebrow"><span class="eyebrow">Mi contacto de emergencia</span></div>
+      <div class="card" style="padding:14px;margin-bottom:14px;">
+        <div class="small text-muted" style="margin-bottom:10px;">
+          ¿A quién llamamos si te pasa algo durante el turno? Sólo lo ven tu coordinador y administración.
+        </div>
+        <div class="field">
+          <label>Nombre y parentesco</label>
+          <input type="text" id="emergNombre" placeholder="Ej.: María López (mi madre)" />
+        </div>
+        <div class="field">
+          <label>Teléfono</label>
+          <input type="tel" id="emergTel" placeholder="+34 6XX XXX XXX" inputmode="tel" />
+        </div>
+        <button class="btn btn-primary" id="btnGuardarEmergencia" style="width:100%;margin-top:6px;">
+          <svg class="ic ic-16"><use href="#ic-check-circle"/></svg>
+          Guardar contacto de emergencia
+        </button>
+        <div class="small" id="emergEstado" style="margin-top:8px;text-align:center;"></div>
+      </div>
+
       <div class="section-eyebrow">
         <span class="eyebrow">Mi documentación laboral</span>
         <button class="btn btn-primary btn-sm" onclick="openTitulacionModal()">
