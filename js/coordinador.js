@@ -1572,13 +1572,21 @@
       // administrador (su hoja de nómina). Los coordinadores ven las horas con
       // el tope aplicado, lo mismo que firma el socorrista.
       const esAdmin = ((window.PS_SESSION || {}).rol || rol) === 'dueno';
-      ['hoursTableActionsTh', 'hoursThExtras', 'hoursThTotal'].forEach(id => {
+      // Extras y total real siguen siendo solo del administrador. El lápiz de
+      // editar fichajes lo ve también coordinación.
+      ['hoursThExtras', 'hoursThTotal'].forEach(id => {
         const th = document.getElementById(id);
         if (th) th.style.display = esAdmin ? '' : 'none';
       });
+      const thEditar = document.getElementById('hoursTableActionsTh');
+      if (thEditar) thEditar.style.display = puedeEditarFichajes() ? '' : 'none';
+      const btnCerrar = document.getElementById('btnCerrarDias');
+      if (btnCerrar) btnCerrar.style.display = puedeEditarFichajes() ? '' : 'none';
       const optExtra = document.querySelector('#hourFilter option[value="extra"]');
       if (optExtra) optExtra.hidden = !esAdmin;
-      const colspan = esAdmin ? 7 : 4;
+      // Socorrista, Puesto, Días, Horas (siempre) + Extras y Total real (admin)
+      // + Editar (quien pueda editar fichajes).
+      const colspan = 4 + (esAdmin ? 2 : 0) + (puedeEditarFichajes() ? 1 : 0);
       if (list.length === 0) {
         tbody.innerHTML = `<tr><td colspan="${colspan}" style="padding:30px;text-align:center;color:var(--ink-500,#6B7280);">Sin resultados con este filtro.</td></tr>`;
         return;
@@ -1599,7 +1607,7 @@
             <span class="hours-extras ${s.extras > 0 ? '' : 'zero'}">${fmtH(s.extras)}</span>
           </td>
           <td class="num">${fmtH(s.total)}h</td>` : ''}
-          ${esAdmin ? `<td class="num">
+          ${puedeEditarFichajes() ? `<td class="num">
             <button class="btn-icon" title="Editar fichajes del mes" onclick="abrirEditorHorasMes('${s.id}','${s.nombre.replace(/'/g,"\\'")}')"
               style="width:32px;height:32px;background:#FEF3C7;color:#92400E;border-radius:8px;border:none;cursor:pointer;">
               <svg class="ic ic-14"><use href="#ic-pen"/></svg>
@@ -1623,6 +1631,27 @@
      ========================================================================== */
   let nominaCacheFilas = [];
   let nominaCacheMes = '';
+
+  /* Editar fichajes: coordinadores TAMBIÉN.
+     En la base de datos ya podían — `auth_es_admin()` de las políticas RLS
+     devuelve true para 'dueno' y 'coordinador' — así que el bloqueo estaba solo
+     en los botones. Borrar se deja al administrador: quitar un fichaje elimina
+     evidencia de un registro horario obligatorio, y eso no es lo mismo que
+     corregir una hora. */
+  function puedeEditarFichajes() {
+    const r = (window.PS_SESSION || {}).rol || rol;
+    return r === 'dueno' || r === 'coordinador';
+  }
+
+  function puedeBorrarFichajes() {
+    return ((window.PS_SESSION || {}).rol || rol) === 'dueno';
+  }
+
+  // Deja constancia de QUIÉN tocó el fichaje. Con más gente editando, saber si
+  // fue admin o coordinación deja de ser un detalle.
+  function marcaQuienEdita() {
+    return ((window.PS_SESSION || {}).rol || rol) === 'dueno' ? 'admin' : 'coord';
+  }
 
   function nominaEsAdmin() {
     return ((window.PS_SESSION || {}).rol || rol) === 'dueno';
@@ -1829,7 +1858,7 @@
   }
 
   window.abrirCerrarDiasSinSalida = async function () {
-    if (((window.PS_SESSION || {}).rol || rol) !== 'dueno') return;
+    if (!puedeEditarFichajes()) return;
     const body = document.getElementById('cerrarDiasBody');
     document.getElementById('cerrarDiasModal').classList.add('open');
     body.innerHTML = '<div style="padding:30px;text-align:center;">Buscando días sin cerrar…</div>';
@@ -5193,17 +5222,17 @@
                   style="width:30px;height:30px;background:#DCFCE7;color:#065F46;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-check-circle"/></svg>
                 </button>` : '';
-            const botones = esAdmin ? `
+            const botones = `
                 ${botonMapa}
                 ${botonVerificar}
-                <button class="btn-icon" title="Editar hora" onclick="editarFichaje('${f.id}','${empId}',${dias})"
+                ${puedeEditarFichajes() ? `<button class="btn-icon" title="Editar hora" onclick="editarFichaje('${f.id}','${empId}',${dias})"
                   style="width:30px;height:30px;background:#EFF6FF;color:#1D4ED8;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-pen"/></svg>
-                </button>
-                <button class="btn-icon" title="Borrar" onclick="borrarFichaje('${f.id}','${empId}',${dias})"
+                </button>` : ''}
+                ${puedeBorrarFichajes() ? `<button class="btn-icon" title="Borrar" onclick="borrarFichaje('${f.id}','${empId}',${dias})"
                   style="width:30px;height:30px;background:#FEF2F2;color:#DC2626;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-x"/></svg>
-                </button>` : (botonMapa + botonVerificar);
+                </button>` : ''}`;
             return `
               <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;margin:4px 0;">
                 <div style="min-width:60px;font-weight:700;font-family:monospace;">${hora}</div>
@@ -5351,7 +5380,7 @@
       try {
         const { error: errUp } = await window.sb.from('fichajes').update({
           ...updateData,
-          motivo_manual: `[Editado ${new Date().toLocaleDateString('es-ES')}] ${motivo}`,
+          motivo_manual: `[Editado ${new Date().toLocaleDateString('es-ES')} · ${marcaQuienEdita()}] ${motivo}`,
           registrado_por: psSes.userId || null
         }).eq('id', fichajeId);
         if (errUp && String(errUp.message).includes('column')) {
@@ -5388,13 +5417,14 @@
     } catch (err) { toast('Error: ' + err.message); }
   };
 
-  /* --- Editor de fichajes del mes desde la tabla "Horas del mes" (admin) ---
+  /* --- Editor de fichajes del mes desde la tabla "Horas del mes" ---
      Abre un modal ligero con el mismo widget que ya usamos en Ficha → Acciones.
      Botones lápiz / ✕ reutilizan editarFichaje() y borrarFichaje().
-     Al cerrar recalcula la fila para reflejar los cambios sin recargar. */
+     Al cerrar recalcula la fila para reflejar los cambios sin recargar.
+     Abierto a coordinación: son quienes están en los hoteles y quienes detectan
+     el fichaje mal puesto el mismo día. */
   window.abrirEditorHorasMes = function (empId, nombreEmp) {
-    const rolAct = (window.PS_SESSION || {}).rol || rol;
-    if (rolAct !== 'dueno') { toast('Solo el administrador puede editar fichajes.'); return; }
+    if (!puedeEditarFichajes()) { toast('No tienes permiso para editar fichajes.'); return; }
     let modal = document.getElementById('horasMesEditorModal');
     if (!modal) {
       modal = document.createElement('div');

@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v134 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v134`**
+Última actualización: 2026-08-31 (v135 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v135`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -959,6 +959,26 @@ siguiente) y rechaza tramos de más de 16 h.
 **La estimación se declara**: `PSJornada` arrastra `salidaManual` hasta el día y la hoja
 de inspección pone **"Salida estimada"** en Observaciones. Es una reconstrucción, no una
 medición, y ocultarlo sería falsear el documento. No quitar esa marca.
+
+### 2026-08-31 · Coordinación puede editar fichajes (borrar no)
+`auth_es_admin()` de las políticas RLS devuelve true para **'dueno' Y 'coordinador'**,
+así que en la base de datos los coordinadores YA podían insertar, actualizar y borrar
+fichajes: el bloqueo estaba solo en los botones. **No hizo falta tocar SQL.**
+
+Se abre a coordinación: lápiz de editar hora en cada fichaje, editor del mes desde
+"Horas del mes", "Cerrar días sin salida" (movido de la hoja de nómina —que sigue
+siendo solo del admin— a la cabecera del panel de Horas) y "Añadir los fichajes que
+faltan" del hotel, que ya no estaba gateado.
+
+**Borrar sigue siendo solo del administrador** (`puedeBorrarFichajes`): quitar un
+fichaje elimina evidencia de un registro horario obligatorio, y eso no es lo mismo que
+corregir una hora mal puesta. Decisión revisable si el cliente lo pide.
+
+Sigue siendo solo del admin: la **hoja de nómina** y las columnas **Extras / Total
+real** de "Horas del mes".
+
+Con más gente editando, `[Editado DD/MM · admin|coord]` en `motivo_manual` para saber
+quién tocó qué.
 
 ### 2026-08-31 · Doble entrada ≠ salida olvidada (caso Victoria)
 Detectado sobre una hoja ya firmada. `emparejarTramos` trataba **dos entradas
