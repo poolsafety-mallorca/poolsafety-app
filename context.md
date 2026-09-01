@@ -27,9 +27,8 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/20-revisiones-diarias.sql` — auditoría revisiones botiquín/DESA/oxígeno
 - ✅ `sql/21-rls-correturnos-inventario.sql` — correturnos leen/escriben inventario del hotel donde fichan
 - ✅ `sql/22-diagnostico-reparar-unidades.sql` — reparar Botiquín 2/3 sin items (Cala Gran)
-- ⏳ **`sql/25-contacto-emergencia.sql` — PENDIENTE DE EJECUTAR**: dos columnas en
-  `empleados` (`emergencia_nombre`, `emergencia_telefono`). Sin esto, el socorrista ve
-  el formulario pero al guardar le sale el aviso de que falta ejecutarlo.
+- ✅ `sql/25-contacto-emergencia.sql` — contacto de emergencia del socorrista
+  (`emergencia_nombre`, `emergencia_telefono`). **Ejecutado el 2026-08-31 por Adam.**
 - ✅ `sql/23-botiquin-hotel-nuevo-y-ticks.sql` — RLS inventario por empresa (ticks del 2º socorrista) + siembra hoteles creados vacíos
 - ✅ `sql/24-diagnostico-cala-romani.sql` — SOLO LECTURA. Diagnóstico en UNA consulta (el SQL Editor de Supabase
   sólo muestra la última sentencia). Relanzable sin riesgo.
@@ -71,6 +70,30 @@ Caso real (2026-08-31, Carlos Biosca): en la cabecera del socorrista el saludo q
 tapado por la hora del iPhone y **los botones de campana y SALIR eran imposibles de
 pulsar**, así que no se podía cerrar sesión para entrar con otro usuario. Afectaba a
 todos los iPhone con notch que tuvieran la app instalada, no solo al suyo.
+
+---
+
+## 💸 RIESGO ABIERTO · Supabase avisa de cuota superada (2026-08-31)
+
+El panel de Supabase muestra: *"Organization exceeded its quota in the previous billing
+cycle. Projects will be restricted from 21 Sep, 2026 if your organization remains over
+quota."* Proyecto `poolsafety-app-prod`. **Si no se corrige, la app deja de funcionar
+para el piloto en producción.**
+
+**Causa más probable, ya localizada en el código:** las titulaciones y documentos del
+socorrista (DNI, PRL, contrato, certificados) se guardan como **data URL en base64
+dentro de la propia base de datos** (`titulaciones_empleado.documento_url`, columna de
+texto), no en Storage. El límite por fichero es de **20 MB**, y base64 infla un ~33%:
+un PDF de 20 MB ocupa ~27 MB de texto en una fila de Postgres. Con varios trabajadores
+subiendo escaneos, el tamaño de la BD se dispara.
+
+Ver `js/socorrista.js` (`readAsDataURL` → `documento_url`) y `js/titulaciones.js`.
+Las firmas (`firma_imagen`) también van en base64 pero son de canvas 500×180, pesan
+poco y no son el problema.
+
+**Arreglo pendiente de decidir con el cliente**: mover esos documentos a Supabase
+Storage (el bucket y el wrapper `PSStorage` YA existen y se usan para fotos y PDFs) y
+guardar solo la URL. Es una migración de datos reales, así que hay que acordarla antes.
 
 ---
 
