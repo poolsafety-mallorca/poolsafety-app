@@ -1199,6 +1199,16 @@ window.PSPdf = (function () {
 
     let y = 60;
 
+    // Destinatario: este documento sale de la empresa y va al hotel, así que
+    // tiene que decir a quién va dirigido.
+    if (datos.contacto) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(90, 90, 90);
+      doc.text('A la atencion de: ' + limpiarTexto(datos.contacto), 15, y - 4);
+      doc.setTextColor(0, 0, 0);
+    }
+
     // Resumen destacado arriba: lo primero que mira quien recibe la factura
     doc.setFillColor(239, 246, 255);
     doc.setDrawColor(29, 78, 216);
@@ -1323,16 +1333,50 @@ window.PSPdf = (function () {
       'Las dos cifras no coinciden por definicion: los minutos trabajados fuera del horario contratado no se facturan al hotel.'
     ].forEach(t => { doc.text('- ' + t, 15, y); y += 4; });
     doc.setTextColor(0, 0, 0);
+    y += 8;
+
+    // Conformidad del hotel. Un parte de horas que el cliente devuelve firmado
+    // vale mucho mas que uno que solo enviamos: si mas adelante discute la
+    // factura, la conformidad ya esta dada por escrito.
+    y = checkPage(doc, y, 42);
+    doc.setDrawColor(150, 150, 150);
+    doc.setLineWidth(0.3);
+    doc.rect(15, y, 180, 34);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('CONFORME · ' + limpiarTexto(datos.hotel), 20, y + 7);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(110, 110, 110);
+    doc.text('Firma y sello del hotel dando conformidad a las horas de servicio detalladas.', 20, y + 12);
+    doc.setTextColor(0, 0, 0);
+    doc.setDrawColor(190, 190, 190);
+    doc.line(20, y + 27, 95, y + 27);
+    doc.line(115, y + 27, 190, y + 27);
+    doc.setFontSize(7.5);
+    doc.setTextColor(110, 110, 110);
+    doc.text('Nombre y cargo', 20, y + 31);
+    doc.text('Fecha, firma y sello', 115, y + 31);
+    doc.setTextColor(0, 0, 0);
 
     numerarPaginas(doc);
     return doc;
   }
 
-  function descargarHorasHotel(datos) {
-    const doc = generarHorasHotel(datos);
+  function nombreArchivoHoras(datos) {
     const limpio = (datos.hotel || 'hotel').replace(/[^a-zA-Z0-9]+/g, '-');
-    doc.save(`PoolSafety-Horas-${limpio}-${datos.mes}.pdf`);
+    return `PoolSafety-Horas-${limpio}-${datos.mes}.pdf`;
   }
 
-  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarIncidencia, generarHorasHotel, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito, descargarIncidencia, descargarHorasHotel };
+  function descargarHorasHotel(datos) {
+    generarHorasHotel(datos).save(nombreArchivoHoras(datos));
+  }
+
+  // Blob del PDF, para poder compartirlo por WhatsApp o correo desde el móvil
+  // en vez de tener que descargarlo y buscarlo luego en el teléfono.
+  function blobHorasHotel(datos) {
+    return { blob: generarHorasHotel(datos).output('blob'), nombre: nombreArchivoHoras(datos) };
+  }
+
+  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarIncidencia, generarHorasHotel, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito, descargarIncidencia, descargarHorasHotel, blobHorasHotel };
 })();
