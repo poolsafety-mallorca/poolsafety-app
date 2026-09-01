@@ -6122,11 +6122,57 @@
       totFichado = r1(totFichado);
       totImputado = r1(totImputado);
       factCache = {
-        hotel: hotel.nombre, mes: cod, nombreMes, filas,
+        hotel: hotel.nombre, hotelId: hotel.id, mes: cod, nombreMes, filas,
         totFacturado, totFichado, totImputado,
         contacto: hotel.contacto_hotel_nombre || '',
         tel: hotel.contacto_hotel_tel || ''
       };
+      const sinNingunFichaje = !(fichs || []).length;
+      const diasSinFichaje = filas.filter(f => f.estado === 'imputada').map(f => f.dia);
+
+      // Si el mes no tiene NI UN fichaje de este hotel, no basta con dejar la
+      // tabla en ámbar: hay que decir por qué puede estar pasando. Las causas
+      // reales son pocas y se pueden comprobar aquí mismo.
+      let diagnostico = '';
+      if (sinNingunFichaje) {
+        let huerfanos = 0, enOtroHotel = [];
+        try {
+          const { data: sinPuesto } = await window.sb.from('fichajes')
+            .select('id').is('puesto_id', null)
+            .gte('hora', desde.toISOString()).lt('hora', hasta.toISOString());
+          huerfanos = (sinPuesto || []).length;
+
+          // Socorristas asignados a este hotel que hayan fichado en otro sitio
+          const { data: deEsteHotel } = await window.sb.from('empleados')
+            .select('id, nombre').eq('puesto_id', hotel.id);
+          const ids = (deEsteHotel || []).map(e => e.id);
+          if (ids.length) {
+            const { data: fuera } = await window.sb.from('fichajes')
+              .select('empleado_id, puesto_id, puestos(nombre)')
+              .in('empleado_id', ids).neq('puesto_id', hotel.id)
+              .gte('hora', desde.toISOString()).lt('hora', hasta.toISOString());
+            const vistos = new Set();
+            (fuera || []).forEach(f => {
+              const n = (f.puestos && f.puestos.nombre) || '—';
+              const emp = (deEsteHotel.find(e => e.id === f.empleado_id) || {}).nombre || '—';
+              const k = emp + '|' + n;
+              if (!vistos.has(k)) { vistos.add(k); enOtroHotel.push(`${emp} → ${n}`); }
+            });
+          }
+        } catch (_) {}
+
+        diagnostico = `
+          <div style="background:#FEF2F2;border:2px solid #FCA5A5;color:#7F1D1D;padding:12px 14px;border-radius:10px;margin-bottom:12px;">
+            <div style="font-weight:800;font-size:14px;">No hay ningún fichaje de ${hotel.nombre} en ${nombreMes}</div>
+            <div class="small" style="margin-top:6px;">Todo lo que ves abajo está imputado por horario. Las causas posibles:</div>
+            <ul class="small" style="margin:6px 0 0 18px;">
+              <li>Nadie fichó aquí ese mes (el servicio se dio sin usar la app).</li>
+              ${huerfanos ? `<li><b>${huerfanos} fichaje(s) del mes se guardaron sin hotel asignado.</b> No se pueden atribuir a ningún hotel. Se arreglan desde la ficha del socorrista, en el editor de fichajes.</li>` : ''}
+              ${enOtroHotel.length ? `<li><b>Socorristas de este hotel fichando en otro sitio:</b> ${enOtroHotel.slice(0,6).join(' · ')}${enOtroHotel.length>6?' …':''}. Si es un error, se corrige en el editor de fichajes de cada uno.</li>` : ''}
+              ${!huerfanos && !enOtroHotel.length ? '<li>No hay fichajes sueltos ni socorristas de este hotel fichando en otro: lo más probable es que simplemente no se usara la app aquí.</li>' : ''}
+            </ul>
+          </div>`;
+      }
 
       const opciones = [];
       const hoyRef = new Date();
@@ -6152,6 +6198,17 @@
             </button>
           </div>
         </div>
+
+        ${diagnostico}
+
+        ${diasSinFichaje.length ? `<div style="background:#FFFBEB;border:1px solid #F59E0B;color:#92400E;padding:11px 13px;border-radius:9px;margin-bottom:12px;">
+          <div style="font-weight:700;">${diasSinFichaje.length} día(s) de ${nombreMes} sin ningún fichaje en este hotel</div>
+          <div class="small" style="margin-top:4px;">Días: <b>${diasSinFichaje.join(', ')}</b>.</div>
+          <div class="small" style="margin-top:4px;">Pregunta a los socorristas si fueron y a qué hora salieron, y méteselo aquí con las horas reales.</div>
+          <button class="btn btn-primary btn-sm" style="margin-top:9px;background:#B45309;" onclick="abrirFichajesQueFaltan()">
+            <svg class="ic ic-14"><use href="#ic-clock"/></svg> Añadir los fichajes que faltan
+          </button>
+        </div>` : ''}
 
         <div class="small" style="background:#EFF6FF;border:1px solid #93C5FD;color:#1E3A8A;padding:9px 11px;border-radius:8px;margin-bottom:12px;">
           Al hotel se le factura <b>su horario contratado</b>, no los minutos de cortesía del socorrista.
@@ -6282,6 +6339,172 @@
       window.PSPdf.descargarHorasHotel(factCache);
       toast('✓ PDF descargado');
     } catch (err) { toast('Error al generar el PDF: ' + err.message); }
+  };
+
+  /* ==========================================================================
+     AÑADIR LOS FICHAJES QUE FALTAN DE UN HOTEL
+     Días en que el servicio se prestó pero nadie fichó (la app entró a mitad de
+     temporada). Se propone quién estaba, según el horario del hotel, y la hora
+     de entrada y salida del propio horario — pero la SALIDA es editable día a
+     día, porque en la práctica el socorrista no sale siempre a la misma hora.
+     Se guardan como fichajes manuales, con quién los metió y por qué.
+     ========================================================================== */
+  let faltanCache = [];
+
+  window.abrirFichajesQueFaltan = async function () {
+    if (!factCache) return;
+    const body = document.getElementById('faltanFichajesBody');
+    document.getElementById('faltanFichajesModal').classList.add('open');
+    body.innerHTML = '<div style="padding:30px;text-align:center;">Preparando los días que faltan…</div>';
+    try {
+      const [anio, mes] = factCache.mes.split('-').map(Number);
+      const hotel = hotelesCache.find(x => x.id === factCache.hotelId) || {};
+      const defIni = (hotel.hora_inicio_default || '10:00:00').slice(0, 5);
+      const defFin = (hotel.hora_fin_default || '18:00:00').slice(0, 5);
+
+      const [{ data: horarios }, { data: emps }] = await Promise.all([
+        window.sb.from('horarios')
+          .select('empleado_id, hora_inicio, hora_fin, dias, fecha_desde, fecha_hasta')
+          .eq('puesto_id', factCache.hotelId).eq('activo', true),
+        window.sb.from('empleados').select('id, nombre, puesto_id').neq('estado', 'eliminado').order('nombre')
+      ]);
+      const empleados = emps || [];
+      // Si el hotel no tiene horarios, se ofrecen los socorristas asignados a él.
+      const asignados = empleados.filter(e => e.puesto_id === factCache.hotelId);
+
+      faltanCache = [];
+      factCache.filas.filter(f => f.estado === 'imputada').forEach(f => {
+        const fecha = new Date(anio, mes - 1, f.dia);
+        const aplican = (horarios || []).filter(x =>
+          horarioAplicaEnDiaCoord(x, fecha.getDay()) &&
+          (!x.fecha_desde || new Date(x.fecha_desde) <= fecha) &&
+          (!x.fecha_hasta || new Date(x.fecha_hasta) >= fecha)
+        );
+        const base = aplican.length
+          ? aplican.map(x => ({ empId: x.empleado_id, ini: (x.hora_inicio || '').slice(0, 5) || defIni, fin: (x.hora_fin || '').slice(0, 5) || defFin }))
+          : asignados.map(e => ({ empId: e.id, ini: defIni, fin: defFin }));
+        base.forEach(b => faltanCache.push({
+          dia: f.dia, diaSem: f.diaSem, fecha,
+          empId: b.empId, entrada: b.ini, salida: b.fin
+        }));
+      });
+
+      if (!faltanCache.length) {
+        body.innerHTML = `<div class="modal-head"><h3>Fichajes que faltan</h3>
+            <button class="modal-close" onclick="cerrarFichajesQueFaltan()">✕</button></div>
+          <div style="padding:24px;text-align:center;color:var(--ink-500);">
+            No se puede proponer quién estaba: este hotel no tiene horarios configurados ni socorristas asignados.
+            <div style="margin-top:10px;">Configúralo en la pestaña <b>Horario</b> del hotel y vuelve aquí.</div>
+          </div>`;
+        return;
+      }
+
+      const opcionesEmp = empleados.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
+      body.innerHTML = `
+        <div class="modal-head">
+          <h3>Fichajes que faltan · ${factCache.hotel} · ${factCache.nombreMes}</h3>
+          <button class="modal-close" onclick="cerrarFichajesQueFaltan()">✕</button>
+        </div>
+        <div style="padding:0 16px;">
+          <div class="small" style="background:#FEF3C7;border:1px solid #F59E0B;color:#92400E;padding:10px;border-radius:8px;">
+            Pregunta a los socorristas <b>si fueron y a qué hora salieron</b> y ajusta cada fila.
+            La hora de salida viene puesta con la del horario, pero <b>cámbiala por la real</b>: es lo que hace
+            que las horas del hotel sean de verdad y no una copia del horario. Desmarca los días que no se trabajaron.
+            Se guardarán como fichajes manuales a tu nombre.
+          </div>
+        </div>
+        <div style="padding:12px 16px;max-height:50vh;overflow:auto;">
+          <table class="hours-table" style="width:100%;font-size:12.5px;">
+            <thead><tr>
+              <th style="width:34px;"><input type="checkbox" id="ffTodos" checked onchange="document.querySelectorAll('.ff-chk').forEach(c=>c.checked=this.checked)"></th>
+              <th style="text-align:left;">Día</th>
+              <th style="text-align:left;">Socorrista</th>
+              <th class="num">Entrada</th>
+              <th class="num">Salida</th>
+            </tr></thead>
+            <tbody>
+              ${faltanCache.map((r, i) => `
+                <tr>
+                  <td><input type="checkbox" class="ff-chk" data-i="${i}" checked></td>
+                  <td><b>${String(r.dia).padStart(2,'0')}</b> ${r.diaSem}</td>
+                  <td><select class="ff-emp" data-i="${i}" style="padding:4px 6px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;max-width:190px;">${opcionesEmp}</select></td>
+                  <td class="num"><input type="time" class="ff-ent" data-i="${i}" value="${r.entrada}" style="padding:4px 6px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;"></td>
+                  <td class="num"><input type="time" class="ff-sal" data-i="${i}" value="${r.salida}" style="padding:4px 6px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;"></td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-actions" style="padding:12px 16px;display:flex;gap:10px;justify-content:flex-end;">
+          <button class="btn btn-outline" onclick="cerrarFichajesQueFaltan()">Cancelar</button>
+          <button class="btn btn-primary" id="btnGuardarFaltan" onclick="guardarFichajesQueFaltan()">Guardar los fichajes marcados</button>
+        </div>`;
+      // Preseleccionar el socorrista propuesto en cada fila
+      faltanCache.forEach((r, i) => {
+        const sel = document.querySelector(`.ff-emp[data-i="${i}"]`);
+        if (sel && r.empId) sel.value = r.empId;
+      });
+    } catch (err) {
+      body.innerHTML = `<div style="padding:24px;color:#B91C1C;">Error: ${err.message}
+        <div style="margin-top:12px;text-align:right;"><button class="btn btn-outline" onclick="cerrarFichajesQueFaltan()">Cerrar</button></div></div>`;
+    }
+  };
+
+  window.cerrarFichajesQueFaltan = () => document.getElementById('faltanFichajesModal').classList.remove('open');
+
+  window.guardarFichajesQueFaltan = async function () {
+    const marcados = [...document.querySelectorAll('.ff-chk')].filter(c => c.checked).map(c => +c.dataset.i);
+    if (!marcados.length) { toast('No has marcado ningún día'); return; }
+    if (!confirm(`Vas a crear ${marcados.length} jornada(s) completas (entrada + salida) a mano.\n\n` +
+      `Quedarán marcadas como fichaje manual con tu nombre.\n\n¿Seguir?`)) return;
+
+    const btn = document.getElementById('btnGuardarFaltan');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    const psSes = window.PS_SESSION || {};
+    let ok = 0; const fallos = [];
+    for (const i of marcados) {
+      const r = faltanCache[i];
+      const empId = document.querySelector(`.ff-emp[data-i="${i}"]`)?.value;
+      const vEnt = document.querySelector(`.ff-ent[data-i="${i}"]`)?.value;
+      const vSal = document.querySelector(`.ff-sal[data-i="${i}"]`)?.value;
+      if (!empId) { fallos.push(`Día ${r.dia}: sin socorrista`); continue; }
+      if (!/^\d{2}:\d{2}$/.test(vEnt) || !/^\d{2}:\d{2}$/.test(vSal)) { fallos.push(`Día ${r.dia}: horas no válidas`); continue; }
+      const [he, me] = vEnt.split(':').map(Number);
+      const [hs, ms] = vSal.split(':').map(Number);
+      const entrada = new Date(r.fecha.getFullYear(), r.fecha.getMonth(), r.fecha.getDate(), he, me);
+      const salida = new Date(r.fecha.getFullYear(), r.fecha.getMonth(), r.fecha.getDate(), hs, ms);
+      if (salida <= entrada) salida.setDate(salida.getDate() + 1);   // turno de noche
+      const horas = (salida - entrada) / 3600000;
+      if (horas > 16) { fallos.push(`Día ${r.dia}: salen ${window.PSJornada.fmtH(horas)} h, revísalo`); continue; }
+
+      const comun = {
+        empleado_id: empId,
+        puesto_id: factCache.hotelId,
+        gps_ok: false,
+        fuera_de_zona: false,
+        origen_manual: true,
+        registrado_por: psSes.userId || null,
+        motivo_manual: `[Fichaje anadido a mano ${new Date().toLocaleDateString('es-ES')} por admin] ` +
+                       `Jornada trabajada sin fichar en la app. Horas confirmadas con el socorrista.`
+      };
+      const filas = [
+        { ...comun, tipo: 'entrada', hora: entrada.toISOString() },
+        { ...comun, tipo: 'salida', hora: salida.toISOString() }
+      ];
+      try {
+        let { error } = await window.sb.from('fichajes').insert(filas);
+        if (error && /registrado_por|origen_manual|motivo_manual|column/i.test(error.message)) {
+          const simples = filas.map(({ registrado_por, origen_manual, motivo_manual, ...resto }) => resto);
+          const { error: e2 } = await window.sb.from('fichajes').insert(simples);
+          if (e2) throw e2;
+        } else if (error) throw error;
+        ok++;
+      } catch (err) { fallos.push(`Día ${r.dia}: ${err.message}`); }
+    }
+    cerrarFichajesQueFaltan();
+    if (fallos.length) alert(`Guardadas ${ok} jornada(s).\n\nNo se pudieron guardar ${fallos.length}:\n\n` + fallos.join('\n'));
+    else toast(`✓ ${ok} jornada(s) añadidas`);
+    const hotel = hotelesCache.find(x => x.id === factCache.hotelId);
+    if (hotel) renderFacturacionHotel(hotel);
   };
 
   window.descargarFacturacionCSV = function () {

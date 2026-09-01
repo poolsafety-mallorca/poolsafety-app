@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v132 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v132`**
+Última actualización: 2026-08-31 (v133 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v133`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -880,6 +880,20 @@ Si llega tarde o se va antes, se factura menos — el solape lo recorta solo.
 - Quien fichó pero no tiene horario asignado → se usa `puestos.hora_inicio_default` /
   `hora_fin_default` como referencia y la fila avisa "sin horario asignado". Nunca se
   deja el día a cero por falta de configuración.
+
+**Cuando un hotel no muestra fichajes** (caso Nou Cala Blava): la pestaña ya no se queda
+muda. Si el mes no tiene NI UN fichaje del hotel sale un recuadro rojo con las causas
+posibles, comprobadas contra la BD en ese momento: fichajes del mes guardados **sin
+hotel asignado** (`fichajes.puesto_id` es nullable y el fichaje de un correturnos que no
+elige hotel se guarda a null) y socorristas asignados a ese hotel **fichando en otro**.
+Si no se da ninguna, lo dice también.
+
+**Añadir los fichajes que faltan** (`abrirFichajesQueFaltan`): lista los días imputados
+del hotel, propone quién estaba según el horario —o los socorristas asignados si no hay
+horarios— y crea la jornada entera (entrada + salida) como fichaje manual. La hora de
+salida **viene del horario pero es editable día a día**, que es justo el motivo de la
+herramienta: el socorrista no sale siempre a la misma hora y copiar el horario sin más
+convertiría el registro en una ficción. Valida turno de noche y rechaza más de 16 h.
 
 **Enviar al hotel**: botón que usa la hoja de compartir nativa
 (`navigator.share` con el fichero) — WhatsApp, Mail, AirDrop — con el PDF ya adjunto.
