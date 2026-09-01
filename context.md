@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v135 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v135`**
+Última actualización: 2026-08-31 (v136 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v136`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -27,6 +27,9 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/20-revisiones-diarias.sql` — auditoría revisiones botiquín/DESA/oxígeno
 - ✅ `sql/21-rls-correturnos-inventario.sql` — correturnos leen/escriben inventario del hotel donde fichan
 - ✅ `sql/22-diagnostico-reparar-unidades.sql` — reparar Botiquín 2/3 sin items (Cala Gran)
+- ⏳ **`sql/25-contacto-emergencia.sql` — PENDIENTE DE EJECUTAR**: dos columnas en
+  `empleados` (`emergencia_nombre`, `emergencia_telefono`). Sin esto, el socorrista ve
+  el formulario pero al guardar le sale el aviso de que falta ejecutarlo.
 - ✅ `sql/23-botiquin-hotel-nuevo-y-ticks.sql` — RLS inventario por empresa (ticks del 2º socorrista) + siembra hoteles creados vacíos
 - ✅ `sql/24-diagnostico-cala-romani.sql` — SOLO LECTURA. Diagnóstico en UNA consulta (el SQL Editor de Supabase
   sólo muestra la última sentencia). Relanzable sin riesgo.
@@ -959,6 +962,22 @@ siguiente) y rechaza tramos de más de 16 h.
 **La estimación se declara**: `PSJornada` arrastra `salidaManual` hasta el día y la hoja
 de inspección pone **"Salida estimada"** en Observaciones. Es una reconstrucción, no una
 medición, y ocultarlo sería falsear el documento. No quitar esa marca.
+
+### 2026-08-31 · Contacto de emergencia del socorrista
+Teléfono al que llamar si le pasa algo durante el turno. **Lo rellena y lo mantiene el
+propio socorrista** desde su Perfil (él es quien sabe el número); admin y coordinación
+lo ven en la ficha, con botón rojo de llamada directa igual que el teléfono normal, y
+pueden corregirlo.
+
+**No hicieron falta políticas RLS nuevas**: `empleados_self_update` ya deja al empleado
+actualizar su propia fila, y el trigger `empleados_proteger_campos` revierte los campos
+sensibles (estado, puesto, contrato…) cuando quien edita no es admin — las dos columnas
+nuevas no están en esa lista, así que el socorrista puede tocarlas y sigue sin poder
+tocar lo demás.
+
+El guardado usa `.select()` y **falla ruidosamente si vuelven 0 filas**: es el fallo
+clásico de este proyecto (RLS bloquea, Postgres no da error, todo aparenta ir bien). Si
+`sql/25` no está ejecutado, el socorrista ve un mensaje que lo dice, no un falso OK.
 
 ### 2026-08-31 · Coordinación puede editar fichajes (borrar no)
 `auth_es_admin()` de las políticas RLS devuelve true para **'dueno' Y 'coordinador'**,

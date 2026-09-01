@@ -4028,6 +4028,10 @@
       dni: r.dni || '',
       email: r.email || '',
       telefono: r.telefono || '',
+      // Contacto de emergencia (sql/25). Puede no existir todavía la columna,
+      // así que se degrada a vacío sin romper la ficha.
+      emergNombre: r.emergencia_nombre || '',
+      emergTelefono: r.emergencia_telefono || '',
       direccion: r.direccion || '',
       ss: r.numero_ss || '',
       fechaAlta: r.fecha_alta || new Date().toISOString().slice(0,10),
@@ -4134,6 +4138,8 @@
     if ('dni' in patch) dbPatch.dni = patch.dni;
     if ('email' in patch) dbPatch.email = patch.email;
     if ('telefono' in patch) dbPatch.telefono = patch.telefono;
+    if ('emergNombre' in patch) dbPatch.emergencia_nombre = patch.emergNombre || null;
+    if ('emergTelefono' in patch) dbPatch.emergencia_telefono = patch.emergTelefono || null;
     if ('direccion' in patch) dbPatch.direccion = patch.direccion;
     if ('ss' in patch) dbPatch.numero_ss = patch.ss;
     if ('fechaAlta' in patch) dbPatch.fecha_alta = patch.fechaAlta;
@@ -4338,6 +4344,21 @@
         <div class="ficha-data-row">
           <div class="ficha-data-label">Teléfono</div>
           <div class="ficha-data-value"><input type="tel" id="ed-tel" value="${e.telefono}" /></div>
+        </div>
+        <!-- Contacto de emergencia: lo rellena el propio socorrista desde su
+             Perfil. Aquí se puede corregir, pero el dueño del dato es él. -->
+        <div class="ficha-data-row" style="background:#FEF2F2;border-radius:8px;">
+          <div class="ficha-data-label" style="color:#991B1B;">
+            Emergencia · a quién llamar
+            ${e.emergTelefono ? `<a href="tel:${String(e.emergTelefono).replace(/\s/g,'')}" title="Llamar al contacto de emergencia"
+                 style="margin-left:6px;display:inline-flex;width:26px;height:26px;align-items:center;justify-content:center;background:#DC2626;color:#fff;border-radius:50%;text-decoration:none;vertical-align:middle;">
+                 <svg class="ic ic-14"><use href="#ic-phone"/></svg></a>` : ''}
+          </div>
+          <div class="ficha-data-value">
+            <input type="text" id="ed-emerg-nombre" value="${(e.emergNombre || '').replace(/"/g,'&quot;')}" placeholder="Nombre y parentesco" style="margin-bottom:6px;" />
+            <input type="tel" id="ed-emerg-tel" value="${(e.emergTelefono || '').replace(/"/g,'&quot;')}" placeholder="Teléfono de emergencia" />
+            ${!e.emergTelefono ? `<div class="small" style="color:#B45309;margin-top:4px;">Sin contacto de emergencia. Pídele que lo rellene desde su Perfil en la app.</div>` : ''}
+          </div>
         </div>
         <div class="ficha-data-row">
           <div class="ficha-data-label">Dirección</div>
@@ -4958,6 +4979,8 @@
       dni: document.getElementById('ed-dni').value.trim(),
       email: emailNuevo,
       telefono: document.getElementById('ed-tel').value.trim(),
+      emergNombre: document.getElementById('ed-emerg-nombre')?.value.trim() ?? undefined,
+      emergTelefono: document.getElementById('ed-emerg-tel')?.value.trim() ?? undefined,
       direccion: document.getElementById('ed-dir').value.trim(),
       ss: document.getElementById('ed-ss').value.trim(),
       fechaAlta: document.getElementById('ed-fecha').value,
