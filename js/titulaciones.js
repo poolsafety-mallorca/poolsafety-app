@@ -18,20 +18,72 @@ window.PSTit = (function () {
 
   const ORDEN_TIPOS = ['dni','socorrismo_acuatico','svb','dea','prl','contrato','nomina','otro'];
 
+  /* NO pedir `documento_url` al listar.
+     Los documentos (DNI, PRL, contrato, certificados) se guardan como data URL
+     en base64 dentro de esa columna, hasta 20 MB por fichero (~27 MB ya en
+     base64). Un `select('*')` descargaba TODOS los documentos del trabajador
+     cada vez que se abría la lista, aunque no se abriera ninguno. Eso es lo que
+     dispara el Egress de Supabase.
+
+     En su lugar se listan las columnas ligeras y se pregunta aparte qué filas
+     TIENEN documento, trayendo solo los `id` (unos bytes). El contenido se
+     descarga al pulsar "Ver", que es cuando de verdad hace falta. */
+  const COLS_LIGERAS = 'id, empleado_id, tipo, nombre, entidad_emisora, numero_referencia, ' +
+                       'fecha_obtencion, fecha_caducidad, fecha_reciclaje, notas, documento_nombre, created_at';
+
   async function cargar(empleadoId) {
     if (!window.sb || !empleadoId) return [];
     try {
       const { data, error } = await window.sb
         .from('titulaciones_empleado')
-        .select('*')
+        .select(COLS_LIGERAS)
         .eq('empleado_id', empleadoId)
         .order('tipo')
         .order('fecha_caducidad', { ascending: false });
       if (error) throw error;
-      return data || [];
+      const filas = data || [];
+
+      // Qué filas tienen documento adjunto. Solo ids: pesa nada.
+      try {
+        const { data: conDoc } = await window.sb
+          .from('titulaciones_empleado')
+          .select('id')
+          .eq('empleado_id', empleadoId)
+          .not('documento_url', 'is', null);
+        const set = new Set((conDoc || []).map(x => x.id));
+        filas.forEach(f => { f.tieneDocumento = set.has(f.id); });
+      } catch (_) {
+        // Si falla, se asume que sí hay documento: mejor mostrar el botón de más
+        // que esconder un documento que existe.
+        filas.forEach(f => { f.tieneDocumento = true; });
+      }
+      return filas;
     } catch (err) {
       console.warn('[PSTit]', err.message);
       return [];
+    }
+  }
+
+  /* Descarga el documento SOLO cuando el usuario lo pide. */
+  async function abrirDocumento(id) {
+    if (!window.sb) return;
+    try {
+      const { data, error } = await window.sb
+        .from('titulaciones_empleado')
+        .select('documento_url, documento_nombre')
+        .eq('id', id).single();
+      if (error) throw error;
+      if (!data || !data.documento_url) {
+        alert('Esta titulación no tiene ningún documento adjunto.');
+        return;
+      }
+      const a = document.createElement('a');
+      a.href = data.documento_url;
+      a.download = data.documento_nombre || 'documento';
+      a.target = '_blank';
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (err) {
+      alert('No se ha podido abrir el documento: ' + err.message);
     }
   }
 
@@ -45,10 +97,18 @@ window.PSTit = (function () {
       fecha_obtencion: payload.fecha_obtencion || null,
       fecha_caducidad: payload.fecha_caducidad || null,
       fecha_reciclaje: payload.fecha_reciclaje || null,
-      documento_url: payload.documento_url || null,
-      documento_nombre: payload.documento_nombre || null,
       notas: payload.notas || null
     };
+    /* El documento SOLO se toca si viene uno nuevo.
+       Antes se hacía `documento_url: payload.documento_url || null`, y quien
+       edita una titulación sin volver a subir el fichero manda `undefined`:
+       el UPDATE ponía la columna a null y BORRABA el DNI o el contrato ya
+       subido. Pérdida de datos silenciosa al corregir una simple fecha.
+       Pasando `null` explícito sí se puede quitar el documento a propósito. */
+    if (payload.documento_url !== undefined) {
+      row.documento_url = payload.documento_url || null;
+      row.documento_nombre = payload.documento_nombre || null;
+    }
     if (payload.id) {
       const { error } = await window.sb.from('titulaciones_empleado').update(row).eq('id', payload.id);
       if (error) throw error;
@@ -97,10 +157,10 @@ window.PSTit = (function () {
 
     const acciones = opts?.canEdit ? `
       <div class="tit-actions">
-        ${t.documento_url ? `<a href="${t.documento_url}" download="${t.documento_nombre || 'documento'}" class="btn btn-outline btn-sm">📎 Ver/descargar</a>` : ''}
+        ${t.tieneDocumento ? `<button class="btn btn-outline btn-sm" onclick="PSTit.abrirDocumento('${t.id}')">📎 Ver/descargar</button>` : ''}
         <button class="btn btn-outline btn-sm" data-editar="${t.id}">✏️ Editar</button>
         <button class="btn btn-outline btn-sm" data-eliminar="${t.id}" style="color:var(--danger);border-color:var(--danger);">✕</button>
-      </div>` : (t.documento_url ? `<div class="tit-actions"><a href="${t.documento_url}" download="${t.documento_nombre || 'documento'}" class="btn btn-outline btn-sm">📎 Ver</a></div>` : '');
+      </div>` : (t.tieneDocumento ? `<div class="tit-actions"><button class="btn btn-outline btn-sm" onclick="PSTit.abrirDocumento('${t.id}')">📎 Ver</button></div>` : '');
 
     return `
       <div class="tit-card ${est.estado}" data-id="${t.id}">
@@ -205,7 +265,7 @@ window.PSTit = (function () {
             <span id="titFileName">${t?.documento_nombre || 'Seleccionar archivo…'}</span>
             <input type="file" id="titFile" style="display:none;" accept=".pdf,.jpg,.jpeg,.png" onchange="onTitFileChange(event)" />
           </label>
-          ${t?.documento_url ? `<a href="${t.documento_url}" target="_blank" download="${t.documento_nombre || 'doc'}" class="btn btn-outline">👁️ Ver actual</a>` : ''}
+          ${(t?.tieneDocumento || t?.documento_nombre) ? `<button type="button" class="btn btn-outline" onclick="PSTit.abrirDocumento('${t.id}')">👁️ Ver actual</button>` : ''}
         </div>
         <div class="small text-muted mt-1">Se guarda en tu ficha. Máximo 20 MB por archivo (PDF, JPG o PNG).</div>
       </div>
@@ -227,7 +287,7 @@ window.PSTit = (function () {
 
   return {
     TIPOS, ORDEN_TIPOS,
-    cargar, guardar, eliminar,
+    cargar, guardar, eliminar, abrirDocumento,
     estadoCaducidad, formatFecha,
     renderCard, renderLista, modalHTML
   };

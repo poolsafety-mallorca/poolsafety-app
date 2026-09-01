@@ -2122,7 +2122,12 @@
       // 2) Todas sus titulaciones de una sola consulta
       const ids = empleados.map(e => e.id);
       const { data: tits, error: e2 } = await window.sb.from('titulaciones_empleado')
-        .select('id, empleado_id, tipo, nombre, fecha_caducidad, fecha_reciclaje, documento_url')
+        // OJO: NADA de `documento_url` aquí. Esa columna guarda el fichero entero
+        // en base64 (hasta ~27 MB por documento) y esta consulta trae las
+        // titulaciones de TODO el equipo. Se descargaban todos los DNI, contratos
+        // y certificados en cada carga del panel, sin usarse para nada: era la
+        // fuente principal del Egress que se comió la cuota de Supabase.
+        .select('id, empleado_id, tipo, nombre, fecha_caducidad, fecha_reciclaje, documento_nombre')
         .in('empleado_id', ids);
       if (e2) throw e2;
       titulacionesCache = tits || [];

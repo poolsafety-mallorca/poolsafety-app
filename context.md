@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v137 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v137`**
+Última actualización: 2026-08-31 (v138 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v138`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -80,7 +80,23 @@ cycle. Projects will be restricted from 21 Sep, 2026 if your organization remain
 quota."* Proyecto `poolsafety-app-prod`. **Si no se corrige, la app deja de funcionar
 para el piloto en producción.**
 
-**Causa más probable, ya localizada en el código:** las titulaciones y documentos del
+**CONFIRMADO 2026-08-31**: el recurso agotado es **Egress** (datos que SALEN hacia los
+móviles), no el tamaño de la BD. Plan **Free**, organización *PoolSafety Mallorca*,
+1 proyecto. Periodo de gracia hasta el **21 sep 2026**; después las peticiones devuelven
+**402** y la app deja de funcionar.
+
+**Causa encontrada y ya corregida (v138)**: `js/coordinador.js` pedía `documento_url` de
+las titulaciones de **TODO el equipo** en cada carga del panel — y no usaba ese dato para
+nada. Esa columna guarda el fichero entero en base64 (hasta ~27 MB por documento), así
+que se descargaban todos los DNI, contratos y certificados del equipo una y otra vez.
+`PSTit.cargar` hacía lo mismo con `select('*')` para un trabajador.
+
+Ahora las listas piden solo columnas ligeras, se consulta aparte qué filas TIENEN
+documento (trayendo solo `id`) y el contenido se descarga al pulsar "Ver"
+(`PSTit.abrirDocumento`). **Nunca volver a meter `documento_url` en una consulta de
+listado.**
+
+**Causa de fondo, aún pendiente:** las titulaciones y documentos del
 socorrista (DNI, PRL, contrato, certificados) se guardan como **data URL en base64
 dentro de la propia base de datos** (`titulaciones_empleado.documento_url`, columna de
 texto), no en Storage. El límite por fichero es de **20 MB**, y base64 infla un ~33%:
