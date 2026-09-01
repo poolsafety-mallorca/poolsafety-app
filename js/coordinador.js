@@ -2053,12 +2053,8 @@
     const csv = out.join('\r\n');
     // BOM para que Excel en español abra bien los acentos
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `nomina-horas-reales-${nominaCacheMes}.csv`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
-    toast('✓ CSV descargado');
+    window.PSPdf.guardarArchivo(blob, `nomina-horas-reales-${nominaCacheMes}.csv`);
+    toast('✓ CSV generado');
   };
 
   setTimeout(() => renderHours('all'), 1200);
@@ -6191,7 +6187,7 @@
               <svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg> Enviar al hotel
             </button>
             <button class="btn btn-outline btn-sm" onclick="descargarFacturacionPDF()">
-              <svg class="ic ic-14"><use href="#ic-file-text"/></svg> PDF
+              <svg class="ic ic-14"><use href="#ic-download"/></svg> Descargar PDF
             </button>
             <button class="btn btn-outline btn-sm" onclick="descargarFacturacionCSV()">
               <svg class="ic ic-14"><use href="#ic-download"/></svg> CSV
@@ -6332,12 +6328,12 @@
   };
 
   // PDF con membrete de la empresa, para adjuntar a la factura del hotel.
-  window.descargarFacturacionPDF = function () {
+  window.descargarFacturacionPDF = async function () {
     if (!factCache) { toast('No hay datos que descargar'); return; }
     if (!window.PSPdf || !window.PSPdf.descargarHorasHotel) { toast('Generador de PDF no disponible'); return; }
     try {
-      window.PSPdf.descargarHorasHotel(factCache);
-      toast('✓ PDF descargado');
+      await window.PSPdf.descargarHorasHotel(factCache);
+      toast('✓ PDF generado');
     } catch (err) { toast('Error al generar el PDF: ' + err.message); }
   };
 
@@ -6533,12 +6529,8 @@
       out.push(fila(['De las facturadas, imputadas por horario', '', '', '', '', '', factCache.totImputado]));
     }
     const blob = new Blob(['﻿' + out.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `horas-${factCache.hotel.replace(/[^a-zA-Z0-9]+/g, '-')}-${factCache.mes}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(a.href);
-    toast('✓ CSV descargado');
+    window.PSPdf.guardarArchivo(blob, `horas-${factCache.hotel.replace(/[^a-zA-Z0-9]+/g, '-')}-${factCache.mes}.csv`);
+    toast('✓ CSV generado');
   };
 
   function renderHotelFicha() {
