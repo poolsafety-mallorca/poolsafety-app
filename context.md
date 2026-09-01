@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v139 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v139`**
+Última actualización: 2026-08-31 (v140 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v140`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -85,7 +85,29 @@ cycle. Projects will be restricted from 21 Sep, 2026 if your organization remain
 quota."* Proyecto `poolsafety-app-prod`. **Si no se corrige, la app deja de funcionar
 para el piloto en producción.**
 
-**CONFIRMADO 2026-08-31**: el recurso agotado es **Egress** (datos que SALEN hacia los
+**CAUSA REAL (2026-08-31, tercera hipótesis y esta sí cuadra): LOS SONDEOS.**
+Al abrir la herramienta de migración salieron **solo 3 documentos** en base64. Con tres
+ficheros no se agotan 5 GB: la hipótesis del base64 era **falsa**.
+
+Lo que sí cuadra es el `setInterval`. Había un sondeo **cada 10 segundos** en la app del
+socorrista (`comprobarKitAltaObligatorio`, 2 consultas por vuelta) corriendo en **51
+móviles**, más el panel del coordinador pidiendo **todos los fichajes del día de las 51
+personas cada 25 s**. Ninguno paraba con la pantalla apagada ni con la app de fondo.
+Estimación con 8 h de uso: **~408.000 peticiones/día**.
+
+Corregido en v140 con `window.PSPoll.cada(fn, ms)` (en `js/supabase-client.js`):
+no ejecuta si `document.visibilityState === 'hidden'` y refresca al volver a primer
+plano. Intervalos subidos (Kit Alta 10 s → 120 s, panel en vivo 25 s → 90 s, etc.).
+Quedan **~78.000/día**, un 81% menos, y encima solo con la app en pantalla.
+Kit Alta y el panel en vivo YA tienen Realtime: el sondeo es solo el respaldo.
+
+**USAR SIEMPRE `PSPoll.cada` EN VEZ DE `setInterval` para cualquier cosa que consulte
+la base de datos.**
+
+**Lo del base64 (v138-v139) sigue mereciendo la pena** —evita que el problema vuelva
+cuando los 51 suban sus documentos— pero NO era la causa.
+
+**Dato del panel**: el recurso agotado es **Egress** (datos que SALEN hacia los
 móviles), no el tamaño de la BD. Plan **Free**, organización *PoolSafety Mallorca*,
 1 proyecto. Periodo de gracia hasta el **21 sep 2026**; después las peticiones devuelven
 **402** y la app deja de funcionar.
