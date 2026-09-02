@@ -4626,6 +4626,13 @@
         }
       } catch (pdfErr) { console.warn('[incidencia] PDF falló:', pdfErr.message); }
 
+      // Avisar al hotel donde ha pasado, si tiene correo de dirección puesto.
+      // Va DESPUÉS del PDF a propósito (en modo íntegro el correo lo adjunta) y
+      // sin `await` que bloquee: el parte ya está guardado y el coordinador ya
+      // lo tiene. Si el correo falla, se reintenta desde el panel del
+      // coordinador; al socorrista no se le cuenta nada porque no es cosa suya.
+      if (window.PSEnvioParte) { window.PSEnvioParte.enviarSilencioso(ins.id); }
+
       // Recargar botiquín para reflejar stock bajado
       await cargarInventarioBD();
       await cargarRevisionesDeHoy();

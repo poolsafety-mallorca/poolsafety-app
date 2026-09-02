@@ -847,6 +847,9 @@
             <button class="btn btn-outline btn-sm" onclick="exportarIncidenciasCSV()">
               <svg class="ic ic-14"><use href="#ic-download"/></svg> Exportar CSV
             </button>
+            <button class="btn btn-primary btn-sm" onclick="enviarPartesPendientes()" style="background:#0F766E;">
+              <svg class="ic ic-14"><use href="#ic-mail"/></svg> Enviar pendientes al hotel
+            </button>
           </div>
         </div>
         <div class="panel-body">
@@ -854,6 +857,7 @@
             <svg class="ic ic-14"><use href="#ic-shield"/></svg>
             <span>Aquí llegan al momento los partes que firman los socorristas. Puedes descargar el PDF completo con la silueta del cuerpo, la firma y el material usado para entregarlo a la inspección o al seguro.</span>
           </div>
+          <div id="incEnvioEstado"></div>
           <div id="incidenciasList">
             <div class="text-muted small" style="padding:30px;text-align:center;">Cargando incidencias…</div>
           </div>
@@ -1620,6 +1624,7 @@ socorrista,Ana López,ana@ejemplo.com"></textarea>
 <script src="js/ps-cuadrante.js"></script>
 <script src="js/ps-notifications.js"></script>
 <script src="js/ps-incidencias.js"></script>
+<script src="js/ps-envio-parte.js"></script>
 <script src="js/coordinador.js"></script>
 </body>
 </html>
