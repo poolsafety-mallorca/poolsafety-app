@@ -806,10 +806,12 @@
             <button class="btn btn-outline btn-sm" onclick="exportarTitulacionesCSV()">
               <svg class="ic ic-14"><use href="#ic-download"/></svg> Exportar
             </button>
-            <!-- Migración de documentos a Storage. Solo admin: se muestra desde JS. -->
+            <!-- Migración de documentos a Storage. Solo admin: se muestra desde JS.
+                 Se llamaba sólo "Documentos" y nadie entendía para qué servía. -->
             <button class="btn btn-outline btn-sm" id="btnMigrarDocs" onclick="abrirMigracionDocs()"
-              style="display:none;color:#1D4ED8;border-color:#93C5FD;">
-              <svg class="ic ic-14"><use href="#ic-upload"/></svg> Documentos
+              style="display:none;color:#1D4ED8;border-color:#93C5FD;"
+              title="Mueve los documentos que subieron los socorristas de la base de datos al almacén de ficheros">
+              <svg class="ic ic-14"><use href="#ic-upload"/></svg> Mover documentos al almacén
             </button>
           </div>
         </div>

@@ -1908,8 +1908,15 @@
     }
     body.innerHTML = `
       <div class="modal-head">
-        <h3>Documentos laborales</h3>
+        <h3>Mover documentos al almacén</h3>
         <button class="modal-close" onclick="cerrarMigracionDocs()">✕</button>
+      </div>
+      <div class="small" style="padding:12px 16px 0;color:#475569;line-height:1.5;">
+        Los documentos que subieron los socorristas están guardados <b>dentro de la base de
+        datos</b>, que no es su sitio: hace que la app gaste mucho más de la cuenta cada vez
+        que alguien abre esta pantalla. Esto los pasa al almacén de ficheros, que es más
+        barato y más seguro. <b>No se pierde ninguno</b>: primero se copian y se comprueban,
+        y sólo después se libera el hueco.
       </div>
       <div style="padding:16px;">
         <div class="row gap-2" style="flex-wrap:wrap;margin-bottom:14px;">
