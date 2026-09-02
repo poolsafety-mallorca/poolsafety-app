@@ -944,8 +944,14 @@ window.PSPdf = (function () {
      posible. Layout compacto en 2 columnas + siluetas en la derecha.
      Si el texto libre desborda pasa a página 2 en formato reducido.
      ========================================================================== */
-  async function generarIncidencia(inc, empleado) {
-    const doc = nuevoPdf();
+  async function generarIncidencia(inc, empleado, opts) {
+    opts = opts || {};
+    // Se le puede pasar un documento ya empezado (opts.doc) para encadenar
+    // varios partes en un solo PDF — es lo que usa la descarga por hotel.
+    // Cada parte arranca en hoja nueva; el resto del dibujo no cambia porque
+    // jsPDF trabaja siempre sobre la página actual.
+    const doc = opts.doc || nuevoPdf();
+    if (opts.doc) doc.addPage();
     const fechaInc = inc.fecha_incidente ? new Date(inc.fecha_incidente) : new Date();
 
     // Cabecera compacta (no usa header() estándar, más pequeña)
@@ -1217,6 +1223,113 @@ window.PSPdf = (function () {
   }
 
   /* ==========================================================================
+     TODOS LOS PARTES DE UN HOTEL EN UN SOLO PDF
+     --------------------------------------------------------------------------
+     Un único fichero, no diez: así se adjunta de una vez a un correo o se
+     manda por WhatsApp sin ir parte por parte. Empieza con una hoja índice
+     que resume qué lleva dentro, para que quien lo reciba sepa de un vistazo
+     el periodo, cuántos partes hay y cuáles acabaron en ambulancia.
+
+       partes : array de incidencias, ya ordenadas como se quieran imprimir
+       info   : { hotel, desde, hasta, empleadoDe(parte) -> {nombre,dni,puesto_nombre} }
+     ========================================================================== */
+  async function generarInformesHotel(partes, info) {
+    info = info || {};
+    const lista = partes || [];
+    if (!lista.length) throw new Error('No hay partes que descargar.');
+
+    const doc = nuevoPdf();
+    const hotel = info.hotel || '—';
+
+    // ---------------- Hoja índice ----------------
+    doc.setFillColor(185, 28, 28);
+    doc.rect(0, 0, 210, 26, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+    doc.text('Partes de incidencia', 12, 11);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.text(limpiarTexto(hotel), 12, 17.5);
+    doc.setFontSize(7.5);
+    doc.text(EMPRESA.razonSocial + ' · CIF ' + EMPRESA.cif + ' · ' + EMPRESA.email, 12, 22.5);
+    doc.setTextColor(0, 0, 0);
+
+    let y = 34;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    const periodo = info.desde || info.hasta
+      ? 'Periodo: ' + (info.desde ? new Date(info.desde).toLocaleDateString('es-ES') : 'inicio') +
+        ' a ' + (info.hasta ? new Date(info.hasta).toLocaleDateString('es-ES') : 'hoy')
+      : 'Periodo: todos los partes registrados';
+    doc.text(periodo, 12, y); y += 5;
+    doc.text('Partes incluidos: ' + lista.length, 12, y); y += 5;
+    doc.text('Documento generado el ' + new Date().toLocaleString('es-ES'), 12, y); y += 8;
+
+    // Tabla resumen
+    doc.setFillColor(241, 245, 249);
+    doc.rect(12, y - 4, 186, 6, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+    doc.text('Nº parte', 14, y);
+    doc.text('Fecha', 45, y);
+    doc.text('Tipo', 78, y);
+    doc.text('Desenlace', 132, y);
+    y += 6;
+    doc.setFont('helvetica', 'normal');
+
+    const pageH = doc.internal.pageSize.getHeight();
+    lista.forEach((inc) => {
+      if (y > pageH - 22) { doc.addPage(); y = 20; }
+      const f = inc.fecha_incidente ? new Date(inc.fecha_incidente) : null;
+      const grave = inc.derivacion === 'ambulancia' || inc.derivacion === 'hospital';
+      if (grave) { doc.setTextColor(185, 28, 28); doc.setFont('helvetica', 'bold'); }
+      doc.text(limpiarTexto(inc.numero_parte || '—'), 14, y);
+      doc.text(f ? f.toLocaleDateString('es-ES') + ' ' + f.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—', 45, y);
+      doc.text(limpiarTexto((window.PSInc ? window.PSInc.formatTipo(inc.tipo_incidente) : inc.tipo_incidente) || '—').slice(0, 32), 78, y);
+      doc.text(limpiarTexto((window.PSInc ? window.PSInc.formatDerivacion(inc.derivacion) : inc.derivacion) || '—').slice(0, 34), 132, y);
+      doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal');
+      y += 4.6;
+    });
+
+    y += 6;
+    if (y > pageH - 30) { doc.addPage(); y = 20; }
+    doc.setFontSize(7.5); doc.setTextColor(100, 116, 139);
+    const aviso = doc.splitTextToSize(
+      'CONFIDENCIAL. Este documento contiene datos personales y de salud de las personas ' +
+      'atendidas (art. 9 RGPD). Entréguese únicamente a quien tenga que conocerlos, no lo ' +
+      'reenvíe fuera de ese círculo y consérvelo sólo el tiempo necesario.', 186);
+    doc.text(aviso, 12, y);
+    doc.setTextColor(0, 0, 0);
+
+    // ---------------- Un parte por hoja ----------------
+    for (const inc of lista) {
+      const emp = info.empleadoDe ? info.empleadoDe(inc) : {};
+      await generarIncidencia(inc, emp, { doc: doc });
+    }
+
+    // Numeración al pie, ya sabiendo cuántas hojas han salido.
+    const total = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= total; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7); doc.setTextColor(120, 130, 145);
+      doc.text('Página ' + i + ' de ' + total, 198, pageH - 6, { align: 'right' });
+      doc.setTextColor(0, 0, 0);
+    }
+    return doc;
+  }
+
+  function nombreArchivoInformes(hotel, desde, hasta) {
+    const limpio = (hotel || 'hotel').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+    const tramo = desde || hasta
+      ? '_' + (desde || 'inicio') + '_a_' + (hasta || 'hoy')
+      : '_completo';
+    return `PoolSafety-partes-${limpio}${tramo}.pdf`;
+  }
+
+  async function descargarInformesHotel(partes, info) {
+    const doc = await generarInformesHotel(partes, info);
+    await guardarPdf(doc, nombreArchivoInformes((info || {}).hotel, (info || {}).desde, (info || {}).hasta));
+  }
+
+  /* ==========================================================================
      Storage + descarga
      ========================================================================== */
   function esFiniquito(firma) {
@@ -1449,5 +1562,5 @@ window.PSPdf = (function () {
     return { blob: generarHorasHotel(datos).output('blob'), nombre: nombreArchivoHoras(datos) };
   }
 
-  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarIncidencia, generarHorasHotel, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito, descargarIncidencia, descargarHorasHotel, blobHorasHotel, guardarArchivo };
+  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarIncidencia, generarInformesHotel, generarHorasHotel, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito, descargarIncidencia, descargarInformesHotel, nombreArchivoInformes, descargarHorasHotel, blobHorasHotel, guardarArchivo };
 })();

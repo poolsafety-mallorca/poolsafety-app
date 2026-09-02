@@ -166,9 +166,24 @@ base64 dentro de la BD.**
 Petición del cliente (2026-09-01): que los partes de incidencia lleguen solos al correo
 de dirección del hotel donde ocurrieron — los nuevos al firmarse y los ya creados.
 
-**Estado (v145): construido entero y desplegado, pero INERTE hasta que se pongan las
-variables en Netlify.** Mientras falten, la función responde `sin_configurar` (503) y no
-manda nada ni toca la base de datos; la app lo trata en silencio.
+**Estado (v146): construido entero y desplegado, pero INERTE.** Faltan las variables de
+Netlify (responde `sin_configurar`, 503) y además **el cliente pidió el 2026-09-02 que el
+envío NO fuera automático de momento**: quiere revisar los partes y mandarlos él. El
+disparo al firmar sigue en el código pero el servidor lo descarta salvo que
+`PARTES_AUTO` valga `si`. Los botones del panel del coordinador sí mandan.
+
+### Descargar todos los partes de un hotel (v146)
+
+Panel Incidencias → **"Descargar partes de un hotel"**: elige hotel y, si quiere, un
+rango de fechas, y sale **un solo PDF** con una hoja índice (nº de parte, fecha, tipo y
+desenlace, en rojo los que acabaron en ambulancia u hospital) y después cada parte
+completo en su hoja. Un único fichero para poder adjuntarlo de una vez a un correo o
+mandarlo por WhatsApp — que es como el cliente los está mandando ahora mismo.
+
+`PSPdf.generarIncidencia(inc, empleado, { doc })` acepta un documento ya empezado para
+encadenar partes. **jsPDF reutiliza las imágenes repetidas**: 1 parte pesa 2,45 MB y 10
+partes 2,50 MB, así que el tamaño no es problema para el correo (ese 2,4 MB de base son
+las fuentes y las siluetas, y ya lo pesaba cualquier parte suelto).
 
 ### Cómo funciona
 
@@ -214,6 +229,7 @@ socorrista escribe ahí el nombre de la víctima, ese nombre sale en el correo.
 | `PARTES_REMITENTE` | sí | p.ej. `PoolSafety <partes@poolsafety.es>`. El dominio tiene que estar verificado en Resend. |
 | `SUPABASE_SERVICE_ROLE_KEY` | sí | Supabase → Settings → API → `service_role`. **Nunca en el repo.** |
 | `PARTES_MODO` | no | `operativo` (defecto) o `integro`. |
+| `PARTES_AUTO` | no | `si` para que se manden solos al firmar. **Apagado a petición del cliente.** |
 | `PARTES_COPIA` | no | Correo en copia oculta, para que la empresa guarde su copia. |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` | no | Tienen valor por defecto en el código (son públicas). |
 
@@ -223,6 +239,8 @@ socorrista escribe ahí el nombre de la víctima, ese nombre sale en el correo.
 - Poner las 3 variables obligatorias en Netlify.
 - Rellenar el correo de dirección del resto de hoteles (Hoteles → ficha → Datos).
 - Decidir con el cliente el modo (`operativo` vs `integro`).
+- Cuando el cliente quiera que salgan solos: `PARTES_AUTO=si`. **No encenderlo por
+  iniciativa propia.**
 - ⚠️ **Los PDF de los partes se suben al bucket PÚBLICO `empleados-media`** (ruta
   `incidencias/{uuid}.pdf`). Contienen datos de salud. La ruta no es adivinable, pero
   esto debería moverse al bucket privado `documentos-laborales` con enlaces firmados,

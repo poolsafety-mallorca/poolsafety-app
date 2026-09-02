@@ -26,6 +26,12 @@
    El modo íntegro manda datos de salud (categoría especial, art. 9 RGPD) a un
    tercero: sólo debe activarse si el contrato con el hotel lo ampara.
 
+   ENVÍO AUTOMÁTICO: APAGADO POR DEFECTO
+   El disparo automático al firmar el parte sólo funciona si PARTES_AUTO vale
+   "si". Mientras no valga eso, los partes se mandan únicamente cuando alguien
+   pulsa el botón en el panel del coordinador. Es una decisión del cliente:
+   quiso revisarlos antes de que salgan solos.
+
    VARIABLES DE ENTORNO (Netlify → Site settings → Environment variables)
      RESEND_API_KEY             obligatoria
      PARTES_REMITENTE           obligatoria, p.ej. "PoolSafety <partes@tudominio.es>"
@@ -33,6 +39,7 @@
      SUPABASE_URL               opcional (hay valor por defecto)
      SUPABASE_ANON_KEY          opcional (hay valor por defecto)
      PARTES_MODO                opcional: "operativo" (defecto) | "integro"
+     PARTES_AUTO                opcional: "si" para que se manden solos al firmar
      PARTES_COPIA               opcional: correo en copia oculta (la empresa)
    ========================================================================== */
 
@@ -196,6 +203,7 @@ export default async (req) => {
   const REMITENTE = process.env.PARTES_REMITENTE;
   const MODO = (process.env.PARTES_MODO || 'operativo').toLowerCase() === 'integro' ? 'integro' : 'operativo';
   const COPIA = process.env.PARTES_COPIA || '';
+  const AUTO_ON = ['si', 'sí', 'true', '1', 'yes'].indexOf((process.env.PARTES_AUTO || '').trim().toLowerCase()) >= 0;
 
   // Sin configurar todavía: se responde con claridad y NO se toca nada. La app
   // trata este caso en silencio, para que al socorrista no le salte un error
@@ -215,6 +223,15 @@ export default async (req) => {
   const incidenciaId = cuerpo && cuerpo.incidencia_id;
   if (!incidenciaId || !/^[0-9a-f-]{36}$/i.test(incidenciaId)) {
     return fallo('id_invalido', 'Falta el identificador del parte.', 400);
+  }
+
+  // Llamada automática (la que hace la app al firmarse el parte) con el envío
+  // automático apagado: se corta aquí mismo, antes de mirar sesión o base de
+  // datos. Los botones del panel del coordinador no mandan este campo, así que
+  // siguen funcionando igual.
+  if (cuerpo.automatico && !AUTO_ON) {
+    return json({ ok: false, codigo: 'auto_desactivado',
+      error: 'El envío automático al firmar está desactivado. Los partes se mandan desde el panel del coordinador.' }, 200);
   }
 
   // ---- 1) ¿Quién llama? ----------------------------------------------------

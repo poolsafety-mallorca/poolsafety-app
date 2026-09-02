@@ -2692,6 +2692,133 @@
     }
   }
 
+  /* ------------------------------------------------------------------
+     DESCARGAR TODOS LOS PARTES DE UN HOTEL EN UN SOLO PDF
+     Para poder mandárselos al hotel por fuera de la app (correo propio,
+     WhatsApp, imprimir) sin ir parte por parte. Un solo fichero: se adjunta
+     de una vez.
+     ------------------------------------------------------------------ */
+  window.abrirInformesHotel = async function () {
+    let modal = document.getElementById('informesHotelModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'informesHotelModal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:12px;';
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:14px;max-width:520px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden;">
+        <div style="padding:14px 18px;background:#0F766E;color:#fff;display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-size:16px;font-weight:700;">Descargar partes de un hotel</div>
+          <button onclick="document.getElementById('informesHotelModal').remove()" style="background:rgba(255,255,255,.2);border:0;color:#fff;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:19px;">×</button>
+        </div>
+        <div style="padding:16px 18px;">
+          <div class="text-muted small" style="margin-bottom:14px;line-height:1.5;">
+            Sale <b>un solo PDF</b> con todos los partes de ese hotel, uno por hoja y con
+            un índice delante. Así se lo puedes mandar de una vez por tu correo o por
+            WhatsApp, sin ir parte por parte.
+          </div>
+          <label class="field-label" style="display:block;font-weight:600;margin-bottom:5px;">Hotel</label>
+          <select id="ih-hotel" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid var(--line);font-size:14px;background:#fff;margin-bottom:12px;">
+            <option value="">Cargando hoteles…</option>
+          </select>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;">
+            <div>
+              <label class="field-label" style="display:block;font-weight:600;margin-bottom:5px;">Desde (opcional)</label>
+              <input type="date" id="ih-desde" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid var(--line);font-size:14px;">
+            </div>
+            <div>
+              <label class="field-label" style="display:block;font-weight:600;margin-bottom:5px;">Hasta (opcional)</label>
+              <input type="date" id="ih-hasta" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid var(--line);font-size:14px;">
+            </div>
+          </div>
+          <div class="text-muted small" style="margin-bottom:12px;">Si los dejas en blanco salen todos los partes de ese hotel.</div>
+          <div id="ih-aviso" class="alert-strip warn" style="margin-bottom:12px;font-size:12.5px;">
+            El PDF lleva nombre, DNI y estado de salud de las personas atendidas. Son datos
+            protegidos: entrégalo sólo a quien tenga que verlos.
+          </div>
+          <div id="ih-estado"></div>
+          <div class="row gap-2" style="justify-content:flex-end;margin-top:6px;">
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('informesHotelModal').remove()">Cancelar</button>
+            <button class="btn btn-primary btn-sm" id="ih-btn" style="background:#0F766E;" onclick="descargarInformesDeHotel()">
+              <svg class="ic ic-14"><use href="#ic-download"/></svg> Descargar PDF
+            </button>
+          </div>
+        </div>
+      </div>`;
+
+    // Los hoteles se piden frescos: la caché de la pestaña Hoteles puede no
+    // estar cargada todavía si no se ha entrado ahí en esta sesión.
+    try {
+      const { data, error } = await window.sb.from('puestos')
+        .select('id, nombre').eq('activo', true).order('nombre');
+      if (error) throw error;
+      const sel = document.getElementById('ih-hotel');
+      if (sel) {
+        sel.innerHTML = '<option value="">— Elige un hotel —</option>' +
+          (data || []).map(h => `<option value="${h.id}">${h.nombre}</option>`).join('');
+      }
+    } catch (err) {
+      const sel = document.getElementById('ih-hotel');
+      if (sel) sel.innerHTML = `<option value="">Error cargando hoteles: ${err.message}</option>`;
+    }
+  };
+
+  window.descargarInformesDeHotel = async function () {
+    const sel = document.getElementById('ih-hotel');
+    const estado = document.getElementById('ih-estado');
+    const btn = document.getElementById('ih-btn');
+    const puestoId = sel && sel.value;
+    if (!puestoId) { alert('Elige primero un hotel.'); return; }
+    const hotelNombre = sel.options[sel.selectedIndex].textContent;
+    const desde = (document.getElementById('ih-desde') || {}).value || '';
+    const hasta = (document.getElementById('ih-hasta') || {}).value || '';
+
+    const pinta = (html, clase) => { if (estado) estado.innerHTML = `<div class="alert-strip ${clase || ''}" style="margin-bottom:10px;font-size:12.5px;">${html}</div>`; };
+    if (btn) { btn.disabled = true; btn.textContent = 'Buscando partes…'; }
+
+    try {
+      let q = window.sb.from('incidencias')
+        .select('*, empleados(id,nombre,dni), puestos(id,nombre)')
+        .eq('puesto_id', puestoId)
+        .neq('estado', 'borrador')
+        .order('fecha_incidente', { ascending: true });
+      if (desde) q = q.gte('fecha_incidente', desde + 'T00:00:00');
+      // El "hasta" se toma incluido: quien pone 31/08 quiere el día 31 entero.
+      if (hasta) {
+        const h = new Date(hasta + 'T00:00:00'); h.setDate(h.getDate() + 1);
+        q = q.lt('fecha_incidente', h.toISOString());
+      }
+      const { data, error } = await q;
+      if (error) throw error;
+      const partes = data || [];
+      if (!partes.length) {
+        pinta('No hay ningún parte firmado de <b>' + hotelNombre + '</b> en ese periodo.', 'warn');
+        if (btn) { btn.disabled = false; btn.textContent = 'Descargar PDF'; }
+        return;
+      }
+
+      pinta('Generando el PDF con <b>' + partes.length + '</b> parte(s)… puede tardar unos segundos.');
+      if (btn) btn.textContent = 'Generando…';
+
+      await window.PSPdf.descargarInformesHotel(partes, {
+        hotel: hotelNombre, desde: desde, hasta: hasta,
+        empleadoDe: (inc) => ({
+          nombre: inc.empleados && inc.empleados.nombre,
+          dni: inc.empleados && inc.empleados.dni,
+          puesto_nombre: (inc.puestos && inc.puestos.nombre) || hotelNombre
+        })
+      });
+
+      pinta('✓ Listo: ' + partes.length + ' parte(s) de <b>' + hotelNombre + '</b>.', 'ok');
+      if (btn) { btn.disabled = false; btn.textContent = 'Descargar otra vez'; }
+    } catch (err) {
+      pinta('No se pudo generar el PDF: ' + err.message, 'warn');
+      if (btn) { btn.disabled = false; btn.textContent = 'Descargar PDF'; }
+    }
+  };
+
   window.enviarPartesPendientes = async function () {
     if (!window.PSEnvioParte) { toast('Recarga la página'); return; }
     const estado = document.getElementById('incEnvioEstado');

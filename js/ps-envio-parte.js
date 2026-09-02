@@ -17,10 +17,11 @@
   // Códigos que NO son un fallo del que está usando la app: el envío aún no
   // está activado, o al hotel le falta el correo. Se anotan en consola y se
   // sigue; no tiene sentido asustar a un socorrista con esto.
-  const NO_ES_CULPA_TUYA = ['sin_configurar', 'sin_correo', 'ya_enviado'];
+  const NO_ES_CULPA_TUYA = ['sin_configurar', 'sin_correo', 'ya_enviado', 'auto_desactivado'];
 
   const MENSAJES = {
-    sin_configurar: 'El envío automático al hotel todavía no está activado.',
+    sin_configurar: 'El envío de partes por correo todavía no está activado.',
+    auto_desactivado: 'El envío automático está apagado. Los partes se mandan desde el panel del coordinador.',
     sin_correo:     'Ese hotel no tiene correo de dirección en su ficha. Ponlo en Hoteles → ficha del hotel → Datos.',
     ya_enviado:     'Ese parte ya se había enviado.',
     no_firmada:     'El parte no está firmado todavía.',
@@ -30,7 +31,10 @@
     resend_error:   'El servidor de correo rechazó el envío.'
   };
 
-  async function enviar(incidenciaId) {
+  // `automatico` marca la llamada que hace la app sola al firmarse un parte.
+  // El servidor la ignora mientras el envío automático esté apagado; los
+  // botones del panel del coordinador no lo mandan y siguen funcionando.
+  async function enviar(incidenciaId, opts) {
     if (!window.sb) throw new Error('Supabase no está cargado');
     const { data } = await window.sb.auth.getSession();
     const token = data && data.session && data.session.access_token;
@@ -39,7 +43,7 @@
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-      body: JSON.stringify({ incidencia_id: incidenciaId })
+      body: JSON.stringify({ incidencia_id: incidenciaId, automatico: !!(opts && opts.automatico) })
     });
 
     let cuerpo = {};
@@ -64,9 +68,9 @@
   // después desde el panel, así que aquí no se interrumpe nada.
   async function enviarSilencioso(incidenciaId) {
     try {
-      const r = await enviar(incidenciaId);
+      const r = await enviar(incidenciaId, { automatico: true });
       console.log('[parte→hotel]', r.codigo, r.enviado_a || '');
-      return r;
+      return r;   // puede ser { ok:false, codigo:'auto_desactivado' } — es lo normal ahora
     } catch (err) {
       console.warn('[parte→hotel] no se envió:', err.codigo || '', err.message);
       return { ok: false, codigo: err.codigo || 'error', error: err.message };
