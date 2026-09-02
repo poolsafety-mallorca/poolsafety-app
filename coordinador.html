@@ -545,7 +545,7 @@
             <svg class="ic ic-16"><use href="#ic-calendar"/></svg>
           </div>
           <h3 class="panel-title">Horarios del mes</h3>
-          <span class="panel-count" id="horariosStats">— asignaciones</span>
+          <span class="panel-count" id="horariosStats"></span>
         </div>
       </div>
       <div class="panel-body">
@@ -602,58 +602,13 @@
       </div>
     </section>
 
-    <!-- Asignación manual + tabla actual -->
-    <section class="panel">
-      <div class="panel-head">
-        <div class="panel-title-wrap">
-          <h3 class="panel-title">Asignación manual y horarios actuales</h3>
-          <span class="panel-count">Julio · aplicable de inmediato en app socorrista</span>
-        </div>
-      </div>
-      <div class="panel-body">
-        <div class="horario-manual-form">
-          <select id="hmSoc" class="upload-select"></select>
-          <select id="hmPuesto" class="upload-select"></select>
-          <select id="hmHora" class="upload-select">
-            <option value="09:00">09:00</option><option value="09:30">09:30</option>
-            <option value="10:00" selected>10:00</option><option value="10:30">10:30</option>
-            <option value="11:00">11:00</option><option value="12:00">12:00</option>
-            <option value="13:00">13:00</option><option value="14:00">14:00</option>
-          </select>
-          <select id="hmDur" class="upload-select">
-            <option value="6">6 h</option>
-            <option value="7">7 h</option>
-            <option value="8" selected>8 h</option>
-            <option value="9">9 h</option>
-          </select>
-          <select id="hmDias" class="upload-select">
-            <option>Lun-Vie</option>
-            <option>Lun-Sáb</option>
-            <option>Todos</option>
-            <option>Fin de semana</option>
-          </select>
-          <button class="btn btn-primary" onclick="asignarHorarioManual()">
-            <svg class="ic ic-16"><use href="#ic-plus"/></svg>
-            Asignar
-          </button>
-        </div>
-
-        <div style="overflow-x:auto; margin-top: 14px;">
-          <table class="hours-table" id="horariosTable">
-            <thead>
-              <tr>
-                <th>Socorrista</th>
-                <th>Puesto / hotel</th>
-                <th class="num">Turno</th>
-                <th>Días</th>
-                <th style="width:40px;"></th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
+    <!-- Aquí estaba "Asignación manual y horarios actuales": una tabla que se
+         rellenaba con los nombres de muestra de js/data.js y un botón Asignar que
+         guardaba en localStorage, o sea solo en el navegador de quien lo pulsaba.
+         Nunca llegó a usarse (0 registros) y confundía con el importador de Excel
+         de arriba, que ese sí escribe en la tabla `horarios` de Supabase.
+         Los horarios se ponen: importando el cuadrante, o en la ficha del empleado
+         y la del hotel (módulo PSHor). -->
 
     </div><!-- /panel horarios -->
 

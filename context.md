@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-09-01 (v142 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v142`**
+Última actualización: 2026-09-01 (v143 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v143`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -179,10 +179,19 @@ y la ficha del hotel (módulo `PSHor`). De ahí los leen la **facturación por h
 **"Cerrar días sin salida"** y **"Añadir los fichajes que faltan"**: si la tabla `horarios`
 está vacía, esas tres funciones no pueden imputar nada.
 
-En v142 esa pantalla lleva un aviso arriba (`diagnosticoHorarios`) que dice la verdad y
-enseña los dos números: cuántos horarios hay en el navegador y cuántos en la BD.
-**Pendiente de decidir con el cliente**: rescatar lo del navegador si hay algo, y luego
-o reconstruir la pantalla contra la BD o quitarla para que solo haya un sitio.
+**RESUELTO en v143.** El diagnóstico dio **0 en el navegador** (nunca se usó) y **64
+horarios reales en la BD, de 45 trabajadores en 24 hoteles**. Como no había nada que
+rescatar, se **retiró la tabla falsa y su botón "Asignar"**.
+
+Lo que queda en esa pantalla SÍ es real: el **importador del cuadrante Excel**
+(`aplicarImportHorarioReal`) desactiva los horarios anteriores e inserta los nuevos en
+`horarios`. De ahí salieron los 64.
+
+Arriba queda un aviso de estado con el recuento y de dónde salen; si algún día la tabla
+`horarios` se queda vacía, se pone en rojo y explica la consecuencia.
+
+⚠️ **45 de 51 trabajadores tienen horario: faltan 6.** Para esos, los días sin fichaje
+no se pueden imputar en la facturación por hotel.
 
 ---
 

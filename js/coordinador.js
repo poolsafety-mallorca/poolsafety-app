@@ -3702,78 +3702,33 @@
      HORARIOS — subida masiva PDF/Excel + asignación manual
      ========================================================================== */
 
-  // Cargar horarios personalizados desde localStorage (persiste)
-  function getHorarios() {
-    const raw = localStorage.getItem('poolsafety-horarios-v1');
-    return raw ? JSON.parse(raw) : {};
-  }
-  function saveHorarios(h) { localStorage.setItem('poolsafety-horarios-v1', JSON.stringify(h)); }
+  /* Aquí vivían getHorarios/saveHorarios/horarioSocorrista/renderHorariosTable
+     y asignarHorarioManual: la tabla de "Asignación manual" que se rellenaba con
+     los nombres de muestra de `PS.socorristas` y guardaba en localStorage. No
+     escribía en la base de datos, así que ni los coordinadores lo veían ni lo
+     leían la facturación por hotel ni las propuestas de horas. Comprobado con el
+     cliente: 0 registros guardados, nunca se usó.
 
-  function horarioSocorrista(socId) {
-    const h = getHorarios();
-    if (h[socId]) return h[socId];
-    // Por defecto usar el puesto asignado en data.js
-    const soc = PS.socorristas.find(s => s.id === socId);
-    if (!soc || !soc.puestoId) return null;
-    const p = PS.puestoById(soc.puestoId);
-    return { puestoId: soc.puestoId, hora: p.hora, duracion: p.duracion, dias: 'Lun-Vie' };
-  }
+     Los horarios se ponen de dos formas, y las dos SÍ escriben en `horarios`:
+       · Importando el cuadrante Excel (arriba en esta misma pantalla).
+       · Ficha del empleado / ficha del hotel, pestaña Horario (módulo PSHor). */
 
-  // Selectores del formulario manual — leen SIEMPRE de BD real
-  const hmSoc = document.getElementById('hmSoc');
-  const hmPuesto = document.getElementById('hmPuesto');
-  async function refrescarSelectoresHorariosManual() {
-    if (hmPuesto) {
-      hmPuesto.innerHTML = '<option value="">Cargando…</option>';
-      try {
-        const { data } = await window.sb
-          .from('puestos').select('id, nombre, zona').eq('activo', true).order('nombre');
-        hmPuesto.innerHTML = (data || []).map(p => `<option value="${p.id}">${p.nombre}${p.zona ? ' — ' + p.zona : ''}</option>`).join('');
-      } catch (err) { hmPuesto.innerHTML = ''; }
-    }
-    if (hmSoc) {
-      hmSoc.innerHTML = '<option value="">Cargando…</option>';
-      try {
-        const { data } = await window.sb
-          .from('empleados').select('id, nombre').is('fecha_baja', null).order('nombre');
-        hmSoc.innerHTML = (data || []).map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
-      } catch (err) { hmSoc.innerHTML = ''; }
-    }
-  }
-  refrescarSelectoresHorariosManual();
-  // Refrescar cada vez que el usuario entra a la sección Horarios
-  document.querySelectorAll('[data-view="horarios"], [data-nav="horarios"]').forEach(el => {
-    el.addEventListener('click', () => setTimeout(refrescarSelectoresHorariosManual, 100));
-  });
 
-  /* ==========================================================================
-     DIAGNÓSTICO · ¿dónde están de verdad los horarios?
-     Esta pantalla es un resto de la maqueta: se rellena con `PS.socorristas`
-     (nombres inventados) y el botón "Asignar" guarda en `localStorage`, o sea
-     en el navegador de quien lo pulsa. Nadie más lo ve y no sobrevive a un
-     borrado de datos.
-
-     Los horarios DE VERDAD viven en la tabla `horarios` de Supabase y se
-     editan desde la ficha del empleado y la ficha del hotel (módulo PSHor).
-     De ahí los leen la facturación por hotel, "Cerrar días sin salida" y
-     "Añadir los fichajes que faltan".
-
-     Mientras no se unifique, al menos que la pantalla diga la verdad y enseñe
-     los dos números.
-     ========================================================================== */
+  /* Aviso de estado: de dónde salen los horarios y cuántos hay.
+     Se pone aquí arriba porque de esta tabla dependen la facturación por hotel,
+     "Cerrar días sin salida" y "Añadir los fichajes que faltan": si está vacía,
+     esas tres se quedan sin nada que imputar y no es evidente por qué. */
   async function diagnosticoHorarios() {
     const cont = document.getElementById('avisoHorariosMock');
-    if (!cont) return;
+    if (!cont || !window.sb) return;
 
-    // 1) Lo que hay guardado en ESTE navegador (la pantalla falsa)
+    // Restos de la tabla falsa que se retiró. Normalmente 0.
     let enNavegador = 0;
     try {
       const raw = localStorage.getItem('poolsafety-horarios-v1');
-      const obj = raw ? JSON.parse(raw) : {};
-      enNavegador = Object.keys(obj || {}).length;
+      enNavegador = Object.keys(JSON.parse(raw || '{}') || {}).length;
     } catch (_) {}
 
-    // 2) Lo que hay de verdad en la base de datos
     let enBD = 0, trabajadores = 0, hoteles = 0, errBD = null;
     try {
       const { data, error } = await window.sb.from('horarios')
@@ -3786,92 +3741,33 @@
     } catch (err) { errBD = err.message; }
 
     const grave = enBD === 0;
+    const avisoResto = enNavegador
+      ? `<div class="small" style="margin-top:8px;color:#92400E;">Quedan ${enNavegador} asignación(es) sueltas en este navegador,
+           de la tabla de "Asignación manual" que se retiró. No cuentan para nada.</div>`
+      : '';
+
     cont.innerHTML = `
-      <div style="background:${grave ? '#FEF2F2' : '#FFFBEB'};border:2px solid ${grave ? '#FCA5A5' : '#F59E0B'};
-                  color:${grave ? '#7F1D1D' : '#92400E'};padding:13px 15px;border-radius:10px;margin-bottom:16px;">
-        <div style="font-weight:800;font-size:14.5px;">Esta pantalla no guarda en la base de datos</div>
+      <div style="background:${grave ? '#FEF2F2' : '#EFF6FF'};border:2px solid ${grave ? '#FCA5A5' : '#93C5FD'};
+                  color:${grave ? '#7F1D1D' : '#1E3A8A'};padding:13px 15px;border-radius:10px;margin-bottom:16px;">
+        <div style="font-weight:800;font-size:14.5px;">
+          ${grave ? 'No hay ningún horario en la base de datos'
+                  : `${enBD} horarios activos · ${trabajadores} trabajador(es) en ${hoteles} hotel(es)`}
+        </div>
         <div class="small" style="margin-top:6px;">
-          La tabla de abajo es un resto de la versión de prueba: los nombres son inventados y el botón
-          <b>Asignar</b> guarda solo en <b>este navegador</b>. Ni tus coordinadores lo ven, ni sobrevive
-          a un borrado de datos del móvil.
+          ${grave
+            ? '<b>Sin horarios no se puede imputar nada</b>: la facturación por hotel saldrá a cero en los días sin fichaje, y "Cerrar días sin salida" y "Añadir los fichajes que faltan" no podrán proponer horas.'
+            : 'De aquí salen la facturación por hotel, "Cerrar días sin salida" y "Añadir los fichajes que faltan".'}
         </div>
-        <div class="row gap-2" style="flex-wrap:wrap;margin-top:11px;">
-          <div style="flex:1;min-width:170px;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:9px;padding:9px 11px;">
-            <div class="small">Guardado en este navegador</div>
-            <div style="font-size:21px;font-weight:800;">${enNavegador}</div>
-            <div class="small" style="opacity:.8;">${enNavegador ? 'Hay datos que rescatar' : 'Nada: no se ha usado'}</div>
-          </div>
-          <div style="flex:1;min-width:170px;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:9px;padding:9px 11px;">
-            <div class="small">Horarios reales en la base de datos</div>
-            <div style="font-size:21px;font-weight:800;color:${grave ? '#B91C1C' : '#065F46'};">${errBD ? '?' : enBD}</div>
-            <div class="small" style="opacity:.8;">${errBD ? 'Error: ' + errBD : `${trabajadores} trabajador(es) · ${hoteles} hotel(es)`}</div>
-          </div>
+        <div class="small" style="margin-top:8px;">
+          Se ponen de dos formas: <b>importando el cuadrante Excel</b> aquí abajo, o en la
+          <b>ficha de cada empleado</b> y la <b>ficha de cada hotel</b>, pestaña Horario.
+          ${errBD ? `<br><span style="color:#B91C1C;">No se ha podido consultar: ${errBD}</span>` : ''}
         </div>
-        <div class="small" style="margin-top:10px;">
-          Los horarios de verdad se ponen en la <b>ficha de cada empleado</b> (pestaña Horario) o en la
-          <b>ficha de cada hotel</b> (pestaña Horario). De ahí salen la facturación por hotel y las
-          propuestas de horas.
-          ${grave ? '<br><b>Ahora mismo no hay ninguno.</b> Sin horarios, los días sin fichaje no se pueden imputar y la facturación por hotel saldrá a cero en esos días.' : ''}
-        </div>
+        ${avisoResto}
       </div>`;
   }
   window.diagnosticoHorarios = diagnosticoHorarios;
-
-  function renderHorariosTable() {
-    const tbody = document.querySelector('#horariosTable tbody');
-    if (!tbody) return;
-    const rows = PS.socorristas.slice(0, 30).map(s => {
-      const h = horarioSocorrista(s.id);
-      if (!h) return null;
-      const p = PS.puestoById(h.puestoId);
-      const finTurno = `${(parseInt(h.hora) + h.duracion).toString().padStart(2,'0')}:00`;
-      return { s, p, hora: h.hora, fin: finTurno, dur: h.duracion, dias: h.dias };
-    }).filter(Boolean);
-
-    const stats = document.getElementById('horariosStats');
-    if (stats) stats.textContent = `${rows.length} asignaciones activas`;
-
-    tbody.innerHTML = rows.map(r => `
-      <tr>
-        <td><div class="hours-name"><div class="mini-av sky">${r.s.iniciales}</div><span style="font-weight:500;">${r.s.nombre}</span></div></td>
-        <td class="text-muted">${r.p.nombre}<br><span class="small">${r.p.zona}</span></td>
-        <td class="num"><b>${r.hora}–${r.fin}</b><br><span class="small text-muted">${r.dur}h</span></td>
-        <td>${r.dias}</td>
-        <td><button class="btn-icon" data-hdel="${r.s.id}" title="Quitar asignación"><svg class="ic ic-14"><use href="#ic-x"/></svg></button></td>
-      </tr>
-    `).join('');
-
-    tbody.querySelectorAll('[data-hdel]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.hdel;
-        const h = getHorarios();
-        delete h[id];
-        saveHorarios(h);
-        renderHorariosTable();
-  diagnosticoHorarios();
-        toast('Asignación eliminada');
-      });
-    });
-  }
-  renderHorariosTable();
-
-  window.asignarHorarioManual = function () {
-    const socId = document.getElementById('hmSoc').value;
-    const puestoId = document.getElementById('hmPuesto').value;
-    const hora = document.getElementById('hmHora').value;
-    const dur = parseInt(document.getElementById('hmDur').value);
-    const dias = document.getElementById('hmDias').value;
-    const h = getHorarios();
-    h[socId] = { puestoId, hora, duracion: dur, dias };
-    saveHorarios(h);
-    const s = PS.socorristas.find(x => x.id === socId);
-    const p = PS.puestoById(puestoId);
-    // También lo reflejamos en el modelo en memoria para que renderPosts lo use
-    s.puestoId = puestoId;
-    renderHorariosTable();
-    renderPosts();
-    toast(`Horario asignado: ${s.nombre} → ${p.nombre} ${hora}`);
-  };
+  setTimeout(diagnosticoHorarios, 2000);
 
   /* ---------- Drag-drop upload de horario masivo (PDF/Excel/CSV) ---------- */
   const uploadDrop = document.getElementById('uploadDrop');
@@ -4233,7 +4129,6 @@
     uploadInput.value = '';
     window.__horariosParaAplicar = null;
     await cargarEmpleadosDB();
-    renderHorariosTable();
     renderPosts();
     toast(`✓ ${creados} horarios aplicados${saltados ? ' · ' + saltados + ' saltados' : ''}`);
     if (errores.length) {
