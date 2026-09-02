@@ -6955,6 +6955,13 @@
           <div class="ficha-data-value"><input type="text" id="hd-contnombre" value="${h.contacto_hotel_nombre || ''}" placeholder="Nombre" /></div>
         </div>
         <div class="ficha-data-row">
+          <div class="ficha-data-label">Correo de dirección</div>
+          <div class="ficha-data-value">
+            <input type="email" id="hd-email-dir" value="${(h.email_direccion || '').replace(/"/g,'&quot;')}" placeholder="direccion@hotel.com" />
+            <div class="small text-muted" style="margin-top:3px;">Destino de los partes de incidencia de este hotel.</div>
+          </div>
+        </div>
+        <div class="ficha-data-row">
           <div class="ficha-data-label">Teléfono hotel</div>
           <div class="ficha-data-value"><input type="tel" id="hd-conttel" value="${h.contacto_hotel_tel || ''}" placeholder="+34 971 000 000" /></div>
         </div>
@@ -7089,7 +7096,20 @@
 
   async function actualizarHotel(patch) {
     try {
-      const { error } = await window.sb.from('puestos').update(patch).eq('id', hotelActualId);
+      let { error } = await window.sb.from('puestos').update(patch).eq('id', hotelActualId);
+      // Si sql/27 aún no está ejecutado, la columna del correo no existe y
+      // Postgres rechazaría el guardado ENTERO, perdiendo también nombre, zona
+      // y GPS. Se reintenta sin ella. (Misma lección que el PR #18.)
+      if (error && /email_direccion|column/i.test(error.message)) {
+        const { email_direccion, ...sinEmail } = patch;
+        if (Object.keys(sinEmail).length) {
+          const r2 = await window.sb.from('puestos').update(sinEmail).eq('id', hotelActualId);
+          error = r2.error;
+        } else { error = null; }
+        if (!error && 'email_direccion' in patch) {
+          toast('Guardado, pero el correo no: falta ejecutar sql/27 en Supabase.');
+        }
+      }
       if (error) throw error;
       await cargarHoteles();
       renderHotelFicha();
@@ -7108,7 +7128,8 @@
     gps_lng: parseFloat(document.getElementById('hd-lng').value) || null,
     gps_radio_m: parseInt(document.getElementById('hd-radio').value) || 50,
     contacto_hotel_nombre: document.getElementById('hd-contnombre').value.trim(),
-    contacto_hotel_tel: document.getElementById('hd-conttel').value.trim()
+    contacto_hotel_tel: document.getElementById('hd-conttel').value.trim(),
+    email_direccion: document.getElementById('hd-email-dir')?.value.trim() || null
   });
   window.guardarHotelHorario = () => actualizarHotel({
     hora_inicio_default: document.getElementById('hh-ini').value,

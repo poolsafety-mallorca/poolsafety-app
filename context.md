@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-09-01 (v143 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v143`**
+Última actualización: 2026-09-01 (v144 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v144`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -27,6 +27,9 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/20-revisiones-diarias.sql` — auditoría revisiones botiquín/DESA/oxígeno
 - ✅ `sql/21-rls-correturnos-inventario.sql` — correturnos leen/escriben inventario del hotel donde fichan
 - ✅ `sql/22-diagnostico-reparar-unidades.sql` — reparar Botiquín 2/3 sin items (Cala Gran)
+- ⏳ **`sql/27-email-direccion-hoteles.sql` — PENDIENTE DE EJECUTAR**: columna
+  `puestos.email_direccion` + los dos correos que dio el cliente (Esmeralda Park y
+  Dragoland). Lleva un SELECT al final para comprobar qué hoteles quedaron con correo.
 - ✅ `sql/26-documentos-a-storage.sql` — columna `documento_storage_path` + bucket
   **privado** `documentos-laborales` con sus 4 políticas. **Ejecutado el 2026-08-31.**
   Queda pendiente lanzar la migración desde la app: panel Titulaciones → "Documentos"
@@ -153,6 +156,28 @@ Las subidas nuevas ya van directas a Storage. **Nunca volver a guardar ficheros 
 base64 dentro de la BD.**
 
 ---
+
+## 📧 PENDIENTE · enviar partes de incidencia al hotel por correo
+
+Petición del cliente (2026-09-01): que los partes de incidencia lleguen solos al correo
+de dirección del hotel donde ocurrieron — los nuevos al firmarse y los ya creados.
+
+**Estado**: hecha la parte de datos (v144: columna `email_direccion`, campo en la ficha
+del hotel, sql/27 con los dos correos). **El envío NO está hecho** y no es trivial:
+
+1. **NO HAY BACKEND.** La app es estática en Netlify. Resend está conectado solo al SMTP
+   de Supabase, que sirve para los correos de Auth (invitación, reset) y **no puede
+   mandar correos arbitrarios con adjunto**. Hace falta una **Netlify Function**
+   (`netlify/functions/`), que sí se despliega sola desde el repo, con la API key de
+   Resend en una variable de entorno de Netlify — **nunca en el repo, que es público**.
+2. **DECISIÓN RGPD PENDIENTE.** Un parte lleva `victima_nombre`, `victima_dni`,
+   `victima_telefono`, `victima_edad`, `es_menor` y el estado de salud: datos personales
+   y **de salud** (categoría especial, art. 9 RGPD). Mandarlos al correo de un tercero
+   necesita base jurídica y encaje contractual. Hay que decidir con el cliente si se
+   manda el parte íntegro o una versión operativa (fecha, hora, tipo, actuación,
+   desenlace) sin identificar a la víctima.
+
+No avanzar sin esas dos cosas resueltas.
 
 ## ⚠️ `js/data.js` son MOCKS · no usarlos para nada real
 
