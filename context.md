@@ -30,6 +30,10 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ⏳ **`sql/27-email-direccion-hoteles.sql` — PENDIENTE DE EJECUTAR**: columna
   `puestos.email_direccion` + los dos correos que dio el cliente (Esmeralda Park y
   Dragoland). Lleva un SELECT al final para comprobar qué hoteles quedaron con correo.
+- ⏳ **`sql/28-envio-partes-hotel.sql` — PENDIENTE DE EJECUTAR** (va después del 27):
+  `incidencias.email_enviado_at / email_enviado_a / email_modo / email_error`. Deja
+  constancia de a quién y cuándo se mandó cada parte, evita mandarlo dos veces y
+  permite ver los pendientes. Termina con un SELECT de partes pendientes.
 - ✅ `sql/26-documentos-a-storage.sql` — columna `documento_storage_path` + bucket
   **privado** `documentos-laborales` con sus 4 políticas. **Ejecutado el 2026-08-31.**
   Queda pendiente lanzar la migración desde la app: panel Titulaciones → "Documentos"
@@ -157,27 +161,72 @@ base64 dentro de la BD.**
 
 ---
 
-## 📧 PENDIENTE · enviar partes de incidencia al hotel por correo
+## 📧 Envío de partes de incidencia al hotel por correo
 
 Petición del cliente (2026-09-01): que los partes de incidencia lleguen solos al correo
 de dirección del hotel donde ocurrieron — los nuevos al firmarse y los ya creados.
 
-**Estado**: hecha la parte de datos (v144: columna `email_direccion`, campo en la ficha
-del hotel, sql/27 con los dos correos). **El envío NO está hecho** y no es trivial:
+**Estado (v145): construido entero y desplegado, pero INERTE hasta que se pongan las
+variables en Netlify.** Mientras falten, la función responde `sin_configurar` (503) y no
+manda nada ni toca la base de datos; la app lo trata en silencio.
 
-1. **NO HAY BACKEND.** La app es estática en Netlify. Resend está conectado solo al SMTP
-   de Supabase, que sirve para los correos de Auth (invitación, reset) y **no puede
-   mandar correos arbitrarios con adjunto**. Hace falta una **Netlify Function**
-   (`netlify/functions/`), que sí se despliega sola desde el repo, con la API key de
-   Resend en una variable de entorno de Netlify — **nunca en el repo, que es público**.
-2. **DECISIÓN RGPD PENDIENTE.** Un parte lleva `victima_nombre`, `victima_dni`,
-   `victima_telefono`, `victima_edad`, `es_menor` y el estado de salud: datos personales
-   y **de salud** (categoría especial, art. 9 RGPD). Mandarlos al correo de un tercero
-   necesita base jurídica y encaje contractual. Hay que decidir con el cliente si se
-   manda el parte íntegro o una versión operativa (fecha, hora, tipo, actuación,
-   desenlace) sin identificar a la víctima.
+### Cómo funciona
 
-No avanzar sin esas dos cosas resueltas.
+- `netlify/functions/enviar-parte.mjs` — se despliega sola desde este repo. Es la única
+  pieza con servidor de toda la app: existe porque un navegador no puede mandar correos
+  y una clave de correo en el código sería publicarla (el repo es público).
+- `js/ps-envio-parte.js` — `PSEnvioParte.enviar(id)` / `.enviarSilencioso(id)`.
+- **Automático**: `socorrista.js` llama a `enviarSilencioso` justo después de subir el
+  PDF del parte. Sin `await` bloqueante: si el correo falla, el parte ya está guardado y
+  el coordinador lo tiene igual.
+- **Manual / atrasados**: panel Incidencias → botón "Enviar al hotel" en cada parte y
+  "Enviar pendientes al hotel" arriba para mandar de golpe los ya creados. Cada fila
+  muestra su estado: enviado (con fecha), pendiente, o "Hotel sin correo".
+
+### Lo que comprueba antes de mandar
+
+Sesión válida · el parte es de su empresa · es suyo o es coordinador/dueño · está
+firmado (los borradores no) · el hotel tiene correo · **no se ha mandado ya** (un correo
+no se puede desenviar). Todo verificado en el servidor con la `service_role`, no en el
+navegador.
+
+### Los dos modos — `PARTES_MODO`
+
+- **`operativo` (por defecto)**: qué pasó, dónde, tipo, estado al llegar, actuación,
+  técnicas, desenlace, ambulancia, hospital y socorrista. **SIN** nombre, DNI, teléfono
+  ni habitación de la persona atendida. Sin adjunto.
+- **`integro`**: lo anterior + identificación de la víctima + el PDF completo adjunto.
+
+Un parte lleva `victima_nombre`, `victima_dni`, `victima_telefono`, `es_menor` y estado
+de salud: datos **de salud**, categoría especial del art. 9 RGPD. Mandarlos a un tercero
+necesita base jurídica y encaje contractual con el hotel. **Por eso el defecto es
+`operativo`**, y cualquier valor que no sea exactamente `integro` cae en operativo.
+Activar el modo íntegro es una decisión del cliente, no técnica.
+
+⚠️ En modo operativo se manda el campo `circunstancias`, que es texto libre. Si un
+socorrista escribe ahí el nombre de la víctima, ese nombre sale en el correo.
+
+### Variables de entorno (Netlify → Site settings → Environment variables)
+
+| Variable | Obligatoria | Qué es |
+|---|---|---|
+| `RESEND_API_KEY` | sí | API key de Resend. **Nunca en el repo.** |
+| `PARTES_REMITENTE` | sí | p.ej. `PoolSafety <partes@poolsafety.es>`. El dominio tiene que estar verificado en Resend. |
+| `SUPABASE_SERVICE_ROLE_KEY` | sí | Supabase → Settings → API → `service_role`. **Nunca en el repo.** |
+| `PARTES_MODO` | no | `operativo` (defecto) o `integro`. |
+| `PARTES_COPIA` | no | Correo en copia oculta, para que la empresa guarde su copia. |
+| `SUPABASE_URL` / `SUPABASE_ANON_KEY` | no | Tienen valor por defecto en el código (son públicas). |
+
+### Pendiente
+
+- Ejecutar `sql/27` y `sql/28`.
+- Poner las 3 variables obligatorias en Netlify.
+- Rellenar el correo de dirección del resto de hoteles (Hoteles → ficha → Datos).
+- Decidir con el cliente el modo (`operativo` vs `integro`).
+- ⚠️ **Los PDF de los partes se suben al bucket PÚBLICO `empleados-media`** (ruta
+  `incidencias/{uuid}.pdf`). Contienen datos de salud. La ruta no es adivinable, pero
+  esto debería moverse al bucket privado `documentos-laborales` con enlaces firmados,
+  igual que se hizo con la documentación laboral en sql/26.
 
 ## ⚠️ `js/data.js` son MOCKS · no usarlos para nada real
 

@@ -2542,10 +2542,23 @@
     const cont = document.getElementById('incidenciasList');
     if (cont) cont.innerHTML = '<div class="text-muted small" style="padding:30px;text-align:center;">Cargando incidencias…</div>';
     try {
-      const { data, error } = await window.sb.from('incidencias')
-        .select('*, empleados(id,nombre,dni,telefono), puestos(id,nombre)')
+      // Se pide también el correo del hotel para saber a quién iría el parte.
+      // Si sql/27 aún no está ejecutado esa columna no existe y la consulta
+      // entera fallaría, dejando el panel en blanco: por eso se reintenta sin
+      // ella. Lo mismo vale para las columnas de sql/28.
+      const SEL_COMPLETO = '*, empleados(id,nombre,dni,telefono), puestos(id,nombre,email_direccion)';
+      const SEL_BASICO   = '*, empleados(id,nombre,dni,telefono), puestos(id,nombre)';
+      let { data, error } = await window.sb.from('incidencias')
+        .select(SEL_COMPLETO)
         .order('fecha_incidente', { ascending: false })
         .limit(200);
+      if (error && /email_direccion/i.test(error.message || '')) {
+        console.warn('[incidencias] sql/27 sin ejecutar — cargo sin el correo del hotel');
+        ({ data, error } = await window.sb.from('incidencias')
+          .select(SEL_BASICO)
+          .order('fecha_incidente', { ascending: false })
+          .limit(200));
+      }
       if (error) throw error;
       incAdminCache = data || [];
       renderIncidenciasList();
@@ -2614,6 +2627,7 @@
             <button class="btn btn-primary btn-sm" data-inc-pdf="${i.id}" style="background:#B91C1C;">
               <svg class="ic ic-14"><use href="#ic-download"/></svg> PDF
             </button>
+            ${botonEnvioHotel(i)}
             <button class="btn btn-outline btn-sm" data-inc-ver="${i.id}">Ver detalle</button>
             ${(window.PS_SESSION||{}).rol === 'dueno' ? `<button class="btn btn-outline btn-sm" data-inc-del="${i.id}" style="color:#DC2626;border-color:#DC2626;" title="Eliminar (irreversible)">✕</button>` : ''}
           </div>
@@ -2623,7 +2637,107 @@
     cont.querySelectorAll('[data-inc-pdf]').forEach(b => b.addEventListener('click', () => descargarIncidenciaAdmin(b.dataset.incPdf)));
     cont.querySelectorAll('[data-inc-ver]').forEach(b => b.addEventListener('click', () => verIncidenciaDetalle(b.dataset.incVer)));
     cont.querySelectorAll('[data-inc-del]').forEach(b => b.addEventListener('click', () => borrarIncidencia(b.dataset.incDel)));
+    cont.querySelectorAll('[data-inc-mail]').forEach(b => b.addEventListener('click', () => enviarParteAlHotel(b.dataset.incMail, b)));
   }
+
+  /* ------------------------------------------------------------------
+     ENVÍO DEL PARTE AL HOTEL DONDE OCURRIÓ
+     El socorrista dispara el envío al firmar. Esto de aquí es la red de
+     seguridad: los partes de antes de que existiera el envío, y los que
+     fallaron porque al hotel le faltaba el correo.
+     ------------------------------------------------------------------ */
+
+  // Un parte se puede mandar si está firmado y su hotel tiene correo.
+  function tieneCorreoHotel(i) {
+    const e = (i.puestos && i.puestos.email_direccion) || '';
+    return /^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(e.trim());
+  }
+  function pendienteDeEnvio(i) {
+    return i.estado === 'firmada' && !i.email_enviado_at && tieneCorreoHotel(i);
+  }
+
+  function botonEnvioHotel(i) {
+    if (i.email_enviado_at) {
+      const f = new Date(i.email_enviado_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+      return `<span class="badge" style="background:#ECFDF5;color:#047857;border:1px solid #A7F3D0;font-size:11px;padding:4px 8px;"
+                    title="Enviado a ${i.email_enviado_a || ''}">✓ Enviado al hotel ${f}</span>`;
+    }
+    if (i.estado !== 'firmada') return '';
+    if (!tieneCorreoHotel(i)) {
+      return `<span class="badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;font-size:11px;padding:4px 8px;"
+                    title="Pon el correo en Hoteles → ficha del hotel → Datos">Hotel sin correo</span>`;
+    }
+    return `<button class="btn btn-outline btn-sm" data-inc-mail="${i.id}" style="color:#0F766E;border-color:#0F766E;">
+              <svg class="ic ic-14"><use href="#ic-mail"/></svg> Enviar al hotel
+            </button>`;
+  }
+
+  async function enviarParteAlHotel(id, btn) {
+    const inc = incAdminCache.find(x => x.id === id);
+    if (!inc || !window.PSEnvioParte) return;
+    const hotel = (inc.puestos && inc.puestos.nombre) || 'el hotel';
+    const destino = (inc.puestos && inc.puestos.email_direccion) || '';
+    if (!confirm(`Se va a enviar el parte ${inc.numero_parte || ''} a:\n\n${destino}\n(${hotel})\n\nUn correo no se puede deshacer. ¿Lo mando?`)) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
+    try {
+      const r = await window.PSEnvioParte.enviar(id);
+      // Se refresca desde la BD para que el estado que se ve sea el real.
+      inc.email_enviado_at = r.enviado_at || new Date().toISOString();
+      inc.email_enviado_a = r.enviado_a || destino;
+      renderIncidenciasList();
+      toast(r.codigo === 'ya_enviado' ? 'Ese parte ya estaba enviado' : '✓ Parte enviado a ' + (r.enviado_a || destino));
+    } catch (err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Enviar al hotel'; }
+      alert('No se pudo enviar el parte.\n\n' + err.message);
+    }
+  }
+
+  window.enviarPartesPendientes = async function () {
+    if (!window.PSEnvioParte) { toast('Recarga la página'); return; }
+    const estado = document.getElementById('incEnvioEstado');
+    const pendientes = incAdminCache.filter(pendienteDeEnvio);
+    const sinCorreo = incAdminCache.filter(i => i.estado === 'firmada' && !i.email_enviado_at && !tieneCorreoHotel(i));
+
+    if (!pendientes.length) {
+      const extra = sinCorreo.length
+        ? ` Hay ${sinCorreo.length} parte(s) que no se pueden mandar porque su hotel no tiene correo puesto en la ficha.`
+        : '';
+      alert('No hay partes pendientes de enviar.' + extra);
+      return;
+    }
+
+    const hoteles = [...new Set(pendientes.map(i => (i.puestos && i.puestos.nombre) || '—'))];
+    if (!confirm(
+      `Se van a enviar ${pendientes.length} parte(s) a ${hoteles.length} hotel(es):\n\n` +
+      hoteles.join('\n') +
+      `\n\nLos correos no se pueden deshacer. ¿Los mando?`
+    )) return;
+
+    let ok = 0, fallos = [];
+    for (const inc of pendientes) {
+      if (estado) estado.innerHTML = `<div class="alert-strip" style="margin-bottom:10px;">Enviando ${ok + fallos.length + 1} de ${pendientes.length}…</div>`;
+      try {
+        const r = await window.PSEnvioParte.enviar(inc.id);
+        inc.email_enviado_at = r.enviado_at || new Date().toISOString();
+        inc.email_enviado_a = r.enviado_a || null;
+        ok++;
+      } catch (err) {
+        fallos.push((inc.numero_parte || inc.id.slice(0, 8)) + ': ' + err.message);
+        // Si el envío ni siquiera está activado, no tiene sentido seguir
+        // intentando 40 veces lo mismo.
+        if (err.codigo === 'sin_configurar' || err.codigo === 'sin_sesion') break;
+      }
+    }
+
+    renderIncidenciasList();
+    if (estado) {
+      estado.innerHTML = `<div class="alert-strip ${fallos.length ? 'warn' : ''}" style="margin-bottom:10px;">
+        <b>${ok}</b> parte(s) enviados al hotel.
+        ${fallos.length ? '<br>No se pudieron enviar ' + fallos.length + ':<br><small>' + fallos.slice(0, 6).join('<br>') + '</small>' : ''}
+        ${sinCorreo.length ? '<br><small>' + sinCorreo.length + ' parte(s) más esperan a que su hotel tenga correo de dirección.</small>' : ''}
+      </div>`;
+    }
+  };
 
   async function descargarIncidenciaAdmin(id) {
     const inc = incAdminCache.find(x => x.id === id);
