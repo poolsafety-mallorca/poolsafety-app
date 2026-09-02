@@ -2277,6 +2277,9 @@
 
   setTimeout(() => renderHours('all'), 1200);
   setTimeout(() => renderNomina(), 1400);
+  document.querySelectorAll('[data-section="horarios"]').forEach(el =>
+    el.addEventListener('click', () => setTimeout(diagnosticoHorarios, 300)));
+
   document.querySelectorAll('[data-section="horas"]').forEach(el => el.addEventListener('click', () => setTimeout(() => {
     renderHours(document.getElementById('hourFilter')?.value || 'all');
     renderNomina();
@@ -3743,6 +3746,77 @@
     el.addEventListener('click', () => setTimeout(refrescarSelectoresHorariosManual, 100));
   });
 
+  /* ==========================================================================
+     DIAGNÓSTICO · ¿dónde están de verdad los horarios?
+     Esta pantalla es un resto de la maqueta: se rellena con `PS.socorristas`
+     (nombres inventados) y el botón "Asignar" guarda en `localStorage`, o sea
+     en el navegador de quien lo pulsa. Nadie más lo ve y no sobrevive a un
+     borrado de datos.
+
+     Los horarios DE VERDAD viven en la tabla `horarios` de Supabase y se
+     editan desde la ficha del empleado y la ficha del hotel (módulo PSHor).
+     De ahí los leen la facturación por hotel, "Cerrar días sin salida" y
+     "Añadir los fichajes que faltan".
+
+     Mientras no se unifique, al menos que la pantalla diga la verdad y enseñe
+     los dos números.
+     ========================================================================== */
+  async function diagnosticoHorarios() {
+    const cont = document.getElementById('avisoHorariosMock');
+    if (!cont) return;
+
+    // 1) Lo que hay guardado en ESTE navegador (la pantalla falsa)
+    let enNavegador = 0;
+    try {
+      const raw = localStorage.getItem('poolsafety-horarios-v1');
+      const obj = raw ? JSON.parse(raw) : {};
+      enNavegador = Object.keys(obj || {}).length;
+    } catch (_) {}
+
+    // 2) Lo que hay de verdad en la base de datos
+    let enBD = 0, trabajadores = 0, hoteles = 0, errBD = null;
+    try {
+      const { data, error } = await window.sb.from('horarios')
+        .select('empleado_id, puesto_id').eq('activo', true);
+      if (error) throw error;
+      const filas = data || [];
+      enBD = filas.length;
+      trabajadores = new Set(filas.map(f => f.empleado_id)).size;
+      hoteles = new Set(filas.map(f => f.puesto_id)).size;
+    } catch (err) { errBD = err.message; }
+
+    const grave = enBD === 0;
+    cont.innerHTML = `
+      <div style="background:${grave ? '#FEF2F2' : '#FFFBEB'};border:2px solid ${grave ? '#FCA5A5' : '#F59E0B'};
+                  color:${grave ? '#7F1D1D' : '#92400E'};padding:13px 15px;border-radius:10px;margin-bottom:16px;">
+        <div style="font-weight:800;font-size:14.5px;">Esta pantalla no guarda en la base de datos</div>
+        <div class="small" style="margin-top:6px;">
+          La tabla de abajo es un resto de la versión de prueba: los nombres son inventados y el botón
+          <b>Asignar</b> guarda solo en <b>este navegador</b>. Ni tus coordinadores lo ven, ni sobrevive
+          a un borrado de datos del móvil.
+        </div>
+        <div class="row gap-2" style="flex-wrap:wrap;margin-top:11px;">
+          <div style="flex:1;min-width:170px;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:9px;padding:9px 11px;">
+            <div class="small">Guardado en este navegador</div>
+            <div style="font-size:21px;font-weight:800;">${enNavegador}</div>
+            <div class="small" style="opacity:.8;">${enNavegador ? 'Hay datos que rescatar' : 'Nada: no se ha usado'}</div>
+          </div>
+          <div style="flex:1;min-width:170px;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:9px;padding:9px 11px;">
+            <div class="small">Horarios reales en la base de datos</div>
+            <div style="font-size:21px;font-weight:800;color:${grave ? '#B91C1C' : '#065F46'};">${errBD ? '?' : enBD}</div>
+            <div class="small" style="opacity:.8;">${errBD ? 'Error: ' + errBD : `${trabajadores} trabajador(es) · ${hoteles} hotel(es)`}</div>
+          </div>
+        </div>
+        <div class="small" style="margin-top:10px;">
+          Los horarios de verdad se ponen en la <b>ficha de cada empleado</b> (pestaña Horario) o en la
+          <b>ficha de cada hotel</b> (pestaña Horario). De ahí salen la facturación por hotel y las
+          propuestas de horas.
+          ${grave ? '<br><b>Ahora mismo no hay ninguno.</b> Sin horarios, los días sin fichaje no se pueden imputar y la facturación por hotel saldrá a cero en esos días.' : ''}
+        </div>
+      </div>`;
+  }
+  window.diagnosticoHorarios = diagnosticoHorarios;
+
   function renderHorariosTable() {
     const tbody = document.querySelector('#horariosTable tbody');
     if (!tbody) return;
@@ -3774,6 +3848,7 @@
         delete h[id];
         saveHorarios(h);
         renderHorariosTable();
+  diagnosticoHorarios();
         toast('Asignación eliminada');
       });
     });
