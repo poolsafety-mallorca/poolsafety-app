@@ -1735,19 +1735,39 @@
         .eq('empleado_id', empId).order('subido_el', { ascending: false });
       const rows = data || [];
       if (rows.length === 0) { cont.innerHTML = ''; return; }
+      // `url_storage` puede ser de dos formas: una URL completa (documentos
+      // antiguos, del bucket público) o una RUTA del bucket privado (los que
+      // manda el coordinador desde su panel). La ruta necesita enlace firmado,
+      // así que se abre por código en vez de con un <a href> directo.
       cont.innerHTML = '<div class="section-eyebrow" style="margin-top:16px;"><span class="eyebrow">Ya subidos</span></div>' +
         '<div class="list">' + rows.map(r => `
-          <a class="li interactive" href="${r.url_storage}" target="_blank" style="text-decoration:none;color:inherit;">
+          <div class="li interactive" onclick="abrirMiDocumento('${r.id}')" style="cursor:pointer;">
             <div class="li-icon"><svg class="ic ic-18"><use href="#ic-file-text"/></svg></div>
             <div class="li-body">
               <div class="li-title">${r.nombre_archivo}</div>
               <div class="li-sub">${r.tipo} · ${new Date(r.subido_el).toLocaleDateString('es-ES')}</div>
             </div>
             <svg class="ic ic-18 notice-arrow"><use href="#ic-chevron-right"/></svg>
-          </a>
+          </div>
         `).join('') + '</div>';
+      window._misSubidas = rows;
     } catch (_) { cont.innerHTML = ''; }
   }
+  window.abrirMiDocumento = async function (id) {
+    const r = (window._misSubidas || []).find(x => x.id === id);
+    if (!r || !r.url_storage) { toast('Ese documento no tiene archivo'); return; }
+    try {
+      if (/^https?:\/\//.test(r.url_storage)) {
+        window.open(r.url_storage, '_blank');     // documentos antiguos
+        return;
+      }
+      const url = await window.PSStorage.urlFirmadaDocumento(r.url_storage, 300);
+      window.open(url, '_blank');
+    } catch (err) {
+      alert('No se ha podido abrir el documento: ' + err.message);
+    }
+  };
+
   document.addEventListener('ps-session-updated', () => setTimeout(renderMisSubidas, 800));
   setTimeout(renderMisSubidas, 1400);
 

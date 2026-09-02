@@ -3618,10 +3618,24 @@
      SUBIR DOCUMENTO PARA UN SOCORRISTA (contrato, nómina, etc.)
      ========================================================================== */
 
-  const docUploadSoc = document.getElementById('docUploadSoc');
-  if (docUploadSoc) {
-    docUploadSoc.innerHTML = PS.socorristas.slice(0, 30).map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
-  }
+  /* Este desplegable se rellenaba con `PS.socorristas`, que son los 40 nombres
+     de MUESTRA que quedaron en js/data.js de cuando la app era una maqueta
+     (María Fernández, Aina Salom, Diego Ramos…). Sus ids son 's01', 's02'…, que
+     no existen en la base de datos. Ahora lee los empleados reales. */
+  window.rellenarDesplegableDocs = function () {
+    const sel = document.getElementById('docUploadSoc');
+    if (!sel) return;
+    const activos = (empleadosDB || []).filter(e => e.estado !== 'eliminado');
+    if (!activos.length) {
+      sel.innerHTML = '<option value="">Cargando socorristas…</option>';
+      return;
+    }
+    const previo = sel.value;
+    sel.innerHTML = activos.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
+    if (previo && activos.some(e => e.id === previo)) sel.value = previo;
+  };
+  rellenarDesplegableDocs();
+  setTimeout(rellenarDesplegableDocs, 2500);
   const docUploadFile = document.getElementById('docUploadFile');
   if (docUploadFile) {
     docUploadFile.addEventListener('change', e => {
@@ -3629,28 +3643,56 @@
       document.getElementById('docUploadFileName').textContent = f ? f.name : 'Seleccionar archivo';
     });
   }
-  window.subirDocumentoSocorrista = function () {
-    const socId = document.getElementById('docUploadSoc').value;
+  /* Esto era un SIMULACRO: guardaba en localStorage del navegador y decía
+     "enviado a X", pero el fichero no salía del móvil. Nunca llegaba al
+     socorrista ni quedaba en ningún sitio. Ahora sube de verdad al bucket
+     privado y crea la fila de `documentos_subidos`, que es la que el socorrista
+     ve en su pestaña Docs. */
+  window.subirDocumentoSocorrista = async function () {
+    const sel = document.getElementById('docUploadSoc');
+    const socId = sel?.value;
     const tipo = document.getElementById('docUploadTipo').value;
-    const file = document.getElementById('docUploadFile').files[0];
+    const inputFile = document.getElementById('docUploadFile');
+    const file = inputFile.files[0];
+    if (!socId) { toast('Elige un socorrista'); return; }
     if (!file) { toast('Selecciona un archivo primero'); return; }
-    const s = PS.socorristas.find(x => x.id === socId);
-    // Guardamos en localStorage la lista de docs enviados por el coordinador (mock)
-    const key = 'poolsafety-docs-empresa-v1';
-    const raw = localStorage.getItem(key);
-    const all = raw ? JSON.parse(raw) : {};
-    if (!all[socId]) all[socId] = [];
-    all[socId].push({
-      id: 'de-' + Date.now(),
-      tipo,
-      nombre: file.name,
-      subidoEl: new Date().toISOString(),
-      pendienteFirma: tipo === 'contrato' || tipo === 'anexo'
-    });
-    localStorage.setItem(key, JSON.stringify(all));
-    document.getElementById('docUploadFile').value = '';
-    document.getElementById('docUploadFileName').textContent = 'Seleccionar archivo';
-    toast(`"${file.name}" enviado a ${s.nombre}`);
+    const emp = (empleadosDB || []).find(x => x.id === socId);
+    const nombreEmp = emp ? emp.nombre : 'el socorrista';
+
+    const MAX_MB = 20;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      toast(`Archivo demasiado grande (${(file.size/1048576).toFixed(1)} MB, máx ${MAX_MB} MB)`);
+      return;
+    }
+
+    const btn = document.querySelector('[onclick="subirDocumentoSocorrista()"]');
+    if (btn) { btn.disabled = true; }
+    try {
+      const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const idDoc = window.crypto?.randomUUID ? crypto.randomUUID() : String(Date.now());
+      const ruta = `titulaciones/${socId}/enviado-${idDoc}.${ext}`;
+      await window.PSStorage.subirDocumento(ruta, file, file.type);
+      await window.PSStorage.verificarDocumento(ruta, file.size);
+
+      const { data, error } = await window.sb.from('documentos_subidos').insert({
+        empleado_id: socId,
+        subido_por: (window.PS_SESSION || {}).userId || null,
+        tipo,
+        nombre_archivo: file.name,
+        url_storage: ruta,
+        pendiente_firma: tipo === 'contrato' || tipo === 'anexo'
+      }).select('id');
+      if (error) throw error;
+      if (!data || !data.length) throw new Error('la base de datos no ha guardado la fila (permisos)');
+
+      inputFile.value = '';
+      document.getElementById('docUploadFileName').textContent = 'Seleccionar archivo';
+      toast(`✓ "${file.name}" enviado a ${nombreEmp}`);
+    } catch (err) {
+      alert('No se ha podido enviar el documento:\n\n' + err.message);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   };
 
   /* ==========================================================================
@@ -4957,8 +4999,37 @@
           </div>
           <div id="fichajesEdit_${e.id}" style="margin-top:12px;"></div>
           <div class="row gap-2 mt-2" style="justify-content:flex-end;flex-wrap:wrap;">
-            <button class="btn btn-outline btn-sm" onclick="cargarFichajesEditables('${e.id}', 7)">Últimos 7 días</button>
-            <button class="btn btn-primary btn-sm" onclick="cargarFichajesEditables('${e.id}', 31)">Mes actual</button>
+            <button class="btn btn-outline btn-sm" onclick="cargarFichajesEditables('${e.id}', {dias:7})">Últimos 7 días</button>
+            <button class="btn btn-primary btn-sm" onclick="cargarFichajesEditables('${e.id}', {mes:'actual'})">Mes actual</button>
+          </div>
+          <!-- Filtros para llegar a CUALQUIER fecha pasada, no solo a los
+               últimos 7 días o al mes en curso. -->
+          <div class="row gap-2" style="margin-top:8px;flex-wrap:wrap;align-items:center;">
+            <select id="ffMes_${e.id}" onchange="filtrarFichajesPorMes('${e.id}')"
+              style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;">
+              <option value="">Elegir mes…</option>
+              ${(() => {
+                const out = []; const hoy = new Date();
+                for (let a = 0; a < 18; a++) {
+                  const d = new Date(hoy.getFullYear(), hoy.getMonth() - a, 1);
+                  const c = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                  out.push(`<option value="${c}">${d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</option>`);
+                }
+                return out.join('');
+              })()}
+            </select>
+            <select id="ffHotel_${e.id}" onchange="filtrarFichajesPorMes('${e.id}')"
+              style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;">
+              <option value="">Todos los hoteles</option>
+              ${(hotelesCache || []).map(h => `<option value="${h.id}">${h.nombre}</option>`).join('')}
+            </select>
+          </div>
+          <div class="row gap-2" style="margin-top:6px;flex-wrap:wrap;align-items:center;">
+            <span class="small text-muted">Entre fechas:</span>
+            <input type="date" id="ffDesde_${e.id}" style="padding:5px 8px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;">
+            <input type="date" id="ffHasta_${e.id}" style="padding:5px 8px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;">
+            <button class="btn btn-outline btn-sm" onclick="filtrarFichajesPorRango('${e.id}')">Ver</button>
+            <button class="btn btn-outline btn-sm" onclick="cargarFichajesEditables('${e.id}', {})" title="Todo el histórico de este trabajador">Todo</button>
           </div>
         </div>
 
@@ -5395,23 +5466,73 @@
   };
 
   // Listar / editar / borrar fichajes existentes de un empleado.
-  window.cargarFichajesEditables = async function (empId, dias) {
+  /* Los fichajes pasados solo se podían ver de los últimos 7 días o del mes en
+     curso. Para revisar un mes cerrado, cuadrar una nómina o responder a una
+     reclamación hace falta llegar a cualquier fecha. `opts` admite:
+       { dias: 7 }                       atajo, últimos N días
+       { mes: '2026-08' }                un mes concreto
+       { desde: 'YYYY-MM-DD', hasta: 'YYYY-MM-DD' }   rango a medida
+       { puestoId: '…' }                 filtra por hotel (combinable con lo anterior)
+     Se recuerda el último filtro por empleado para que al editar o borrar un
+     fichaje se recargue con el mismo, y no salte al mes en curso. */
+  window.__filtroFichajes = window.__filtroFichajes || {};
+
+  window.filtrarFichajesPorMes = function (empId) {
+    const mes = document.getElementById(`ffMes_${empId}`)?.value || '';
+    const puestoId = document.getElementById(`ffHotel_${empId}`)?.value || '';
+    // Sin mes elegido y sin hotel: no se filtra nada, se deja el mes en curso.
+    const opts = {};
+    if (mes) opts.mes = mes; else opts.mes = 'actual';
+    if (puestoId) opts.puestoId = puestoId;
+    cargarFichajesEditables(empId, opts);
+  };
+
+  window.filtrarFichajesPorRango = function (empId) {
+    const desde = document.getElementById(`ffDesde_${empId}`)?.value || '';
+    const hasta = document.getElementById(`ffHasta_${empId}`)?.value || '';
+    if (!desde && !hasta) { toast('Pon al menos una de las dos fechas'); return; }
+    if (desde && hasta && desde > hasta) { toast('La fecha de inicio es posterior a la de fin'); return; }
+    const puestoId = document.getElementById(`ffHotel_${empId}`)?.value || '';
+    const opts = { desde: desde || null, hasta: hasta || null };
+    if (puestoId) opts.puestoId = puestoId;
+    cargarFichajesEditables(empId, opts);
+  };
+
+  window.cargarFichajesEditables = async function (empId, opts) {
     const cont = document.getElementById(`fichajesEdit_${empId}`);
     if (!cont) return;
+    // Compatibilidad: antes se llamaba con un número de días.
+    if (typeof opts === 'number') opts = (opts === 31) ? { mes: 'actual' } : { dias: opts };
+    opts = opts || window.__filtroFichajes[empId] || { mes: 'actual' };
+    window.__filtroFichajes[empId] = opts;
+
     cont.innerHTML = '<div class="text-muted small" style="padding:10px;text-align:center;">Cargando fichajes…</div>';
     try {
-      const desde = new Date();
-      if (dias === 31) {
-        desde.setDate(1); desde.setHours(0,0,0,0);
-      } else {
-        desde.setDate(desde.getDate() - (dias - 1));
+      let desde = null, hasta = null;
+      if (opts.mes === 'actual') {
+        desde = new Date(); desde.setDate(1); desde.setHours(0,0,0,0);
+      } else if (opts.mes) {
+        const [a, m] = opts.mes.split('-').map(Number);
+        desde = new Date(a, m - 1, 1);
+        hasta = new Date(a, m, 1);
+      } else if (opts.desde || opts.hasta) {
+        if (opts.desde) { const [a,m,d] = opts.desde.split('-').map(Number); desde = new Date(a, m-1, d, 0, 0, 0); }
+        if (opts.hasta) { const [a,m,d] = opts.hasta.split('-').map(Number); hasta = new Date(a, m-1, d + 1, 0, 0, 0); }
+      } else if (opts.dias) {
+        desde = new Date();
+        desde.setDate(desde.getDate() - (opts.dias - 1));
         desde.setHours(0,0,0,0);
       }
-      const { data, error } = await window.sb.from('fichajes')
+
+      let q = window.sb.from('fichajes')
         .select('id, tipo, hora, gps_ok, gps_lat, gps_lng, fuera_de_zona, distancia_m, origen_manual, motivo_manual, puesto_id, puestos(nombre, gps_lat, gps_lng, gps_radio_m)')
-        .eq('empleado_id', empId)
-        .gte('hora', desde.toISOString())
-        .order('hora', { ascending: false });
+        .eq('empleado_id', empId);
+      if (desde) q = q.gte('hora', desde.toISOString());
+      if (hasta) q = q.lt('hora', hasta.toISOString());
+      if (opts.puestoId) q = q.eq('puesto_id', opts.puestoId);
+      // Tope de seguridad: sin él, "todo el histórico" de alguien con dos
+      // temporadas podría traerse miles de filas de golpe.
+      const { data, error } = await q.order('hora', { ascending: false }).limit(1000);
       if (error) throw error;
       const rows = data || [];
       // Cache global para verMapaFichajeIndividual (sin tener que refetchear)
@@ -5461,11 +5582,11 @@
             const botones = `
                 ${botonMapa}
                 ${botonVerificar}
-                ${puedeEditarFichajes() ? `<button class="btn-icon" title="Editar hora" onclick="editarFichaje('${f.id}','${empId}',${dias})"
+                ${puedeEditarFichajes() ? `<button class="btn-icon" title="Editar hora" onclick="editarFichaje('${f.id}','${empId}')"
                   style="width:30px;height:30px;background:#EFF6FF;color:#1D4ED8;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-pen"/></svg>
                 </button>` : ''}
-                ${puedeBorrarFichajes() ? `<button class="btn-icon" title="Borrar" onclick="borrarFichaje('${f.id}','${empId}',${dias})"
+                ${puedeBorrarFichajes() ? `<button class="btn-icon" title="Borrar" onclick="borrarFichaje('${f.id}','${empId}')"
                   style="width:30px;height:30px;background:#FEF2F2;color:#DC2626;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-x"/></svg>
                 </button>` : ''}`;
@@ -5575,7 +5696,10 @@
     } catch (err) { toast('Error: ' + err.message); alert('Error verificando ubicación:\n\n' + err.message); }
   };
 
-  window.editarFichaje = async function (fichajeId, empId, dias) {
+  // Sin `dias`: al recargar se respeta el filtro que el usuario tenía puesto
+  // (mes concreto, rango, hotel). Antes se volvía siempre al mes en curso y
+  // perdías la vista en la que estabas trabajando.
+  window.editarFichaje = async function (fichajeId, empId) {
     const rolAct = (window.PS_SESSION || {}).rol || rol;
     if (rolAct !== 'dueno') { toast('Solo el administrador puede editar fichajes.'); return; }
     try {
@@ -5627,13 +5751,13 @@
       } catch (e) { throw e; }
 
       toast(`✓ Fichaje actualizado a ${nuevaFecha} ${nuevaHora}`);
-      cargarFichajesEditables(empId, dias);
+      cargarFichajesEditables(empId);   // respeta el filtro que estuviera puesto
       if (window.renderPosts) renderPosts();
       if (window.renderHours) renderHours(document.getElementById('hourFilter')?.value || 'all');
     } catch (err) { toast('Error: ' + err.message); }
   };
 
-  window.borrarFichaje = async function (fichajeId, empId, dias) {
+  window.borrarFichaje = async function (fichajeId, empId) {
     const rolAct = (window.PS_SESSION || {}).rol || rol;
     if (rolAct !== 'dueno') { toast('Solo el administrador puede borrar fichajes.'); return; }
     try {
@@ -5647,7 +5771,7 @@
         toast('No se ha podido borrar. Puede que no tengas permisos.'); return;
       }
       toast('✓ Fichaje borrado');
-      cargarFichajesEditables(empId, dias);
+      cargarFichajesEditables(empId);   // respeta el filtro que estuviera puesto
       if (window.renderPosts) renderPosts();
       if (window.renderHours) renderHours(document.getElementById('hourFilter')?.value || 'all');
     } catch (err) { toast('Error: ' + err.message); }
