@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-31 (v140 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v140`**
+Última actualización: 2026-09-01 (v141 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v141`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -151,6 +151,24 @@ solo admin):
 
 Las subidas nuevas ya van directas a Storage. **Nunca volver a guardar ficheros en
 base64 dentro de la BD.**
+
+---
+
+## ⚠️ `js/data.js` son MOCKS · no usarlos para nada real
+
+`PS.socorristas` son 40 nombres inventados de cuando la app era una maqueta (María
+Fernández, Aina Salom, Diego Ramos…), con ids `s01`, `s02`… que **no existen en la base
+de datos**. Adam los veía en el desplegable de "Subir documento para un socorrista" y
+pensaba que eran empleados de prueba **que había que borrar de la BD**: no lo eran,
+estaban en el código.
+
+Peor: `subirDocumentoSocorrista` era un **simulacro completo**. Guardaba en
+`localStorage` y decía "✓ enviado a X", pero **el fichero no salía del navegador**.
+Corregido en v141: desplegable con `empleadosDB` reales, subida al bucket privado con
+verificación, y fila real en `documentos_subidos`.
+
+**Antes de dar por buena cualquier pantalla, comprobar si tira de `PS.*` (mock) o de
+Supabase.** Puede quedar más de una.
 
 ---
 
