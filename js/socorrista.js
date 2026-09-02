@@ -4627,6 +4627,12 @@
       } catch (pdfErr) { console.warn('[incidencia] PDF falló:', pdfErr.message); }
 
       // Avisar al hotel donde ha pasado, si tiene correo de dirección puesto.
+      //
+      // AHORA MISMO ESTO NO MANDA NADA: el cliente pidió (2026-09-02) que el
+      // envío no fuera automático de momento, así que el servidor descarta esta
+      // llamada salvo que PARTES_AUTO valga "si" en Netlify. Se deja el aviso
+      // puesto para que encenderlo sea cambiar una variable, no tocar código.
+      //
       // Va DESPUÉS del PDF a propósito (en modo íntegro el correo lo adjunta) y
       // sin `await` que bloquee: el parte ya está guardado y el coordinador ya
       // lo tiene. Si el correo falla, se reintenta desde el panel del
