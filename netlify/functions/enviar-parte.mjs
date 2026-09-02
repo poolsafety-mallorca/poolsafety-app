@@ -19,12 +19,18 @@
      5. Que no se ha mandado ya (un correo no se puede desenviar).
 
    DOS MODOS DE ENVÍO — se elige con la variable PARTES_MODO en Netlify:
-     · operativo (POR DEFECTO) → resumen de lo ocurrido y de la actuación, SIN
-       nombre, DNI, teléfono ni habitación de la persona atendida.
-     · integro → además adjunta el parte completo en PDF, con los datos
-       identificativos y de salud de la víctima.
-   El modo íntegro manda datos de salud (categoría especial, art. 9 RGPD) a un
-   tercero: sólo debe activarse si el contrato con el hotel lo ampara.
+     · integro (POR DEFECTO) → parte completo: identifica a la persona atendida
+       y adjunta el PDF firmado.
+     · operativo → resumen de lo ocurrido y de la actuación, SIN nombre, DNI,
+       teléfono ni habitación de la persona atendida.
+
+   POR QUÉ EL DEFECTO ES EL PARTE COMPLETO
+   Lo decidió el cliente el 2026-09-02, y es su decisión: la persona atendida es
+   cliente del hotel, el hotel tiene sus propias obligaciones de protección de
+   datos y hay contrato entre PoolSafety y el hotel que ampara la comunicación.
+   Se manda información de salud (categoría especial, art. 9 RGPD), así que el
+   correo lleva siempre su aviso de confidencialidad y queda registrado en la
+   base de datos a quién y cuándo se mandó cada parte.
 
    ENVÍO AUTOMÁTICO: APAGADO POR DEFECTO
    El disparo automático al firmar el parte sólo funciona si PARTES_AUTO vale
@@ -38,7 +44,7 @@
      SUPABASE_SERVICE_ROLE_KEY  obligatoria
      SUPABASE_URL               opcional (hay valor por defecto)
      SUPABASE_ANON_KEY          opcional (hay valor por defecto)
-     PARTES_MODO                opcional: "operativo" (defecto) | "integro"
+     PARTES_MODO                opcional: "integro" (defecto) | "operativo"
      PARTES_AUTO                opcional: "si" para que se manden solos al firmar
      PARTES_COPIA               opcional: correo en copia oculta (la empresa)
    ========================================================================== */
@@ -115,7 +121,7 @@ async function sbUpdate(base, key, path, cuerpo) {
 }
 
 /* ---------- Cuerpo del correo ---------- */
-function construirEmail(inc, hotel, socorristaNombre, modo) {
+function construirEmail(inc, hotel, socorristaNombre, modo, llevaPdf) {
   const tipo = TIPOS[inc.tipo_incidente] || inc.tipo_incidente || 'Incidencia';
   const cabecera = inc.derivacion === 'ambulancia' || inc.derivacion === 'hospital'
     ? '#B91C1C' : '#0F766E';
@@ -128,7 +134,25 @@ function construirEmail(inc, hotel, socorristaNombre, modo) {
   fila('Instalación', hotel.nombre);
   fila('Lugar exacto', inc.ubicacion_descripcion);
   fila('Tipo', tipo);
-  if (inc.es_menor) fila('Persona atendida', 'Menor de edad');
+
+  // Identificación de la persona atendida. En modo íntegro va completa: es lo
+  // que el hotel necesita para localizar al cliente en su reserva y para su
+  // propio parte al seguro. En modo operativo sólo se dice si era menor.
+  if (modo === 'integro') {
+    fila('Persona atendida', inc.victima_nombre);
+    fila('DNI / pasaporte', inc.victima_dni);
+    fila('Edad', inc.victima_edad ? inc.victima_edad + ' años' + (inc.es_menor ? ' (MENOR DE EDAD)' : '') : (inc.es_menor ? 'Menor de edad' : null));
+    fila('Habitación', inc.victima_hotel_habitacion);
+    fila('Teléfono', inc.victima_telefono);
+    fila('Nacionalidad', inc.victima_nacionalidad);
+    if (inc.familiar_avisado) {
+      fila('Familiar avisado', (inc.familiar_nombre || 'Sí') +
+        (inc.familiar_hora ? ' · ' + fechaLarga(inc.familiar_hora) : ''));
+    }
+  } else if (inc.es_menor) {
+    fila('Persona atendida', 'Menor de edad');
+  }
+
   fila('Qué ocurrió', inc.circunstancias);
   fila('Estado al llegar el socorrista', [
     inc.consciente === false ? 'inconsciente' : inc.consciente === true ? 'consciente' : null,
@@ -140,14 +164,11 @@ function construirEmail(inc, hotel, socorristaNombre, modo) {
   fila('Desenlace', DERIVACIONES[inc.derivacion] || inc.derivacion);
   fila('Ambulancia', inc.ambulancia_numero);
   fila('Hospital', inc.hospital);
-  fila('Socorrista', socorristaNombre);
-
   if (modo === 'integro') {
-    fila('Persona atendida', [
-      inc.victima_nombre, inc.victima_edad ? inc.victima_edad + ' años' : null,
-      inc.victima_hotel_habitacion ? 'hab. ' + inc.victima_hotel_habitacion : null
-    ].filter(Boolean).join(' · '));
+    fila('Observaciones', inc.observaciones_medicas);
+    fila('Testigos', inc.testigos);
   }
+  fila('Socorrista', socorristaNombre);
 
   const tabla = filas.map(([k, v]) => `
     <tr>
@@ -155,10 +176,21 @@ function construirEmail(inc, hotel, socorristaNombre, modo) {
       <td style="padding:9px 12px;border-bottom:1px solid #E2E8F0;color:#0F172A;font-size:13.5px;font-weight:600;">${esc(v)}</td>
     </tr>`).join('');
 
-  const nota = modo === 'integro'
-    ? `Se adjunta el parte completo firmado en PDF. Contiene datos personales y de
-       salud de la persona atendida: trátelo de forma confidencial y consérvelo
-       únicamente el tiempo necesario.`
+  // Un parte antiguo puede no tener el PDF generado. En ese caso el correo lleva
+  // igualmente todos los datos arriba, pero se dice claramente que falta el
+  // documento firmado para que el hotel pueda pedirlo si lo necesita.
+  const nota = (modo === 'integro' && !llevaPdf)
+    ? `Todos los datos del parte van en este correo, pero el documento firmado en PDF no
+       ha podido adjuntarse. Si lo necesita para su seguro, pídanoslo y se lo enviamos.
+       CONFIDENCIAL: contiene datos personales y de salud de la persona atendida
+       (art. 9 RGPD); entréguelo únicamente a quien deba conocerlo y consérvelo sólo el
+       tiempo necesario.`
+    : modo === 'integro'
+    ? `Se adjunta el parte completo firmado en PDF, con el mapa de zonas afectadas, el
+       material utilizado y las firmas. CONFIDENCIAL: contiene datos personales y de
+       salud de la persona atendida (art. 9 RGPD). Entréguelo únicamente a quien deba
+       conocerlo dentro de su organización, no lo reenvíe fuera de ese círculo y
+       consérvelo sólo el tiempo necesario para la finalidad que lo justifica.`
     : `Por protección de datos no se incluyen el nombre, DNI, teléfono ni la
        habitación de la persona atendida. Si necesita el parte completo para un
        parte al seguro o una reclamación, solicítelo a PoolSafety y se lo
@@ -201,7 +233,9 @@ export default async (req) => {
   const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const RESEND = process.env.RESEND_API_KEY;
   const REMITENTE = process.env.PARTES_REMITENTE;
-  const MODO = (process.env.PARTES_MODO || 'operativo').toLowerCase() === 'integro' ? 'integro' : 'operativo';
+  // Por defecto va el parte completo. Sólo se recorta si se pide expresamente
+  // "operativo": cualquier otro valor (o ninguno) manda el parte entero.
+  const MODO = (process.env.PARTES_MODO || '').trim().toLowerCase() === 'operativo' ? 'operativo' : 'integro';
   const COPIA = process.env.PARTES_COPIA || '';
   const AUTO_ON = ['si', 'sí', 'true', '1', 'yes'].indexOf((process.env.PARTES_AUTO || '').trim().toLowerCase()) >= 0;
 
@@ -295,7 +329,7 @@ export default async (req) => {
     }
 
     // ---- 6) Enviar ---------------------------------------------------------
-    const email = construirEmail(inc, hotel, (inc.empleados || {}).nombre || '', MODO);
+    const email = construirEmail(inc, hotel, (inc.empleados || {}).nombre || '', MODO, adjuntos.length > 0);
     const carga = {
       from: REMITENTE,
       to: [destino],

@@ -207,19 +207,32 @@ navegador.
 
 ### Los dos modos — `PARTES_MODO`
 
-- **`operativo` (por defecto)**: qué pasó, dónde, tipo, estado al llegar, actuación,
-  técnicas, desenlace, ambulancia, hospital y socorrista. **SIN** nombre, DNI, teléfono
-  ni habitación de la persona atendida. Sin adjunto.
-- **`integro`**: lo anterior + identificación de la víctima + el PDF completo adjunto.
+- **`integro` (POR DEFECTO)**: el parte completo. Nombre, DNI/pasaporte, edad (marcando
+  MENOR DE EDAD), habitación, teléfono, nacionalidad y familiar avisado; más qué pasó,
+  estado al llegar, actuación, técnicas, desenlace, ambulancia, hospital,
+  observaciones médicas, testigos y socorrista. **Con el PDF firmado adjunto.**
+- **`operativo`**: lo mismo pero **SIN** identificar a la persona atendida y sin
+  adjunto. Se conserva por si alguna vez hace falta.
 
-Un parte lleva `victima_nombre`, `victima_dni`, `victima_telefono`, `es_menor` y estado
-de salud: datos **de salud**, categoría especial del art. 9 RGPD. Mandarlos a un tercero
-necesita base jurídica y encaje contractual con el hotel. **Por eso el defecto es
-`operativo`**, y cualquier valor que no sea exactamente `integro` cae en operativo.
-Activar el modo íntegro es una decisión del cliente, no técnica.
+**Lo decidió el cliente el 2026-09-02**, con estas palabras: *"Sí que aparezcan todos los
+datos, lo necesitamos nosotros y el hotel, son sus clientes y ellos tienen protección de
+datos y nosotros con ellos."* Es decir: la persona atendida es cliente del hotel, el hotel
+tiene sus propias obligaciones de protección de datos, y hay contrato entre PoolSafety y
+el hotel que ampara la comunicación. **Decisión suya, no técnica — no revertirla sin que
+él lo pida.**
 
-⚠️ En modo operativo se manda el campo `circunstancias`, que es texto libre. Si un
-socorrista escribe ahí el nombre de la víctima, ese nombre sale en el correo.
+Sólo se recorta si `PARTES_MODO` vale exactamente `operativo`; cualquier otro valor (o
+ninguno) manda el parte entero.
+
+Se manda información de salud (categoría especial, art. 9 RGPD), así que:
+- El correo lleva **siempre** su aviso de confidencialidad, y en modo íntegro dice
+  expresamente que no se reenvíe fuera del círculo que deba conocerlo.
+- Queda registrado en la BD **a quién y cuándo** se mandó cada parte (`sql/28`), que es
+  lo que permite demostrarlo si alguien reclama.
+- Si un parte antiguo no tiene PDF generado, el correo va igual con todos los datos y
+  **avisa de que falta el documento firmado**, en vez de callarse.
+- Lo que conviene tener escrito en el contrato con cada hotel: que se le comunican los
+  partes de incidencia íntegros de las incidencias ocurridas en su instalación.
 
 ### Variables de entorno (Netlify → Site settings → Environment variables)
 
@@ -228,7 +241,7 @@ socorrista escribe ahí el nombre de la víctima, ese nombre sale en el correo.
 | `RESEND_API_KEY` | sí | API key de Resend. **Nunca en el repo.** |
 | `PARTES_REMITENTE` | sí | p.ej. `PoolSafety <partes@poolsafety.es>`. El dominio tiene que estar verificado en Resend. |
 | `SUPABASE_SERVICE_ROLE_KEY` | sí | Supabase → Settings → API → `service_role`. **Nunca en el repo.** |
-| `PARTES_MODO` | no | `operativo` (defecto) o `integro`. |
+| `PARTES_MODO` | no | `integro` (defecto, lo que pidió el cliente) o `operativo` para recortar. |
 | `PARTES_AUTO` | no | `si` para que se manden solos al firmar. **Apagado a petición del cliente.** |
 | `PARTES_COPIA` | no | Correo en copia oculta, para que la empresa guarde su copia. |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` | no | Tienen valor por defecto en el código (son públicas). |
@@ -238,7 +251,7 @@ socorrista escribe ahí el nombre de la víctima, ese nombre sale en el correo.
 - Ejecutar `sql/27` y `sql/28`.
 - Poner las 3 variables obligatorias en Netlify.
 - Rellenar el correo de dirección del resto de hoteles (Hoteles → ficha → Datos).
-- Decidir con el cliente el modo (`operativo` vs `integro`).
+- ~~Decidir el modo~~ → **decidido: parte íntegro** (2026-09-02).
 - Cuando el cliente quiera que salgan solos: `PARTES_AUTO=si`. **No encenderlo por
   iniciativa propia.**
 - ⚠️ **Los PDF de los partes se suben al bucket PÚBLICO `empleados-media`** (ruta
