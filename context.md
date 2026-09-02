@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-09-01 (v141 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v141`**
+Última actualización: 2026-09-01 (v142 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
+**Cache SW actual: `poolsafety-v142`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -169,6 +169,20 @@ verificación, y fila real en `documentos_subidos`.
 
 **Antes de dar por buena cualquier pantalla, comprobar si tira de `PS.*` (mock) o de
 Supabase.** Puede quedar más de una.
+
+**YA HAY OTRA: la pantalla de HORARIOS del menú.** `renderHorariosTable` se rellena con
+`PS.socorristas` y `asignarHorarioManual` guarda en `localStorage['poolsafety-horarios-v1']`
+— o sea, en el navegador de quien la usa. Nadie más lo ve.
+
+Los horarios REALES viven en la tabla `horarios` y se editan desde la ficha del empleado
+y la ficha del hotel (módulo `PSHor`). De ahí los leen la **facturación por hotel**,
+**"Cerrar días sin salida"** y **"Añadir los fichajes que faltan"**: si la tabla `horarios`
+está vacía, esas tres funciones no pueden imputar nada.
+
+En v142 esa pantalla lleva un aviso arriba (`diagnosticoHorarios`) que dice la verdad y
+enseña los dos números: cuántos horarios hay en el navegador y cuántos en la BD.
+**Pendiente de decidir con el cliente**: rescatar lo del navegador si hay algo, y luego
+o reconstruir la pantalla contra la BD o quitarla para que solo haya un sitio.
 
 ---
 
