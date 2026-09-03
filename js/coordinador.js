@@ -33,6 +33,19 @@
   const fecha = PS.fechaLarga();
   document.getElementById('dateText').textContent = fecha.charAt(0).toUpperCase() + fecha.slice(1);
 
+  /* Caché de la última consulta de empleados a Supabase.
+     ------------------------------------------------------------------------
+     SE DECLARA AQUÍ ARRIBA A PROPÓSITO, aunque el módulo de empleados esté
+     mucho más abajo. Estaba declarada junto a ese módulo, en la línea ~4470, y
+     `rellenarDesplegableDocs()` — que se ejecuta nada más cargar, en la línea
+     ~3880 — la leía antes. En JavaScript una variable `let` leída antes de su
+     declaración no vale "vacía": lanza un error. Y ese error mataba el resto
+     del fichero, así que TODO lo que venía después dejaba de existir: la lista
+     de hoteles, la de empleados, el subtítulo del panel y hasta el botón de
+     salir. La pantalla se quedaba en "Cargando…" para siempre.
+     No mover de aquí. */
+  let empleadosDB = [];
+
   /* ---------- Puestos ---------- */
   let currentFilter = 'todos';
   let currentSearch = '';
@@ -4472,7 +4485,9 @@
      MÓDULO EMPLEADOS — CONECTADO A BD REAL (Supabase)
      ========================================================================== */
 
-  let empleadosDB = []; // cache de la última query a Supabase
+  // `empleadosDB` se declara al principio del fichero (ver el comentario largo
+  // de allí): declararla aquí la dejaba fuera de alcance para el código de más
+  // arriba que se ejecuta al cargar la página.
 
   // Convierte row de Supabase al formato que usa el resto del código
   function rowToEmp(r) {
