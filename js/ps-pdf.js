@@ -1421,6 +1421,21 @@ window.PSPdf = (function () {
       doc.setTextColor(0, 0, 0);
       y += 5;
     }
+
+    // Días revisados a mano. Se dice arriba, no escondido en una nota al pie:
+    // quien firma la conformidad tiene derecho a saber que esas horas no salen
+    // solas del reloj de fichar.
+    const nCorr = (datos.diasCorregidos || []).length;
+    if (nCorr) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(146, 64, 14);
+      const dias = datos.diasCorregidos.join(', ');
+      const txt = `${nCorr} dia(s) con las horas revisadas y ajustadas manualmente por la direccion (dias ${dias}).`;
+      doc.splitTextToSize(limpiarTexto(txt), 180).forEach(l => { doc.text(l, 15, y); y += 4; });
+      doc.setTextColor(0, 0, 0);
+      y += 1;
+    }
     doc.setFontSize(7.5);
     doc.setTextColor(120, 120, 120);
     doc.text('Criterio: se factura el tiempo de servicio dentro del horario contratado del hotel. Los minutos fuera de ese horario no se facturan.', 15, y);
@@ -1431,11 +1446,11 @@ window.PSPdf = (function () {
     const cols = [
       { t: 'Dia',    w: 16 },
       { t: 'Socorr.', w: 16, num: true },
-      { t: 'Horario contratado', w: 44 },
-      { t: 'Fichaje real', w: 48 },
+      { t: 'Horario contratado', w: 42 },
+      { t: 'Fichaje real', w: 44 },
       { t: 'Control', w: 18, num: true },
       { t: 'Facturado', w: 22, num: true },
-      { t: 'Estado', w: 16 }
+      { t: 'Estado', w: 24 }
     ];
     const ancho = cols.reduce((a, c) => a + c.w, 0);
 
@@ -1463,9 +1478,17 @@ window.PSPdf = (function () {
       y = checkPage(doc, y, 6);
       if (y !== antes) cabecera();
 
-      if (f.estado === 'imputada') doc.setFillColor(254, 243, 199);
+      if (f.corregido) doc.setFillColor(255, 247, 224);
+      else if (f.estado === 'imputada') doc.setFillColor(254, 243, 199);
       else doc.setFillColor(255, 255, 255);
       doc.rect(15, y, ancho, 5.5, 'FD');
+
+      // Un día corregido a mano tiene que decirlo en el papel. Si no, quien lo
+      // recibe ve un fichaje de 09:02 a 20:07 y al lado 12 h facturadas, y lo
+      // que parece es un error nuestro.
+      const estadoTxt = f.corregido
+        ? (f.estado === 'imputada' ? 'Imputada · corr.' : 'Corregido')
+        : f.estado === 'fichado' ? 'Fichado' : f.estado === 'imputada' ? 'Imputada' : '';
 
       const valores = [
         String(f.dia).padStart(2, '0') + ' ' + f.diaSem,
@@ -1474,7 +1497,7 @@ window.PSPdf = (function () {
         limpiarTexto(f.fichadoTxt || '—'),
         f.fichado ? fmtH(f.fichado) : '—',
         f.facturado ? fmtH(f.facturado) : '—',
-        f.estado === 'fichado' ? 'Fichado' : f.estado === 'imputada' ? 'Imputada' : ''
+        estadoTxt
       ];
       let x = 15;
       cols.forEach((c, i) => {
@@ -1514,8 +1537,11 @@ window.PSPdf = (function () {
       'Facturado: tiempo de servicio prestado dentro del horario contratado del hotel. Es la cifra que se factura.',
       'Control: horas efectivamente registradas por los socorristas en la aplicacion, con GPS y hora de entrada y salida.',
       'Imputada: dia sin registro en la aplicacion, facturado por el horario contratado.',
+      'Corregido: dia cuyas horas ha revisado y ajustado la direccion, por encima de lo que dio el registro automatico.',
       'Las dos cifras no coinciden por definicion: los minutos trabajados fuera del horario contratado no se facturan al hotel.'
-    ].forEach(t => { doc.text('- ' + t, 15, y); y += 4; });
+    ].forEach(t => {
+      doc.splitTextToSize('- ' + limpiarTexto(t), 180).forEach(l => { doc.text(l, 15, y); y += 4; });
+    });
     doc.setTextColor(0, 0, 0);
     y += 8;
 
