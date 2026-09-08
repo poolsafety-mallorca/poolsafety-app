@@ -35,6 +35,12 @@ create table if not exists horas_hotel_ajustes (
   control_h   numeric(6,2) check (control_h   is null or (control_h   >= 0 and control_h   <= 48)),
   socorristas int check (socorristas is null or (socorristas >= 0 and socorristas <= 50)),
   personal    text,
+  -- Lo que se imprime en las columnas "Horario contratado" y "Fichaje real".
+  -- Hacen falta: si un día no tiene fichajes en la base de datos pero sí se
+  -- trabajó, sin esto el parte enseñaba 12 h facturadas con un guion al lado
+  -- en la columna del fichaje, y quedaba como si nos lo hubiéramos inventado.
+  horario_txt text,
+  fichaje_txt text,
   nota        text,
 
   actualizado_por uuid references usuarios(id) on delete set null,
@@ -45,6 +51,10 @@ create table if not exists horas_hotel_ajustes (
 
 create index if not exists horas_hotel_ajustes_idx
   on horas_hotel_ajustes (puesto_id, mes);
+
+-- Por si esta tabla ya se había creado con la versión anterior del fichero.
+alter table horas_hotel_ajustes add column if not exists horario_txt text;
+alter table horas_hotel_ajustes add column if not exists fichaje_txt text;
 
 comment on table horas_hotel_ajustes is
   'Correcciones manuales del parte de horas de un hotel, día a día. No modifica los fichajes.';
