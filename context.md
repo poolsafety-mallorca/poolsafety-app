@@ -34,6 +34,10 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
   `incidencias.email_enviado_at / email_enviado_a / email_modo / email_error`. Deja
   constancia de a quién y cuándo se mandó cada parte, evita mandarlo dos veces y
   permite ver los pendientes. Termina con un SELECT de partes pendientes.
+- ⏳ **`sql/29-horas-hotel-ajustes.sql` — PENDIENTE DE EJECUTAR**: tabla
+  `horas_hotel_ajustes` para corregir a mano las horas facturables de un hotel, día a
+  día, sin tocar los fichajes. Ver la sección "Corregir horas de un hotel" más abajo.
+  **Escritura sólo para el dueño**; lectura para dueño y coordinadores.
 - ✅ `sql/26-documentos-a-storage.sql` — columna `documento_storage_path` + bucket
   **privado** `documentos-laborales` con sus 4 políticas. **Ejecutado el 2026-08-31.**
   Queda pendiente lanzar la migración desde la app: panel Titulaciones → "Documentos"
@@ -258,6 +262,38 @@ Se manda información de salud (categoría especial, art. 9 RGPD), así que:
   `incidencias/{uuid}.pdf`). Contienen datos de salud. La ruta no es adivinable, pero
   esto debería moverse al bucket privado `documentos-laborales` con enlaces firmados,
   igual que se hizo con la documentación laboral en sql/26.
+
+## 💶 Corregir a mano las horas de un hotel (v149)
+
+Panel Hoteles → ficha del hotel → **Facturación** → botón **"Corregir horas"** (sólo lo
+ve el administrador). Tabla del mes con Control, Facturado y Personal editables, un
+importador del propio CSV de esa pantalla, y un atajo *"Poner a todos el horario
+contratado"*. Se guarda en `horas_hotel_ajustes` (sql/29) día a día.
+
+**No se tocan los fichajes.** El registro horario del trabajador es un documento legal
+(RD-ley 8/2019) y no se retoca para cuadrar una factura de hotel. La corrección vive en
+su propia tabla, con quién y cuándo, y el día sale marcado como **Corregido** en la
+pantalla y en el PDF, con una nota arriba diciendo cuántos días llevan mano humana.
+
+### El fallo que dio origen a esto
+
+Adam mandó el 2026-09-08 el CSV de **Inturotel Cala Azul, agosto 2026**, corregido a mano
+en Excel porque la app no dejaba tocar las horas. Sus 31 filas sumaban **372 h facturadas
+y 375,1 h de control**, pero el pie del fichero seguía diciendo **327,5 h y 339,1 h** — las
+cifras que había calculado la app antes de las correcciones. **44,5 horas de diferencia en
+una factura**, porque un Excel no recalcula solo.
+
+Dos cambios para que no se repita:
+- **Los totales se suman SIEMPRE de las filas que se están imprimiendo**, al final de
+  `renderFacturacionHotel`. Antes se acumulaban dentro del bucle, así que cualquier cosa
+  que cambiara una fila después dejaba el pie descuadrado. Ahora no pueden discrepar.
+- **El importador de CSV ignora a propósito el pie de totales** del fichero y vuelve a
+  sumar. Y lo dice en pantalla al importar.
+
+⚠️ En ese fichero el cliente puso 12,1 h de control en los 31 días, incluidos días cuyo
+fichaje impreso al lado dice 09:02–20:07. Es su decisión (factura el horario contratado),
+pero **el PDF enseña las dos cosas**: por eso los días corregidos van marcados, para que
+quien lo reciba entienda por qué no cuadran y no parezca un error nuestro.
 
 ## ⚠️ `js/data.js` son MOCKS · no usarlos para nada real
 

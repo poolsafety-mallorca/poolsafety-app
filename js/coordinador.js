@@ -6655,8 +6655,21 @@
         (porDiaEmp[k][f.empleado_id] = porDiaEmp[k][f.empleado_id] || []).push(f);
       });
 
+      // Correcciones manuales guardadas para este hotel y este mes (sql/29).
+      // Si la tabla no existe todavía se sigue sin ellas: mejor un parte sin
+      // correcciones que un panel roto.
+      let ajustes = {};
+      try {
+        const { data: aj, error: eAj } = await window.sb.from('horas_hotel_ajustes')
+          .select('dia, facturado_h, control_h, socorristas, personal, nota, actualizado_at')
+          .eq('puesto_id', hotel.id).eq('mes', cod);
+        if (eAj) throw eAj;
+        (aj || []).forEach(a => { ajustes[a.dia] = a; });
+      } catch (eAj) {
+        console.warn('[facturación] sin correcciones manuales:', eAj.message);
+      }
+
       const filas = [];
-      let totFacturado = 0, totFichado = 0, totImputado = 0;
 
       for (let dia = 1; dia <= diasEnMes; dia++) {
         const fecha = new Date(anio, mes - 1, dia);
@@ -6708,8 +6721,6 @@
             });
           });
 
-          totFichado += fichado;
-          totFacturado += facturado;
           filas.push({
             dia, diaSem, socorristas: empsConFichaje.length,
             horarioTxt, fichadoTxt: detalles.join(' · ') || '—',
@@ -6723,8 +6734,6 @@
           aplican.forEach(x => {
             tramosContratados(fecha, x).forEach(c => { facturado += (c.fin - c.ini) / 3600000; });
           });
-          totFacturado += facturado;
-          totImputado += facturado;
           filas.push({
             dia, diaSem, socorristas: aplican.length,
             horarioTxt, fichadoTxt: '—',
@@ -6737,12 +6746,36 @@
         }
       }
 
-      totFacturado = r1(totFacturado);
-      totFichado = r1(totFichado);
-      totImputado = r1(totImputado);
+      // ---- Aplicar las correcciones manuales encima de lo calculado ----
+      // No se tocan los fichajes: se sustituye lo que se imprime, y el día
+      // queda marcado para que se vea que lleva mano humana detrás.
+      filas.forEach(f => {
+        const a = ajustes[f.dia];
+        if (!a) return;
+        f.corregido = true;
+        f.notaCorreccion = a.nota || '';
+        f.calculado = { fichado: f.fichado, facturado: f.facturado };
+        if (a.facturado_h !== null && a.facturado_h !== undefined) f.facturado = r1(Number(a.facturado_h));
+        if (a.control_h !== null && a.control_h !== undefined) f.fichado = r1(Number(a.control_h));
+        if (a.socorristas !== null && a.socorristas !== undefined) f.socorristas = a.socorristas;
+        if (a.personal) f.nombres = a.personal;
+        if (f.estado === 'vacio' && (f.facturado || f.fichado)) f.estado = 'corregido';
+      });
+
+      // ---- Totales: SIEMPRE la suma de lo que se está imprimiendo ----
+      // Antes se iban acumulando dentro del bucle, así que si una fila cambiaba
+      // después el pie ya no cuadraba con la tabla. Sumando aquí, al final, el
+      // total y las filas no pueden discrepar nunca.
+      const suma = (fn) => r1(filas.reduce((t, f) => t + (fn(f) || 0), 0));
+      const totFacturado = suma(f => f.facturado);
+      const totFichado   = suma(f => f.fichado);
+      const totImputado  = suma(f => f.estado === 'imputada' ? f.facturado : 0);
+      const totCorregido = suma(f => f.corregido ? f.facturado : 0);
+      const diasCorregidos = filas.filter(f => f.corregido).map(f => f.dia);
+
       factCache = {
         hotel: hotel.nombre, hotelId: hotel.id, mes: cod, nombreMes, filas,
-        totFacturado, totFichado, totImputado,
+        totFacturado, totFichado, totImputado, totCorregido, diasCorregidos,
         contacto: hotel.contacto_hotel_nombre || '',
         tel: hotel.contacto_hotel_tel || ''
       };
@@ -6815,6 +6848,10 @@
             <button class="btn btn-outline btn-sm" onclick="descargarFacturacionCSV()">
               <svg class="ic ic-14"><use href="#ic-download"/></svg> CSV
             </button>
+            ${(window.PS_SESSION || {}).rol === 'dueno' ? `
+            <button class="btn btn-outline btn-sm" onclick="abrirCorregirHoras()" style="color:#B45309;border-color:#FCD34D;">
+              <svg class="ic ic-14"><use href="#ic-pen"/></svg> Corregir horas
+            </button>` : ''}
           </div>
         </div>
 
@@ -6827,6 +6864,12 @@
           <button class="btn btn-primary btn-sm" style="margin-top:9px;background:#B45309;" onclick="abrirFichajesQueFaltan()">
             <svg class="ic ic-14"><use href="#ic-clock"/></svg> Añadir los fichajes que faltan
           </button>
+        </div>` : ''}
+
+        ${diasCorregidos.length ? `<div style="background:#FFFBEB;border:1px solid #F59E0B;color:#92400E;padding:11px 13px;border-radius:9px;margin-bottom:12px;">
+          <div style="font-weight:700;">${diasCorregidos.length} día(s) con las horas corregidas a mano</div>
+          <div class="small" style="margin-top:4px;">Días: <b>${diasCorregidos.join(', ')}</b> · suman ${fmtH(totCorregido)} h facturadas.</div>
+          <div class="small" style="margin-top:4px;">Los fichajes de los socorristas no se han tocado: sólo cambia lo que se factura a este hotel.</div>
         </div>` : ''}
 
         <div class="small" style="background:#EFF6FF;border:1px solid #93C5FD;color:#1E3A8A;padding:9px 11px;border-radius:8px;margin-bottom:12px;">
@@ -6865,13 +6908,16 @@
             ${filas.map(f => {
               const bg = f.estado === 'imputada' ? 'background:#FFFBEB;'
                        : f.estado === 'vacio' ? 'background:#F8FAFC;color:#94A3B8;' : '';
-              const estadoTxt = f.estado === 'fichado'
+              const estadoTxt = (f.estado === 'fichado'
                 ? `<span style="color:#047857;font-weight:600;">Fichado</span>` +
                   (f.sinHorario ? ' <span class="small" style="color:#B45309;">· sin horario asignado</span>' : '') +
                   (f.hayEstimada ? ' <span class="small" style="color:#B45309;">· salida estimada</span>' : '') +
                   (f.haySinCerrar ? ' <span class="small" style="color:#B45309;">· sin cerrar</span>' : '')
-                : f.estado === 'imputada' ? '<span style="color:#B45309;font-weight:600;">Imputada</span>' : '—';
-              return `<tr style="${bg}">
+                : f.estado === 'imputada' ? '<span style="color:#B45309;font-weight:600;">Imputada</span>'
+                : f.estado === 'corregido' ? '' : '—')
+                + (f.corregido ? ` <span class="badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;font-size:10px;padding:2px 6px;"
+                     title="${(f.calculado ? 'La app calculaba ' + fmtH(f.calculado.facturado) + ' h facturadas y ' + fmtH(f.calculado.fichado) + ' h de control' : '')}${f.notaCorreccion ? ' · ' + f.notaCorreccion.replace(/"/g,'&quot;') : ''}">Corregido</span>` : '');
+              return `<tr style="${bg}${f.corregido ? 'background:#FFFBEB;' : ''}">
                 <td><b>${String(f.dia).padStart(2,'0')}</b> ${f.diaSem}</td>
                 <td class="num">${f.socorristas || '—'}</td>
                 <td class="text-muted" title="${(f.nombres || '').replace(/"/g,'&quot;')}">${f.horarioTxt}</td>
@@ -7124,6 +7170,327 @@
     else toast(`✓ ${ok} jornada(s) añadidas`);
     const hotel = hotelesCache.find(x => x.id === factCache.hotelId);
     if (hotel) renderFacturacionHotel(hotel);
+  };
+
+  /* ==========================================================================
+     CORREGIR A MANO LAS HORAS DE UN HOTEL
+     --------------------------------------------------------------------------
+     Hasta ahora, cuando el cálculo automático no cuadraba, la única salida era
+     bajarse el CSV, arreglarlo en Excel y mandarlo así. Con dos problemas: la
+     app seguía diciendo otra cosa, y los totales del Excel se quedaban con las
+     cifras viejas — el parte de Inturotel Cala Azul de agosto ponía 327,5 h
+     facturadas cuando la suma de sus propias filas daba 372 h.
+
+     Aquí se corrige dentro de la app, se guarda (sql/29) y el PDF sale ya bien.
+     NO se tocan los fichajes: el registro horario del trabajador es otra cosa y
+     no se retoca para cuadrar una factura del hotel.
+     ========================================================================== */
+
+  function filaCorreccionHTML(f, fmtH) {
+    const v = n => (n || n === 0) ? String(n).replace('.', ',') : '';
+    return `<tr data-dia="${f.dia}" style="${f.corregido ? 'background:#FFFBEB;' : ''}">
+      <td style="white-space:nowrap;"><b>${String(f.dia).padStart(2,'0')}</b> ${f.diaSem}</td>
+      <td class="text-muted small" style="max-width:110px;">${f.horarioTxt || '—'}</td>
+      <td class="text-muted small" style="max-width:120px;">${f.fichadoTxt || '—'}</td>
+      <td><input type="text" inputmode="decimal" data-ch-control="${f.dia}" value="${v(f.fichado)}"
+            style="width:62px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;text-align:right;"></td>
+      <td><input type="text" inputmode="decimal" data-ch-facturado="${f.dia}" value="${v(f.facturado)}"
+            style="width:62px;padding:5px 6px;border:1px solid #93C5FD;border-radius:6px;font-size:12.5px;text-align:right;font-weight:700;"></td>
+      <td><input type="text" data-ch-personal="${f.dia}" value="${(f.nombres || '').replace(/"/g,'&quot;')}"
+            style="width:100%;min-width:120px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px;"></td>
+    </tr>`;
+  }
+
+  function numeroDe(txt) {
+    const t = String(txt == null ? '' : txt).trim().replace(',', '.');
+    if (t === '') return null;
+    const n = Number(t);
+    return Number.isFinite(n) && n >= 0 && n <= 48 ? Math.round(n * 100) / 100 : NaN;
+  }
+
+  window.abrirCorregirHoras = function () {
+    if ((window.PS_SESSION || {}).rol !== 'dueno') { toast('Sólo el administrador puede corregir horas'); return; }
+    if (!factCache) { toast('Abre primero el mes que quieres corregir'); return; }
+    const fmtH = window.PSJornada.fmtH;
+
+    let modal = document.getElementById('corregirHorasModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'corregirHorasModal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:10px;';
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:14px;max-width:940px;width:100%;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+        <div style="padding:14px 18px;background:#B45309;color:#fff;display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.4px;">Corregir horas a mano</div>
+            <div style="font-size:16px;font-weight:700;margin-top:2px;">${factCache.hotel} · ${factCache.nombreMes}</div>
+          </div>
+          <button onclick="document.getElementById('corregirHorasModal').remove()" style="background:rgba(255,255,255,.2);border:0;color:#fff;width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:20px;">×</button>
+        </div>
+
+        <div style="padding:14px 18px 0;">
+          <div class="small" style="background:#EFF6FF;border:1px solid #93C5FD;color:#1E3A8A;padding:10px 12px;border-radius:8px;line-height:1.5;">
+            Cambia las horas del día que haga falta y guarda. <b>Los fichajes de los socorristas no se tocan</b>:
+            sólo cambia lo que se le factura a este hotel, y el día queda marcado como corregido.
+            Deja una casilla vacía para que ese dato lo vuelva a calcular la app.
+          </div>
+          <div class="row gap-2" style="flex-wrap:wrap;margin:12px 0 4px;align-items:center;">
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('chArchivo').click()">
+              <svg class="ic ic-14"><use href="#ic-upload"/></svg> Importar el CSV corregido
+            </button>
+            <input type="file" id="chArchivo" accept=".csv,text/csv" style="display:none;" onchange="importarCsvCorreccion(this)">
+            <button class="btn btn-outline btn-sm" onclick="rellenarHorarioContratado()">Poner a todos el horario contratado</button>
+            <div style="flex:1;"></div>
+            <div id="chTotales" style="font-weight:700;color:#1E3A8A;font-size:13.5px;"></div>
+          </div>
+          <div id="chAviso"></div>
+        </div>
+
+        <div style="flex:1;overflow:auto;padding:0 18px;">
+          <table class="hours-table" style="width:100%;font-size:12.5px;">
+            <thead><tr>
+              <th style="text-align:left;">Día</th>
+              <th style="text-align:left;">Horario contratado</th>
+              <th style="text-align:left;">Fichaje real</th>
+              <th style="text-align:left;">Control (h)</th>
+              <th style="text-align:left;">Facturado (h)</th>
+              <th style="text-align:left;">Personal</th>
+            </tr></thead>
+            <tbody id="chCuerpo">
+              ${factCache.filas.map(f => filaCorreccionHTML(f, fmtH)).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;">
+          <button class="btn btn-outline btn-sm" style="color:#B91C1C;border-color:#FCA5A5;" onclick="quitarCorreccionesMes()">
+            Quitar todas las correcciones del mes
+          </button>
+          <div class="row gap-2">
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('corregirHorasModal').remove()">Cancelar</button>
+            <button class="btn btn-primary btn-sm" id="chGuardar" onclick="guardarCorreccionHoras()">Guardar y recalcular</button>
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById('chCuerpo').addEventListener('input', recalcularTotalesCorreccion);
+    recalcularTotalesCorreccion();
+  };
+
+  // El total de la ventana se recalcula a cada tecla: quien corrige ve al
+  // momento cuánto va a facturar, sin tener que guardar para descubrirlo.
+  function recalcularTotalesCorreccion() {
+    const fmtH = window.PSJornada.fmtH;
+    let fact = 0, ctrl = 0, malos = 0;
+    document.querySelectorAll('[data-ch-facturado]').forEach(i => {
+      const n = numeroDe(i.value);
+      if (Number.isNaN(n)) { malos++; i.style.borderColor = '#DC2626'; } else { i.style.borderColor = '#93C5FD'; fact += n || 0; }
+    });
+    document.querySelectorAll('[data-ch-control]').forEach(i => {
+      const n = numeroDe(i.value);
+      if (Number.isNaN(n)) { malos++; i.style.borderColor = '#DC2626'; } else { i.style.borderColor = 'var(--line)'; ctrl += n || 0; }
+    });
+    const el = document.getElementById('chTotales');
+    if (el) el.innerHTML = `Facturado: <b>${fmtH(fact)} h</b> · Control: ${fmtH(ctrl)} h`;
+    const aviso = document.getElementById('chAviso');
+    if (aviso) aviso.innerHTML = malos
+      ? `<div class="alert-strip warn" style="margin:6px 0;font-size:12.5px;">Hay ${malos} casilla(s) con algo que no es un número de horas entre 0 y 48. Corrígelas antes de guardar.</div>`
+      : '';
+    const btn = document.getElementById('chGuardar');
+    if (btn) btn.disabled = malos > 0;
+  }
+
+  // Atajo para el caso más frecuente: facturar a todos los días el horario que
+  // tiene contratado el hotel, que es justo lo que hizo a mano con Cala Azul.
+  window.rellenarHorarioContratado = function () {
+    if (!factCache) return;
+    let puestos = 0;
+    factCache.filas.forEach(f => {
+      const m = /(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})/.exec(f.horarioTxt || '');
+      if (!m) return;
+      const h = ((+m[3] * 60 + +m[4]) - (+m[1] * 60 + +m[2])) / 60;
+      if (h <= 0) return;
+      const inp = document.querySelector(`[data-ch-facturado="${f.dia}"]`);
+      if (inp) { inp.value = String(Math.round(h * 100) / 100).replace('.', ','); puestos++; }
+    });
+    recalcularTotalesCorreccion();
+    toast(puestos ? `${puestos} día(s) puestos al horario contratado` : 'No hay horarios contratados que aplicar');
+  };
+
+  /* Importa el CSV que exporta esta misma pantalla, ya corregido a mano en
+     Excel. Se leen las columnas Control (h), Facturado (h) y Personal de cada
+     día; los totales del pie del fichero se IGNORAN a propósito, porque son
+     justo lo que suele quedarse desactualizado al editar a mano. */
+  window.importarCsvCorreccion = async function (input) {
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    const aviso = document.getElementById('chAviso');
+    try {
+      let texto = await file.text();
+      if (texto.charCodeAt(0) === 0xFEFF) texto = texto.slice(1);
+      const sep = (texto.split('\n')[0].match(/;/g) || []).length >= 2 ? ';' : ',';
+
+      let cabecera = null, leidos = 0, ignorados = 0;
+      texto.split(/\r?\n/).forEach(linea => {
+        if (!linea.trim()) return;
+        const celdas = linea.split(sep).map(c => c.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+        if (!cabecera) {
+          if (/^d[ií]a$/i.test(celdas[0] || '')) {
+            cabecera = celdas.map(c => c.toLowerCase());
+          }
+          return;
+        }
+        if (!/^\d{1,2}$/.test(celdas[0] || '')) return;   // el pie de totales cae aquí
+        const dia = Number(celdas[0]);
+        const col = (nombre) => {
+          const i = cabecera.findIndex(c => c.startsWith(nombre));
+          return i >= 0 ? celdas[i] : '';
+        };
+        const ctrl = numeroDe(col('control'));
+        const fact = numeroDe(col('facturado'));
+        const pers = col('personal');
+        if (Number.isNaN(ctrl) || Number.isNaN(fact)) { ignorados++; return; }
+        const iC = document.querySelector(`[data-ch-control="${dia}"]`);
+        const iF = document.querySelector(`[data-ch-facturado="${dia}"]`);
+        const iP = document.querySelector(`[data-ch-personal="${dia}"]`);
+        if (!iC && !iF) { ignorados++; return; }
+        if (iC && ctrl !== null) iC.value = String(ctrl).replace('.', ',');
+        if (iF && fact !== null) iF.value = String(fact).replace('.', ',');
+        if (iP && pers) iP.value = pers;
+        leidos++;
+      });
+
+      recalcularTotalesCorreccion();
+      if (!leidos) {
+        aviso.innerHTML = `<div class="alert-strip warn" style="margin:6px 0;font-size:12.5px;">
+          No se ha podido leer ningún día de ese fichero. Tiene que ser el CSV que descarga esta misma pantalla
+          (con la fila de títulos <b>Dia · Dia sem. · Socorristas · …</b>).</div>`;
+        return;
+      }
+      aviso.innerHTML = `<div class="alert-strip ok" style="margin:6px 0;font-size:12.5px;">
+        Leídos <b>${leidos}</b> día(s) del fichero${ignorados ? ` · ${ignorados} línea(s) ignoradas` : ''}.
+        Los totales del pie del fichero no se han usado: el total de arriba se ha vuelto a sumar de estas filas.
+        <b>Revísalo y pulsa Guardar.</b></div>`;
+    } catch (err) {
+      aviso.innerHTML = `<div class="alert-strip warn" style="margin:6px 0;">No se pudo leer el fichero: ${err.message}</div>`;
+    }
+  };
+
+  window.guardarCorreccionHoras = async function () {
+    if (!factCache) return;
+    const btn = document.getElementById('chGuardar');
+    const aviso = document.getElementById('chAviso');
+    const psSes = window.PS_SESSION || {};
+
+    // Sólo se guardan los días que de verdad cambian respecto a lo calculado:
+    // así una corrección sigue siendo una excepción visible y no una copia de
+    // todo el mes que tape cambios posteriores en los fichajes.
+    const filasPorDia = {};
+    factCache.filas.forEach(f => { filasPorDia[f.dia] = f; });
+    const guardar = [], borrar = [];
+    let error = false;
+
+    factCache.filas.forEach(f => {
+      const base = f.calculado || { fichado: f.fichado, facturado: f.facturado };
+      const iC = document.querySelector(`[data-ch-control="${f.dia}"]`);
+      const iF = document.querySelector(`[data-ch-facturado="${f.dia}"]`);
+      const iP = document.querySelector(`[data-ch-personal="${f.dia}"]`);
+      if (!iC || !iF) return;
+      const ctrl = numeroDe(iC.value), fact = numeroDe(iF.value);
+      if (Number.isNaN(ctrl) || Number.isNaN(fact)) { error = true; return; }
+      const pers = (iP && iP.value.trim()) || '';
+
+      const cambiaCtrl = ctrl !== null && Math.abs(ctrl - (base.fichado || 0)) > 0.005;
+      const cambiaFact = fact !== null && Math.abs(fact - (base.facturado || 0)) > 0.005;
+      const cambiaPers = pers && pers !== ((f.corregido ? '' : f.nombres) || '');
+
+      if (cambiaCtrl || cambiaFact || cambiaPers) {
+        guardar.push({
+          empresa_id: psSes.empresa_id || null,
+          puesto_id: factCache.hotelId, mes: factCache.mes, dia: f.dia,
+          control_h: cambiaCtrl ? ctrl : null,
+          facturado_h: cambiaFact ? fact : null,
+          socorristas: f.socorristas || null,
+          personal: pers || null,
+          actualizado_por: psSes.userId || null,
+          actualizado_at: new Date().toISOString()
+        });
+      } else if (f.corregido) {
+        borrar.push(f.dia);   // se ha devuelto al valor calculado: sobra el ajuste
+      }
+    });
+
+    if (error) { toast('Hay casillas con valores que no son horas'); return; }
+    if (!guardar.length && !borrar.length) { toast('No has cambiado nada'); return; }
+
+    const fmtH = window.PSJornada.fmtH;
+    const totalNuevo = factCache.filas.reduce((t, f) => {
+      const i = document.querySelector(`[data-ch-facturado="${f.dia}"]`);
+      return t + (numeroDe(i ? i.value : '') || 0);
+    }, 0);
+    if (!confirm(
+      `Se van a guardar ${guardar.length} día(s) corregidos` + (borrar.length ? ` y a quitar ${borrar.length}` : '') + '.\n\n' +
+      `${factCache.hotel} · ${factCache.nombreMes}\n` +
+      `Horas facturadas que pasarán a constar: ${fmtH(totalNuevo)} h\n` +
+      `(antes: ${fmtH(factCache.totFacturado)} h)\n\n` +
+      'Los fichajes de los socorristas no se tocan. ¿Guardo?'
+    )) return;
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+    try {
+      if (guardar.length) {
+        // Sin empresa_id la RLS rechaza la fila; si la sesión no lo trae se
+        // pide a la BD en vez de guardar algo que se va a caer.
+        if (!guardar[0].empresa_id) {
+          const { data: u } = await window.sb.from('usuarios')
+            .select('empresa_id').eq('id', psSes.userId).single();
+          if (!u || !u.empresa_id) throw new Error('No se ha podido saber a qué empresa perteneces.');
+          guardar.forEach(g => { g.empresa_id = u.empresa_id; });
+        }
+        const { data, error: e1 } = await window.sb.from('horas_hotel_ajustes')
+          .upsert(guardar, { onConflict: 'puesto_id,mes,dia' }).select('dia');
+        if (e1) throw e1;
+        // Postgres puede devolver 0 filas sin dar error si la RLS lo bloquea:
+        // por eso se comprueba lo que ha vuelto y no sólo que no haya error.
+        if (!data || data.length !== guardar.length) {
+          throw new Error('La base de datos ha aceptado ' + ((data && data.length) || 0) + ' de ' + guardar.length +
+            ' día(s). Lo más normal es que falte ejecutar sql/29 o que tu usuario no sea administrador.');
+        }
+      }
+      if (borrar.length) {
+        const { error: e2 } = await window.sb.from('horas_hotel_ajustes')
+          .delete().eq('puesto_id', factCache.hotelId).eq('mes', factCache.mes).in('dia', borrar);
+        if (e2) throw e2;
+      }
+      document.getElementById('corregirHorasModal')?.remove();
+      toast(`✓ ${guardar.length} día(s) corregidos · ${fmtH(totalNuevo)} h facturadas`);
+      const h = hotelesCache.find(x => x.id === factCache.hotelId);
+      if (h) renderFacturacionHotel(h);
+    } catch (err) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Guardar y recalcular'; }
+      const falta = /does not exist|relation .* horas_hotel_ajustes/i.test(err.message || '');
+      if (aviso) aviso.innerHTML = `<div class="alert-strip warn" style="margin:6px 0;font-size:12.5px;">
+        No se ha podido guardar: ${err.message}
+        ${falta ? '<br><b>Falta ejecutar <code>sql/29-horas-hotel-ajustes.sql</code> en Supabase.</b>' : ''}</div>`;
+    }
+  };
+
+  window.quitarCorreccionesMes = async function () {
+    if (!factCache) return;
+    if (!confirm(`Se van a borrar TODAS las correcciones manuales de ${factCache.hotel} en ${factCache.nombreMes}.\n\n` +
+                 'El parte volverá a salir con lo que calcula la app a partir de los fichajes. ¿Seguro?')) return;
+    try {
+      const { error } = await window.sb.from('horas_hotel_ajustes')
+        .delete().eq('puesto_id', factCache.hotelId).eq('mes', factCache.mes);
+      if (error) throw error;
+      document.getElementById('corregirHorasModal')?.remove();
+      toast('✓ Correcciones quitadas');
+      const h = hotelesCache.find(x => x.id === factCache.hotelId);
+      if (h) renderFacturacionHotel(h);
+    } catch (err) { toast('No se pudo: ' + err.message); }
   };
 
   window.descargarFacturacionCSV = function () {
