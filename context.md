@@ -279,6 +279,29 @@ nuestro. Desde v150 se guardan también `socorristas`, `horario_txt` y `fichaje_
 día corregido que aporta fichaje deja de contar como imputado. Si se añade alguna columna
 más al parte, hay que añadirla también aquí.
 
+### Dos versiones del parte de horas (v151)
+
+`PSPdf.generarHorasHotel(datos, { paraHotel })`:
+
+- **Para el hotel** (`paraHotel: true`) — botón *"PDF para el hotel"* y lo que manda
+  *"Enviar al hotel"*. Día, socorristas, horario contratado, servicio prestado y horas
+  facturadas. **Sin la columna de fichaje ni las horas de control.**
+- **Interna** (`paraHotel: false`) — botón *"PDF interno"*, fichero acabado en
+  `-interno.pdf`. El documento completo, con el fichaje real de cada día, las horas de
+  control y los días corregidos. Para nosotros y para una inspección de trabajo.
+
+**Por qué se separaron.** El 2026-09-08 el cliente pidió cambiar las horas de salida
+reales (20:10, 20:15) por otras más cercanas a las 21:00 «para pasárselo al dueño del
+hotel». Eso es fabricar un registro de asistencia en un documento que el hotel firma en
+conformidad, y no se hace. Pero el problema de fondo era legítimo: enseñarle al hotel el
+fichaje minuto a minuto obliga a justificar cada diferencia y además le entrega el
+registro horario de nuestros trabajadores, que es dato laboral nuestro y no suyo.
+
+La base de la factura es el **horario contratado**, y eso es lo que ve el hotel. El papel
+del hotel dice además que el registro horario individual existe, con GPS, y está a su
+disposición y a la de la autoridad laboral si se requiere. **Ninguna de las dos versiones
+inventa una hora.**
+
 **No se tocan los fichajes.** El registro horario del trabajador es un documento legal
 (RD-ley 8/2019) y no se retoca para cuadrar una factura de hotel. La corrección vive en
 su propia tabla, con quién y cuándo, y el día sale marcado como **Corregido** en la
