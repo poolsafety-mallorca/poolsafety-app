@@ -6863,11 +6863,11 @@
             <button class="btn btn-primary btn-sm" onclick="enviarFacturacionPDF()">
               <svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg> Enviar al hotel
             </button>
-            <button class="btn btn-outline btn-sm" onclick="descargarFacturacionPDF(true)" title="Sin el fichaje de los socorristas: día, socorristas, horario contratado y horas facturadas">
-              <svg class="ic ic-14"><use href="#ic-download"/></svg> PDF para el hotel
+            <button class="btn btn-outline btn-sm" onclick="descargarFacturacionPDF(false)" title="Documento completo: con la hora de entrada y salida de cada día y las horas de control. Es el que se manda al hotel.">
+              <svg class="ic ic-14"><use href="#ic-download"/></svg> PDF completo
             </button>
-            <button class="btn btn-outline btn-sm" onclick="descargarFacturacionPDF(false)" title="Con el fichaje real de cada día. Para nosotros y para una inspección.">
-              <svg class="ic ic-14"><use href="#ic-download"/></svg> PDF interno
+            <button class="btn btn-outline btn-sm" onclick="descargarFacturacionPDF(true)" title="Versión corta: día, socorristas, horario contratado y horas facturadas, sin el detalle de los fichajes.">
+              <svg class="ic ic-14"><use href="#ic-download"/></svg> PDF resumido
             </button>
             <button class="btn btn-outline btn-sm" onclick="descargarFacturacionCSV()">
               <svg class="ic ic-14"><use href="#ic-download"/></svg> CSV
@@ -6993,8 +6993,11 @@
     if (!window.PSPdf || !window.PSPdf.blobHorasHotel) { toast('Generador de PDF no disponible'); return; }
     let blob, nombre;
     try {
-      // Lo que se le manda al hotel es siempre la versión del hotel.
-      ({ blob, nombre } = window.PSPdf.blobHorasHotel(factCache, { paraHotel: true }));
+      // Va el documento COMPLETO, con los fichajes. Lo pidió el cliente el
+      // 2026-09-08: quiere que el hotel vea que hay un sistema de control real
+      // detrás, con hora de entrada y salida y GPS. La versión reducida sigue
+      // disponible en su botón para quien prefiera no dar ese detalle.
+      ({ blob, nombre } = window.PSPdf.blobHorasHotel(factCache, { paraHotel: false }));
     } catch (err) { toast('Error al generar el PDF: ' + err.message); return; }
 
     const texto = `Parte de horas de socorrismo · ${factCache.hotel} · ${factCache.nombreMes}. ` +
@@ -7031,8 +7034,8 @@
     if (!factCache) { toast('No hay datos que descargar'); return; }
     if (!window.PSPdf || !window.PSPdf.descargarHorasHotel) { toast('Generador de PDF no disponible'); return; }
     try {
-      await window.PSPdf.descargarHorasHotel(factCache, { paraHotel: paraHotel !== false });
-      toast(paraHotel === false ? '✓ PDF interno generado' : '✓ PDF para el hotel generado');
+      await window.PSPdf.descargarHorasHotel(factCache, { paraHotel: paraHotel === true });
+      toast(paraHotel === true ? '✓ PDF resumido generado' : '✓ PDF completo generado');
     } catch (err) { toast('Error al generar el PDF: ' + err.message); }
   };
 
@@ -7231,8 +7234,11 @@
             style="width:62px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;text-align:right;"></td>
       <td><input type="text" inputmode="decimal" data-ch-facturado="${f.dia}" value="${v(f.facturado)}"
             style="width:62px;padding:5px 6px;border:1px solid #93C5FD;border-radius:6px;font-size:12.5px;text-align:right;font-weight:700;"></td>
-      <td><input type="text" data-ch-personal="${f.dia}" value="${(f.nombres || '').replace(/"/g,'&quot;')}"
+      <td><input type="text" data-ch-personal="${f.dia}" value="${esc(f.nombres)}"
             style="width:100%;min-width:120px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px;"></td>
+      <td><input type="text" data-ch-nota="${f.dia}" value="${esc(f.notaCorreccion)}"
+            placeholder="p. ej. recogida de hamacas"
+            style="width:100%;min-width:150px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px;"></td>
     </tr>`;
   }
 
@@ -7270,6 +7276,9 @@
             Cambia las horas del día que haga falta y guarda. <b>Los fichajes de los socorristas no se tocan</b>:
             sólo cambia lo que se le factura a este hotel, y el día queda marcado como corregido.
             Deja una casilla vacía para que ese dato lo vuelva a calcular la app.
+            <br><b>Observaciones</b>: lo que escribas ahí sale impreso al pie del parte completo,
+            para poder explicar un día concreto (una recogida de hamacas más corta, una tormenta,
+            un cambio acordado con el hotel…) en vez de dejarlo a interpretación de quien lo lea.
           </div>
           <div class="row gap-2" style="flex-wrap:wrap;margin:12px 0 4px;align-items:center;">
             <button class="btn btn-outline btn-sm" onclick="document.getElementById('chArchivo').click()">
@@ -7293,6 +7302,7 @@
               <th style="text-align:left;">Control (h)</th>
               <th style="text-align:left;">Facturado (h)</th>
               <th style="text-align:left;">Personal</th>
+              <th style="text-align:left;">Observaciones</th>
             </tr></thead>
             <tbody id="chCuerpo">
               ${factCache.filas.map(f => filaCorreccionHTML(f, fmtH)).join('')}
@@ -7461,6 +7471,7 @@
       const pers = val('data-ch-personal') || '';
       const hora = val('data-ch-horario') || '';
       const fich = val('data-ch-fichaje') || '';
+      const nota = val('data-ch-nota') || '';
       const socN = parseInt(val('data-ch-socorristas') || '', 10);
       const soc = Number.isFinite(socN) && socN >= 0 && socN <= 50 ? socN : null;
 
@@ -7471,8 +7482,9 @@
       const cambiaHora = hora && !igualTxt(hora, base.horarioTxt);
       const cambiaFich = fich && !igualTxt(fich, base.fichadoTxt);
       const cambiaSoc  = soc !== null && soc !== (base.socorristas || 0);
+      const cambiaNota = nota !== (f.notaCorreccion || '');
 
-      if (cambiaCtrl || cambiaFact || cambiaPers || cambiaHora || cambiaFich || cambiaSoc) {
+      if (cambiaCtrl || cambiaFact || cambiaPers || cambiaHora || cambiaFich || cambiaSoc || cambiaNota) {
         guardar.push({
           empresa_id: psSes.empresa_id || null,
           puesto_id: factCache.hotelId, mes: factCache.mes, dia: f.dia,
@@ -7482,6 +7494,7 @@
           personal: pers || null,
           horario_txt: cambiaHora ? hora : null,
           fichaje_txt: cambiaFich ? fich : null,
+          nota: nota || null,
           actualizado_por: psSes.userId || null,
           actualizado_at: new Date().toISOString()
         });

@@ -279,28 +279,38 @@ nuestro. Desde v150 se guardan también `socorristas`, `horario_txt` y `fichaje_
 día corregido que aporta fichaje deja de contar como imputado. Si se añade alguna columna
 más al parte, hay que añadirla también aquí.
 
-### Dos versiones del parte de horas (v151)
+### Dos versiones del parte de horas (v151-152)
 
 `PSPdf.generarHorasHotel(datos, { paraHotel })`:
 
-- **Para el hotel** (`paraHotel: true`) — botón *"PDF para el hotel"* y lo que manda
-  *"Enviar al hotel"*. Día, socorristas, horario contratado, servicio prestado y horas
-  facturadas. **Sin la columna de fichaje ni las horas de control.**
-- **Interna** (`paraHotel: false`) — botón *"PDF interno"*, fichero acabado en
-  `-interno.pdf`. El documento completo, con el fichaje real de cada día, las horas de
-  control y los días corregidos. Para nosotros y para una inspección de trabajo.
+- **Completa** (`paraHotel: false`, **la que se manda al hotel**) — botón *"PDF completo"*
+  y lo que envía *"Enviar al hotel"*. Con el fichaje real de cada día, las horas de
+  control, los días corregidos y las observaciones. El cliente la quiere así a propósito:
+  *"queremos que vean que tenemos nuestro propio sistema"*.
+- **Resumida** (`paraHotel: true`) — botón *"PDF resumido"*, fichero acabado en
+  `-resumen.pdf`. Día, socorristas, horario contratado, servicio prestado y horas
+  facturadas, sin el detalle de fichajes. Para quien prefiera no dar ese nivel de detalle.
 
-**Por qué se separaron.** El 2026-09-08 el cliente pidió cambiar las horas de salida
-reales (20:10, 20:15) por otras más cercanas a las 21:00 «para pasárselo al dueño del
-hotel». Eso es fabricar un registro de asistencia en un documento que el hotel firma en
-conformidad, y no se hace. Pero el problema de fondo era legítimo: enseñarle al hotel el
-fichaje minuto a minuto obliga a justificar cada diferencia y además le entrega el
-registro horario de nuestros trabajadores, que es dato laboral nuestro y no suyo.
+### 🚩 Petición rechazada: falsear las horas de salida
 
-La base de la factura es el **horario contratado**, y eso es lo que ve el hotel. El papel
-del hotel dice además que el registro horario individual existe, con GPS, y está a su
-disposición y a la de la autoridad laboral si se requiere. **Ninguna de las dos versiones
-inventa una hora.**
+El 2026-09-08 el cliente pidió **dos veces** cambiar las horas de salida reales (20:07,
+20:10, 20:15) por otras más cercanas a las 21:00 antes de mandar el parte al dueño del
+hotel, la segunda vez con el motivo explícito: *"esos días terminaron demasiado pronto y
+queremos que vean que se tarda más"*.
+
+**No se hizo, y no se hace.** Esa columna la describe el propio documento como *"horas
+efectivamente registradas por los socorristas en la aplicacion, con GPS y hora de entrada
+y salida"*, va a un tercero que paga el servicio y que **firma el documento dando
+conformidad**. Cambiar 20:10 por 20:58 es fabricar un registro de asistencia para ocultar
+que la piscina quedó sin vigilancia esas casi 50 minutos. En un servicio de socorrismo eso
+además puede volverse en contra si alguna vez hay un incidente o lo revisa un seguro.
+
+**Lo que sí se hizo** (v152): la columna **Observaciones** por día, editable en "Corregir
+horas" y impresa al pie del parte completo, para explicar con palabras un día raro —
+*"recogida de hamacas finalizada antes de lo habitual"*— en vez de retocar el reloj.
+
+Si vuelve a pedirlo: ofrecer la observación, o revisar el horario contratado si el
+servicio real termina antes de las 21:00. **Nunca tocar la hora fichada.**
 
 **No se tocan los fichajes.** El registro horario del trabajador es un documento legal
 (RD-ley 8/2019) y no se retoca para cuadrar una factura de hotel. La corrección vive en
