@@ -7269,7 +7269,11 @@
     const t = String(txt == null ? '' : txt).trim().replace(',', '.');
     if (t === '') return null;
     const n = Number(t);
-    return Number.isFinite(n) && n >= 0 && n <= 48 ? Math.round(n * 100) / 100 : NaN;
+    // El tope NO es la jornada de una persona: esta casilla es el total del día
+    // sumando a TODOS los socorristas del hotel. Un hotel con 5 socorristas de
+    // 12 h son 60 h en un día, perfectamente normal. Estaba puesto en 48 y en
+    // esos hoteles bloqueaba el botón de guardar sin explicar por qué.
+    return Number.isFinite(n) && n >= 0 && n <= 240 ? Math.round(n * 100) / 100 : NaN;
   }
 
   /* Administrador Y coordinadores. Lo pidió el cliente el 2026-09-08: los
@@ -7323,6 +7327,10 @@
             <div style="flex:1;"></div>
             <div id="chTotales" style="font-weight:700;color:#1E3A8A;font-size:13.5px;"></div>
           </div>
+          <!-- chAvisoSql: avisos que tienen que quedarse (falta el SQL, fallo al
+               guardar). Van en su propio hueco porque chAviso se reescribe a
+               cada tecla al recalcular los totales y se los llevaba por delante. -->
+          <div id="chAvisoSql"></div>
           <div id="chAviso"></div>
         </div>
 
@@ -7357,6 +7365,7 @@
 
     document.getElementById('chCuerpo').addEventListener('input', recalcularTotalesCorreccion);
     recalcularTotalesCorreccion();
+    comprobarTablaCorrecciones();
   };
 
   // El total de la ventana se recalcula a cada tecla: quien corrige ve al
@@ -7376,7 +7385,7 @@
     if (el) el.innerHTML = `Facturado: <b>${fmtH(fact)} h</b> · Control: ${fmtH(ctrl)} h`;
     const aviso = document.getElementById('chAviso');
     if (aviso) aviso.innerHTML = malos
-      ? `<div class="alert-strip warn" style="margin:6px 0;font-size:12.5px;">Hay ${malos} casilla(s) con algo que no es un número de horas entre 0 y 48. Corrígelas antes de guardar.</div>`
+      ? `<div class="alert-strip warn" style="margin:6px 0;font-size:12.5px;">Hay ${malos} casilla(s) con algo que no es un número de horas válido (entre 0 y 240, sumando todos los socorristas del día). Corrígelas antes de guardar.</div>`
       : '';
     const btn = document.getElementById('chGuardar');
     if (btn) btn.disabled = malos > 0;
@@ -7472,7 +7481,6 @@
   window.guardarCorreccionHoras = async function () {
     if (!factCache) return;
     const btn = document.getElementById('chGuardar');
-    const aviso = document.getElementById('chAviso');
     const psSes = window.PS_SESSION || {};
 
     // Sólo se guardan los días que de verdad cambian respecto a lo calculado:
@@ -7594,12 +7602,73 @@
       if (h) renderFacturacionHotel(h);
     } catch (err) {
       if (btn) { btn.disabled = false; btn.textContent = 'Guardar y recalcular'; }
-      const falta = /does not exist|relation .* horas_hotel_ajustes/i.test(err.message || '');
-      if (aviso) aviso.innerHTML = `<div class="alert-strip warn" style="margin:6px 0;font-size:12.5px;">
-        No se ha podido guardar: ${err.message}
-        ${falta ? '<br><b>Falta ejecutar <code>sql/29-horas-hotel-ajustes.sql</code> en Supabase.</b>' : ''}</div>`;
+      const fuerte = document.getElementById('chAvisoSql');
+      if (fuerte) fuerte.innerHTML = avisoFalloGuardado(err);
+      const caja = document.querySelector('#corregirHorasModal [style*="overflow:auto"]');
+      if (caja) caja.scrollTop = 0;   // que el aviso se vea, no se quede arriba del todo
     }
   };
+
+  /* Traduce el fallo a algo accionable. Supabase contesta cosas como
+     "Could not find the table 'public.horas_hotel_ajustes' in the schema cache",
+     que en inglés y en jerga de base de datos no le dice nada a nadie: lo que
+     pasa de verdad es que falta ejecutar un SQL. */
+  function faltaLaTabla(msg) {
+    const m = String(msg || '');
+    return /horas_hotel_ajustes/i.test(m) &&
+      (/could not find the table/i.test(m) || /schema cache/i.test(m) ||
+       /does not exist/i.test(m) || /PGRST205/i.test(m) || /relation/i.test(m));
+  }
+
+  function sinPermiso(msg) {
+    return /row-level security|violates .*policy|permission denied|no es administrador/i.test(String(msg || ''));
+  }
+
+  function avisoFalloGuardado(err) {
+    const msg = (err && err.message) || String(err);
+    if (faltaLaTabla(msg)) {
+      return `<div class="alert-strip warn" style="margin:6px 0;font-size:13px;line-height:1.55;">
+        <b>Todavía no se puede guardar: falta un paso en Supabase.</b><br>
+        La tabla donde se guardan las correcciones aún no existe.
+        <b>Tus cambios siguen escritos aquí</b>, no los cierres.
+        <div style="margin-top:6px;">Para arreglarlo, una sola vez:</div>
+        <ol style="margin:4px 0 0 18px;padding:0;">
+          <li>Entra en Supabase → <b>SQL Editor</b></li>
+          <li>Pega entero el fichero <code>sql/29-horas-hotel-ajustes.sql</code></li>
+          <li>Dale a <b>Run</b> y vuelve aquí a pulsar Guardar</li>
+        </ol>
+        <div class="small" style="margin-top:6px;opacity:.75;">Detalle técnico: ${msg}</div>
+      </div>`;
+    }
+    if (sinPermiso(msg)) {
+      return `<div class="alert-strip warn" style="margin:6px 0;font-size:13px;line-height:1.55;">
+        <b>Tu usuario no tiene permiso para corregir horas.</b><br>
+        Sólo pueden administración y coordinación. Si eres coordinador y aun así te sale esto,
+        hay que volver a ejecutar <code>sql/29-horas-hotel-ajustes.sql</code> en Supabase:
+        es el fichero que da el permiso.
+        <div class="small" style="margin-top:6px;opacity:.75;">Detalle técnico: ${msg}</div>
+      </div>`;
+    }
+    return `<div class="alert-strip warn" style="margin:6px 0;font-size:13px;">
+      No se ha podido guardar: ${msg}<br>
+      <b>Tus cambios siguen escritos aquí</b>, no cierres la ventana.
+    </div>`;
+  }
+
+  /* Se comprueba AL ABRIR, no al guardar. Antes te enterabas después de
+     rellenar el mes entero, que es la peor forma de enterarse. */
+  async function comprobarTablaCorrecciones() {
+    const aviso = document.getElementById('chAvisoSql');
+    if (!aviso || !window.sb) return;
+    try {
+      const { error } = await window.sb.from('horas_hotel_ajustes').select('dia').limit(1);
+      if (error) throw error;
+    } catch (err) {
+      aviso.innerHTML = avisoFalloGuardado(err).replace(
+        '<b>Tus cambios siguen escritos aquí</b>, no los cierres.',
+        'Puedes ir rellenando: al guardar te avisará otra vez si sigue sin hacerse.');
+    }
+  }
 
   window.quitarCorreccionesMes = async function () {
     if (!factCache) return;

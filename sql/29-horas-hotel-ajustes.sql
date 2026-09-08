@@ -31,8 +31,12 @@ create table if not exists horas_hotel_ajustes (
   -- Valores corregidos. Un nulo significa "este dato no se toca, vale el que
   -- calcule la app": así se puede corregir sólo lo facturado y dejar el
   -- control tal cual, que es lo más habitual.
-  facturado_h numeric(6,2) check (facturado_h is null or (facturado_h >= 0 and facturado_h <= 48)),
-  control_h   numeric(6,2) check (control_h   is null or (control_h   >= 0 and control_h   <= 48)),
+  -- OJO con el tope: estas horas son el TOTAL del día sumando a todos los
+  -- socorristas del hotel, no la jornada de una persona. Un hotel con 5
+  -- socorristas de 12 h son 60 h en un solo día, y es correcto. El límite está
+  -- alto a propósito, sólo para frenar un dedazo tipo 1200.
+  facturado_h numeric(7,2) check (facturado_h is null or (facturado_h >= 0 and facturado_h <= 240)),
+  control_h   numeric(7,2) check (control_h   is null or (control_h   >= 0 and control_h   <= 240)),
   socorristas int check (socorristas is null or (socorristas >= 0 and socorristas <= 50)),
   personal    text,
   -- Lo que se imprime en las columnas "Horario contratado" y "Fichaje real".
@@ -55,6 +59,22 @@ create index if not exists horas_hotel_ajustes_idx
 -- Por si esta tabla ya se había creado con la versión anterior del fichero.
 alter table horas_hotel_ajustes add column if not exists horario_txt text;
 alter table horas_hotel_ajustes add column if not exists fichaje_txt text;
+
+-- Y por si se creó con el tope antiguo de 48 h, que dejaba fuera a cualquier
+-- hotel con más de cuatro socorristas al día. `create table if not exists` no
+-- toca una tabla que ya existe, así que las restricciones se rehacen aparte.
+do $$
+begin
+  alter table horas_hotel_ajustes drop constraint if exists horas_hotel_ajustes_facturado_h_check;
+  alter table horas_hotel_ajustes drop constraint if exists horas_hotel_ajustes_control_h_check;
+  alter table horas_hotel_ajustes
+    alter column facturado_h type numeric(7,2),
+    alter column control_h   type numeric(7,2);
+  alter table horas_hotel_ajustes add constraint horas_hotel_ajustes_facturado_h_check
+    check (facturado_h is null or (facturado_h >= 0 and facturado_h <= 240));
+  alter table horas_hotel_ajustes add constraint horas_hotel_ajustes_control_h_check
+    check (control_h is null or (control_h >= 0 and control_h <= 240));
+end $$;
 
 comment on table horas_hotel_ajustes is
   'Correcciones manuales del parte de horas de un hotel, día a día. No modifica los fichajes.';
