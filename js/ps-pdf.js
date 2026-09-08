@@ -1569,6 +1569,30 @@ window.PSPdf = (function () {
     doc.setTextColor(0, 0, 0);
     y += 14;
 
+    // Observaciones día a día. Es donde se explica con palabras lo que una
+    // tabla de horas no cuenta: una recogida de hamacas más corta, una
+    // tormenta, un cambio acordado con el hotel. Sirve para dar contexto a un
+    // día raro sin tener que tocar la hora que marcó el reloj.
+    const conNota = paraHotel ? [] : datos.filas.filter(f => f.notaCorreccion);
+    if (conNota.length) {
+      y = checkPage(doc, y, 18);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text('Observaciones', 15, y); y += 4.5;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(70, 70, 70);
+      conNota.forEach(f => {
+        const linea = 'Dia ' + String(f.dia).padStart(2, '0') + ': ' + limpiarTexto(f.notaCorreccion);
+        doc.splitTextToSize(linea, 180).forEach(l => {
+          y = checkPage(doc, y, 6);
+          doc.text(l, 15, y); y += 4;
+        });
+      });
+      doc.setTextColor(0, 0, 0);
+      y += 5;
+    }
+
     // Leyenda
     y = checkPage(doc, y, 24);
     doc.setFont('helvetica', 'bold');
@@ -1624,7 +1648,7 @@ window.PSPdf = (function () {
 
   function nombreArchivoHoras(datos, opts) {
     const limpio = (datos.hotel || 'hotel').replace(/[^a-zA-Z0-9]+/g, '-');
-    const sufijo = (opts && opts.paraHotel) ? '' : '-interno';
+    const sufijo = (opts && opts.paraHotel) ? '-resumen' : '';
     return `PoolSafety-Horas-${limpio}-${datos.mes}${sufijo}.pdf`;
   }
 
