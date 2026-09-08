@@ -1376,7 +1376,25 @@ window.PSPdf = (function () {
      lo que registró la app. Si un hotel discute la factura, este papel es el
      que la sostiene.
      ========================================================================== */
-  function generarHorasHotel(datos) {
+  /* datos : lo que arma renderFacturacionHotel
+     opts.paraHotel : versión que se le manda al hotel.
+     --------------------------------------------------------------------------
+     POR QUÉ HAY DOS VERSIONES
+     La base de la factura es el HORARIO CONTRATADO: el hotel contrata 09:00–21:00
+     y se le facturan 12 h, entren los socorristas a las 08:57 o a las 09:05. Eso
+     es lo que hay que enseñarle, y es lo único que le afecta.
+
+     Las horas de fichaje son otra cosa: son el registro horario de NUESTROS
+     trabajadores (RD-ley 8/2019), datos laborales internos. Meterlas en el papel
+     del hotel obliga a explicar cada minuto de diferencia y encima le entrega
+     información de personal que no le corresponde.
+
+     Así que la versión del hotel lleva día, socorristas, horario contratado y
+     horas facturadas. La interna lleva además el fichaje real, para nosotros y
+     para una inspección de trabajo. Ninguna de las dos inventa una hora. */
+  function generarHorasHotel(datos, opts) {
+    opts = opts || {};
+    const paraHotel = !!opts.paraHotel;
     const doc = nuevoPdf();
     const fmtH = window.PSJornada.fmtH;
     header(doc, 'Horas de servicio de socorrismo', `${limpiarTexto(datos.hotel)} · ${datos.nombreMes}`);
@@ -1406,14 +1424,21 @@ window.PSPdf = (function () {
     doc.text(`${fmtH(datos.totFacturado)} h`, 190, y + 9, { align: 'right' });
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.setTextColor(6, 95, 70);
-    doc.text('Horas de control y fichaje', 20, y + 17);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`${fmtH(datos.totFichado)} h`, 190, y + 17, { align: 'right' });
+    if (paraHotel) {
+      doc.setTextColor(90, 90, 90);
+      doc.text('Segun horario contratado', 20, y + 17);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${datos.filas.filter(f => f.facturado > 0).length} dias de servicio`, 190, y + 17, { align: 'right' });
+    } else {
+      doc.setTextColor(6, 95, 70);
+      doc.text('Horas de control y fichaje', 20, y + 17);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${fmtH(datos.totFichado)} h`, 190, y + 17, { align: 'right' });
+    }
     doc.setTextColor(0, 0, 0);
     y += 27;
 
-    if (datos.totImputado > 0) {
+    if (!paraHotel && datos.totImputado > 0) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(146, 64, 14);
@@ -1425,7 +1450,7 @@ window.PSPdf = (function () {
     // Días revisados a mano. Se dice arriba, no escondido en una nota al pie:
     // quien firma la conformidad tiene derecho a saber que esas horas no salen
     // solas del reloj de fichar.
-    const nCorr = (datos.diasCorregidos || []).length;
+    const nCorr = paraHotel ? 0 : (datos.diasCorregidos || []).length;
     if (nCorr) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
@@ -1443,7 +1468,13 @@ window.PSPdf = (function () {
     y += 7;
 
     // Tabla día a día
-    const cols = [
+    const cols = paraHotel ? [
+      { t: 'Dia',    w: 22 },
+      { t: 'Socorristas', w: 24, num: true },
+      { t: 'Horario contratado', w: 60 },
+      { t: 'Servicio', w: 40 },
+      { t: 'Horas facturadas', w: 36, num: true }
+    ] : [
       { t: 'Dia',    w: 16 },
       { t: 'Socorr.', w: 16, num: true },
       { t: 'Horario contratado', w: 42 },
@@ -1478,7 +1509,10 @@ window.PSPdf = (function () {
       y = checkPage(doc, y, 6);
       if (y !== antes) cabecera();
 
-      if (f.corregido) doc.setFillColor(255, 247, 224);
+      // En el papel del hotel no se pinta de color el día corregido: es una
+      // marca de nuestra cocina interna, no algo que le afecte a él.
+      if (paraHotel) doc.setFillColor(255, 255, 255);
+      else if (f.corregido) doc.setFillColor(255, 247, 224);
       else if (f.estado === 'imputada') doc.setFillColor(254, 243, 199);
       else doc.setFillColor(255, 255, 255);
       doc.rect(15, y, ancho, 5.5, 'FD');
@@ -1490,7 +1524,13 @@ window.PSPdf = (function () {
         ? (f.estado === 'imputada' ? 'Imputada · corr.' : 'Corregido')
         : f.estado === 'fichado' ? 'Fichado' : f.estado === 'imputada' ? 'Imputada' : '';
 
-      const valores = [
+      const valores = paraHotel ? [
+        String(f.dia).padStart(2, '0') + ' ' + f.diaSem,
+        String(f.socorristas || 0),
+        limpiarTexto(f.horarioTxt || '—'),
+        f.facturado > 0 ? 'Prestado' : 'Sin servicio',
+        f.facturado ? fmtH(f.facturado) + ' h' : '—'
+      ] : [
         String(f.dia).padStart(2, '0') + ' ' + f.diaSem,
         String(f.socorristas || 0),
         limpiarTexto(f.horarioTxt || '—'),
@@ -1518,10 +1558,14 @@ window.PSPdf = (function () {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.text(`TOTAL ${datos.nombreMes.toUpperCase()}`, 17, y + 5.4);
-    let xt = 15 + cols[0].w + cols[1].w + cols[2].w + cols[3].w;
-    doc.text(fmtH(datos.totFichado), xt + cols[4].w - 2, y + 5.4, { align: 'right' });
-    xt += cols[4].w;
-    doc.text(fmtH(datos.totFacturado), xt + cols[5].w - 2, y + 5.4, { align: 'right' });
+    if (paraHotel) {
+      doc.text(fmtH(datos.totFacturado) + ' h', 15 + ancho - 2, y + 5.4, { align: 'right' });
+    } else {
+      let xt = 15 + cols[0].w + cols[1].w + cols[2].w + cols[3].w;
+      doc.text(fmtH(datos.totFichado), xt + cols[4].w - 2, y + 5.4, { align: 'right' });
+      xt += cols[4].w;
+      doc.text(fmtH(datos.totFacturado), xt + cols[5].w - 2, y + 5.4, { align: 'right' });
+    }
     doc.setTextColor(0, 0, 0);
     y += 14;
 
@@ -1533,13 +1577,18 @@ window.PSPdf = (function () {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(90, 90, 90);
-    [
+    (paraHotel ? [
+      'Se factura el horario contratado de cada dia con servicio de socorrismo, con independencia de los minutos de cortesia que el socorrista pueda estar antes o despues.',
+      'Horario contratado: franja acordada con el hotel para la vigilancia de la lamina de agua.',
+      'Socorristas: numero de socorristas destinados a la instalacion ese dia.',
+      'PoolSafety conserva el registro horario individual de cada socorrista, con GPS y hora de entrada y salida, a disposicion del hotel y de la autoridad laboral si fuera requerido.'
+    ] : [
       'Facturado: tiempo de servicio prestado dentro del horario contratado del hotel. Es la cifra que se factura.',
       'Control: horas efectivamente registradas por los socorristas en la aplicacion, con GPS y hora de entrada y salida.',
       'Imputada: dia sin registro en la aplicacion, facturado por el horario contratado.',
       'Corregido: dia cuyas horas ha revisado y ajustado la direccion, por encima de lo que dio el registro automatico.',
       'Las dos cifras no coinciden por definicion: los minutos trabajados fuera del horario contratado no se facturan al hotel.'
-    ].forEach(t => {
+    ]).forEach(t => {
       doc.splitTextToSize('- ' + limpiarTexto(t), 180).forEach(l => { doc.text(l, 15, y); y += 4; });
     });
     doc.setTextColor(0, 0, 0);
@@ -1573,19 +1622,20 @@ window.PSPdf = (function () {
     return doc;
   }
 
-  function nombreArchivoHoras(datos) {
+  function nombreArchivoHoras(datos, opts) {
     const limpio = (datos.hotel || 'hotel').replace(/[^a-zA-Z0-9]+/g, '-');
-    return `PoolSafety-Horas-${limpio}-${datos.mes}.pdf`;
+    const sufijo = (opts && opts.paraHotel) ? '' : '-interno';
+    return `PoolSafety-Horas-${limpio}-${datos.mes}${sufijo}.pdf`;
   }
 
-  async function descargarHorasHotel(datos) {
-    await guardarPdf(generarHorasHotel(datos), nombreArchivoHoras(datos));
+  async function descargarHorasHotel(datos, opts) {
+    await guardarPdf(generarHorasHotel(datos, opts), nombreArchivoHoras(datos, opts));
   }
 
   // Blob del PDF, para poder compartirlo por WhatsApp o correo desde el móvil
   // en vez de tener que descargarlo y buscarlo luego en el teléfono.
-  function blobHorasHotel(datos) {
-    return { blob: generarHorasHotel(datos).output('blob'), nombre: nombreArchivoHoras(datos) };
+  function blobHorasHotel(datos, opts) {
+    return { blob: generarHorasHotel(datos, opts).output('blob'), nombre: nombreArchivoHoras(datos, opts) };
   }
 
   return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarIncidencia, generarInformesHotel, generarHorasHotel, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito, descargarIncidencia, descargarInformesHotel, nombreArchivoInformes, descargarHorasHotel, blobHorasHotel, guardarArchivo };

@@ -6863,8 +6863,11 @@
             <button class="btn btn-primary btn-sm" onclick="enviarFacturacionPDF()">
               <svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg> Enviar al hotel
             </button>
-            <button class="btn btn-outline btn-sm" onclick="descargarFacturacionPDF()">
-              <svg class="ic ic-14"><use href="#ic-download"/></svg> Descargar PDF
+            <button class="btn btn-outline btn-sm" onclick="descargarFacturacionPDF(true)" title="Sin el fichaje de los socorristas: día, socorristas, horario contratado y horas facturadas">
+              <svg class="ic ic-14"><use href="#ic-download"/></svg> PDF para el hotel
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="descargarFacturacionPDF(false)" title="Con el fichaje real de cada día. Para nosotros y para una inspección.">
+              <svg class="ic ic-14"><use href="#ic-download"/></svg> PDF interno
             </button>
             <button class="btn btn-outline btn-sm" onclick="descargarFacturacionCSV()">
               <svg class="ic ic-14"><use href="#ic-download"/></svg> CSV
@@ -6990,7 +6993,8 @@
     if (!window.PSPdf || !window.PSPdf.blobHorasHotel) { toast('Generador de PDF no disponible'); return; }
     let blob, nombre;
     try {
-      ({ blob, nombre } = window.PSPdf.blobHorasHotel(factCache));
+      // Lo que se le manda al hotel es siempre la versión del hotel.
+      ({ blob, nombre } = window.PSPdf.blobHorasHotel(factCache, { paraHotel: true }));
     } catch (err) { toast('Error al generar el PDF: ' + err.message); return; }
 
     const texto = `Parte de horas de socorrismo · ${factCache.hotel} · ${factCache.nombreMes}. ` +
@@ -7018,12 +7022,17 @@
   };
 
   // PDF con membrete de la empresa, para adjuntar a la factura del hotel.
-  window.descargarFacturacionPDF = async function () {
+  // paraHotel = true → sin el fichaje de los socorristas (es su registro horario,
+  // dato laboral nuestro). El hotel contrata un horario y se le factura ese
+  // horario: lo demás no le afecta y obliga a explicar cada minuto de más o de
+  // menos. paraHotel = false → documento completo, para nosotros y para una
+  // inspección de trabajo.
+  window.descargarFacturacionPDF = async function (paraHotel) {
     if (!factCache) { toast('No hay datos que descargar'); return; }
     if (!window.PSPdf || !window.PSPdf.descargarHorasHotel) { toast('Generador de PDF no disponible'); return; }
     try {
-      await window.PSPdf.descargarHorasHotel(factCache);
-      toast('✓ PDF generado');
+      await window.PSPdf.descargarHorasHotel(factCache, { paraHotel: paraHotel !== false });
+      toast(paraHotel === false ? '✓ PDF interno generado' : '✓ PDF para el hotel generado');
     } catch (err) { toast('Error al generar el PDF: ' + err.message); }
   };
 
