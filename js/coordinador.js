@@ -6660,8 +6660,8 @@
       // correcciones que un panel roto.
       let ajustes = {};
       try {
-        const COMPLETO = 'dia, facturado_h, control_h, socorristas, personal, horario_txt, fichaje_txt, nota, actualizado_at';
-        const BASICO   = 'dia, facturado_h, control_h, socorristas, personal, nota, actualizado_at';
+        const COMPLETO = 'dia, facturado_h, control_h, socorristas, personal, horario_txt, fichaje_txt, nota, actualizado_at, actualizado_por';
+        const BASICO   = 'dia, facturado_h, control_h, socorristas, personal, nota, actualizado_at, actualizado_por';
         let { data: aj, error: eAj } = await window.sb.from('horas_hotel_ajustes')
           .select(COMPLETO).eq('puesto_id', hotel.id).eq('mes', cod);
         // Si se ejecutó una versión anterior de sql/29 esas dos columnas no
@@ -6673,6 +6673,20 @@
         }
         if (eAj) throw eAj;
         (aj || []).forEach(a => { ajustes[a.dia] = a; });
+
+        // Nombre de quien corrigió cada día. Ahora que pueden tocarlo el
+        // administrador y los coordinadores, "quién lo cambió" deja de ser un
+        // detalle: es lo que permite abrir el permiso sin perder el control.
+        const ids = [...new Set((aj || []).map(a => a.actualizado_por).filter(Boolean))];
+        if (ids.length) {
+          const { data: us } = await window.sb.from('usuarios').select('id, nombre, rol').in('id', ids);
+          const porId = {};
+          (us || []).forEach(u => { porId[u.id] = u; });
+          Object.values(ajustes).forEach(a => {
+            const u = porId[a.actualizado_por];
+            if (u) a.quien = (u.nombre || '—') + (u.rol === 'dueno' ? ' (administración)' : ' (coordinación)');
+          });
+        }
       } catch (eAj) {
         console.warn('[facturación] sin correcciones manuales:', eAj.message);
       }
@@ -6762,6 +6776,10 @@
         if (!a) return;
         f.corregido = true;
         f.notaCorreccion = a.nota || '';
+        f.quienCorrigio = a.quien || '';
+        f.cuandoCorrigio = a.actualizado_at
+          ? new Date(a.actualizado_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
+          : '';
         f.calculado = {
           fichado: f.fichado, facturado: f.facturado, nombres: f.nombres,
           socorristas: f.socorristas, horarioTxt: f.horarioTxt, fichadoTxt: f.fichadoTxt
@@ -6872,7 +6890,7 @@
             <button class="btn btn-outline btn-sm" onclick="descargarFacturacionCSV()">
               <svg class="ic ic-14"><use href="#ic-download"/></svg> CSV
             </button>
-            ${(window.PS_SESSION || {}).rol === 'dueno' ? `
+            ${puedeCorregirHoras() ? `
             <button class="btn btn-outline btn-sm" onclick="abrirCorregirHoras()" style="color:#B45309;border-color:#FCD34D;">
               <svg class="ic ic-14"><use href="#ic-pen"/></svg> Corregir horas
             </button>` : ''}
@@ -6940,7 +6958,12 @@
                 : f.estado === 'imputada' ? '<span style="color:#B45309;font-weight:600;">Imputada</span>'
                 : f.estado === 'corregido' ? '' : '—')
                 + (f.corregido ? ` <span class="badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;font-size:10px;padding:2px 6px;"
-                     title="${(f.calculado ? 'La app calculaba ' + fmtH(f.calculado.facturado) + ' h facturadas y ' + fmtH(f.calculado.fichado) + ' h de control' : '')}${f.notaCorreccion ? ' · ' + f.notaCorreccion.replace(/"/g,'&quot;') : ''}">Corregido</span>` : '');
+                     title="${[
+                       f.calculado ? 'La app calculaba ' + fmtH(f.calculado.facturado) + ' h facturadas y ' + fmtH(f.calculado.fichado) + ' h de control' : '',
+                       f.quienCorrigio ? 'Corregido por ' + f.quienCorrigio : '',
+                       f.cuandoCorrigio ? 'el ' + f.cuandoCorrigio : '',
+                       f.notaCorreccion || ''
+                     ].filter(Boolean).join(' · ').replace(/"/g,'&quot;')}">Corregido</span>` : '');
               return `<tr style="${bg}${f.corregido ? 'background:#FFFBEB;' : ''}">
                 <td><b>${String(f.dia).padStart(2,'0')}</b> ${f.diaSem}</td>
                 <td class="num">${f.socorristas || '—'}</td>
@@ -7249,8 +7272,19 @@
     return Number.isFinite(n) && n >= 0 && n <= 48 ? Math.round(n * 100) / 100 : NaN;
   }
 
+  /* Administrador Y coordinadores. Lo pidió el cliente el 2026-09-08: los
+     coordinadores llevan el día a día y dejarlo sólo en sus manos le convertía
+     a él en el cuello de botella. La trazabilidad la da la propia tabla, que
+     guarda quién y cuándo (actualizado_por / actualizado_at), y las políticas
+     de sql/29 comprueban lo mismo en el servidor: esto de aquí sólo esconde el
+     botón, no es la seguridad. */
+  function puedeCorregirHoras() {
+    const r = (window.PS_SESSION || {}).rol || rol;
+    return r === 'dueno' || r === 'coordinador';
+  }
+
   window.abrirCorregirHoras = function () {
-    if ((window.PS_SESSION || {}).rol !== 'dueno') { toast('Sólo el administrador puede corregir horas'); return; }
+    if (!puedeCorregirHoras()) { toast('Sólo administración o coordinación pueden corregir horas'); return; }
     if (!factCache) { toast('Abre primero el mes que quieres corregir'); return; }
     const fmtH = window.PSJornada.fmtH;
 

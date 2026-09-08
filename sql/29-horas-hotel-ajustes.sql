@@ -65,11 +65,22 @@ comment on column horas_hotel_ajustes.control_h is
 
 -- --------------------------------------------------------------------------
 -- Permisos
---   Leer  : administrador y coordinadores (necesitan ver el parte completo).
---   Tocar : SÓLO el administrador. Esto es lo que va en una factura; que lo
---           cambie una sola persona. Si algún día quieres que los
---           coordinadores también puedan, cambia auth_es_dueno() por
---           auth_es_admin() en las tres políticas de abajo.
+--   Leer y corregir : administrador Y coordinadores.
+--
+-- Lo pidió el cliente el 2026-09-08: los coordinadores llevan el día a día y
+-- dejarlo sólo en manos del administrador le convertía a él en el cuello de
+-- botella, que es justo lo que quería quitarse.
+--
+-- `auth_es_admin()` devuelve true para 'dueno' Y 'coordinador' (ver sql/06);
+-- `auth_es_dueno()` sólo para 'dueno'.
+--
+-- Queda rastro de quién y cuándo en actualizado_por / actualizado_at, que es
+-- lo que hace que se pueda abrir sin perder el control: si mañana un parte no
+-- cuadra, se sabe quién lo tocó.
+--
+-- Si alguna vez hay que volver a cerrarlo, cambia auth_es_admin() por
+-- auth_es_dueno() en las tres políticas de escritura y vuelve a ejecutar este
+-- fichero: es idempotente.
 -- --------------------------------------------------------------------------
 alter table horas_hotel_ajustes enable row level security;
 
@@ -79,15 +90,15 @@ create policy hha_select on horas_hotel_ajustes
 
 drop policy if exists hha_insert on horas_hotel_ajustes;
 create policy hha_insert on horas_hotel_ajustes
-  for insert with check (empresa_id = auth_empresa() and auth_es_dueno());
+  for insert with check (empresa_id = auth_empresa() and auth_es_admin());
 
 drop policy if exists hha_update on horas_hotel_ajustes;
 create policy hha_update on horas_hotel_ajustes
-  for update using (empresa_id = auth_empresa() and auth_es_dueno());
+  for update using (empresa_id = auth_empresa() and auth_es_admin());
 
 drop policy if exists hha_delete on horas_hotel_ajustes;
 create policy hha_delete on horas_hotel_ajustes
-  for delete using (empresa_id = auth_empresa() and auth_es_dueno());
+  for delete using (empresa_id = auth_empresa() and auth_es_admin());
 
 -- ==========================================================================
 -- COMPROBACIÓN · ejecuta esto y debe devolver las 4 políticas y 0 filas

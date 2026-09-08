@@ -271,6 +271,23 @@ Control, Facturado y Personal** editables, un importador del propio CSV de esa p
 y un atajo *"Poner a todos el horario contratado"*. Se guarda en `horas_hotel_ajustes`
 (sql/29) día a día.
 
+**Quién puede (v153): administrador Y coordinadores.** Lo pidió el cliente el 2026-09-08;
+antes era sólo el dueño y eso le convertía a él en el cuello de botella. Las políticas de
+sql/29 usan `auth_es_admin()` (dueño + coordinador), y la tabla guarda `actualizado_por` y
+`actualizado_at`: en la pantalla, al pasar el ratón por la etiqueta *Corregido* de un día
+sale **quién lo corrigió y cuándo**. Eso es lo que permite abrir el permiso sin perder el
+control. Para volver a cerrarlo: `auth_es_dueno()` en las tres políticas de escritura y
+`puedeCorregirHoras()` en `js/coordinador.js`.
+
+Resumen de permisos sobre horas:
+
+| Acción | Administrador | Coordinador |
+|---|---|---|
+| Editar fichajes de un socorrista | ✅ | ✅ |
+| **Borrar** un fichaje | ✅ | ❌ (borra evidencia de un registro obligatorio) |
+| Corregir horas facturables de un hotel | ✅ | ✅ |
+| Hoja de nómina día a día | ✅ | ❌ |
+
 ⚠️ **La corrección se lleva TODAS las columnas, no sólo las horas.** En la primera
 versión (v149) sólo se guardaban las horas y el personal, y los días 29, 30 y 31 de Cala
 Azul —sin fichajes en la BD— salían con **5 socorristas, un guion en "Fichaje real" y la
