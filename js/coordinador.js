@@ -6660,9 +6660,17 @@
       // correcciones que un panel roto.
       let ajustes = {};
       try {
-        const { data: aj, error: eAj } = await window.sb.from('horas_hotel_ajustes')
-          .select('dia, facturado_h, control_h, socorristas, personal, nota, actualizado_at')
-          .eq('puesto_id', hotel.id).eq('mes', cod);
+        const COMPLETO = 'dia, facturado_h, control_h, socorristas, personal, horario_txt, fichaje_txt, nota, actualizado_at';
+        const BASICO   = 'dia, facturado_h, control_h, socorristas, personal, nota, actualizado_at';
+        let { data: aj, error: eAj } = await window.sb.from('horas_hotel_ajustes')
+          .select(COMPLETO).eq('puesto_id', hotel.id).eq('mes', cod);
+        // Si se ejecutó una versión anterior de sql/29 esas dos columnas no
+        // existen. Se reintenta sin ellas para no perder las correcciones ya
+        // guardadas por una columna que falta.
+        if (eAj && /horario_txt|fichaje_txt/i.test(eAj.message || '')) {
+          ({ data: aj, error: eAj } = await window.sb.from('horas_hotel_ajustes')
+            .select(BASICO).eq('puesto_id', hotel.id).eq('mes', cod));
+        }
         if (eAj) throw eAj;
         (aj || []).forEach(a => { ajustes[a.dia] = a; });
       } catch (eAj) {
@@ -6754,12 +6762,25 @@
         if (!a) return;
         f.corregido = true;
         f.notaCorreccion = a.nota || '';
-        f.calculado = { fichado: f.fichado, facturado: f.facturado };
+        f.calculado = {
+          fichado: f.fichado, facturado: f.facturado, nombres: f.nombres,
+          socorristas: f.socorristas, horarioTxt: f.horarioTxt, fichadoTxt: f.fichadoTxt
+        };
         if (a.facturado_h !== null && a.facturado_h !== undefined) f.facturado = r1(Number(a.facturado_h));
         if (a.control_h !== null && a.control_h !== undefined) f.fichado = r1(Number(a.control_h));
         if (a.socorristas !== null && a.socorristas !== undefined) f.socorristas = a.socorristas;
         if (a.personal) f.nombres = a.personal;
-        if (f.estado === 'vacio' && (f.facturado || f.fichado)) f.estado = 'corregido';
+        if (a.horario_txt) f.horarioTxt = a.horario_txt;
+        if (a.fichaje_txt) f.fichadoTxt = a.fichaje_txt;
+
+        // Si la corrección aporta a qué hora se entró y se salió, ese día deja
+        // de ser "imputado": hubo servicio y consta el horario. Sin esto el
+        // parte enseñaba 12 h facturadas con un guion en la columna del fichaje
+        // y la etiqueta "Imputada", que es justo lo que hace desconfiar a quien
+        // recibe la factura.
+        const tieneFichaje = f.fichadoTxt && f.fichadoTxt !== '—';
+        if (tieneFichaje) f.estado = 'fichado';
+        else if (f.estado === 'vacio' && (f.facturado || f.fichado)) f.estado = 'corregido';
       });
 
       // ---- Totales: SIEMPRE la suma de lo que se está imprimiendo ----
@@ -7188,10 +7209,15 @@
 
   function filaCorreccionHTML(f, fmtH) {
     const v = n => (n || n === 0) ? String(n).replace('.', ',') : '';
+    const esc = t => String(t == null ? '' : t).replace(/"/g, '&quot;');
     return `<tr data-dia="${f.dia}" style="${f.corregido ? 'background:#FFFBEB;' : ''}">
       <td style="white-space:nowrap;"><b>${String(f.dia).padStart(2,'0')}</b> ${f.diaSem}</td>
-      <td class="text-muted small" style="max-width:110px;">${f.horarioTxt || '—'}</td>
-      <td class="text-muted small" style="max-width:120px;">${f.fichadoTxt || '—'}</td>
+      <td><input type="text" data-ch-socorristas="${f.dia}" value="${f.socorristas || ''}"
+            style="width:44px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;text-align:right;"></td>
+      <td><input type="text" data-ch-horario="${f.dia}" value="${esc(f.horarioTxt === '—' ? '' : f.horarioTxt)}"
+            style="width:100%;min-width:105px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px;"></td>
+      <td><input type="text" data-ch-fichaje="${f.dia}" value="${esc(f.fichadoTxt === '—' ? '' : f.fichadoTxt)}"
+            style="width:100%;min-width:110px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px;"></td>
       <td><input type="text" inputmode="decimal" data-ch-control="${f.dia}" value="${v(f.fichado)}"
             style="width:62px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;text-align:right;"></td>
       <td><input type="text" inputmode="decimal" data-ch-facturado="${f.dia}" value="${v(f.facturado)}"
@@ -7252,6 +7278,7 @@
           <table class="hours-table" style="width:100%;font-size:12.5px;">
             <thead><tr>
               <th style="text-align:left;">Día</th>
+              <th style="text-align:left;">Socorr.</th>
               <th style="text-align:left;">Horario contratado</th>
               <th style="text-align:left;">Fichaje real</th>
               <th style="text-align:left;">Control (h)</th>
@@ -7351,15 +7378,25 @@
         };
         const ctrl = numeroDe(col('control'));
         const fact = numeroDe(col('facturado'));
-        const pers = col('personal');
         if (Number.isNaN(ctrl) || Number.isNaN(fact)) { ignorados++; return; }
         const iC = document.querySelector(`[data-ch-control="${dia}"]`);
         const iF = document.querySelector(`[data-ch-facturado="${dia}"]`);
-        const iP = document.querySelector(`[data-ch-personal="${dia}"]`);
         if (!iC && !iF) { ignorados++; return; }
         if (iC && ctrl !== null) iC.value = String(ctrl).replace('.', ',');
         if (iF && fact !== null) iF.value = String(fact).replace('.', ',');
-        if (iP && pers) iP.value = pers;
+
+        // El resto de columnas también se traen. Antes se leían las horas y se
+        // tiraba todo lo demás, así que un día corregido salía en el parte con
+        // 12 h facturadas y un guion en la columna del fichaje.
+        const traer = (clave, selector) => {
+          const val = col(clave);
+          const inp = document.querySelector(`[${selector}="${dia}"]`);
+          if (inp && val && val !== '—') inp.value = val;
+        };
+        traer('personal', 'data-ch-personal');
+        traer('horario',  'data-ch-horario');
+        traer('fichaje',  'data-ch-fichaje');
+        traer('socorristas', 'data-ch-socorristas');
         leidos++;
       });
 
@@ -7394,27 +7431,48 @@
     let error = false;
 
     factCache.filas.forEach(f => {
-      const base = f.calculado || { fichado: f.fichado, facturado: f.facturado };
+      // `calculado` guarda lo que salía del cálculo automático antes de aplicar
+      // una corrección anterior. Es la referencia contra la que se compara: si
+      // no, al reabrir la ventana lo corregido parecería "sin cambios" y se
+      // borraría solo.
+      const base = f.calculado || {
+        fichado: f.fichado, facturado: f.facturado,
+        socorristas: f.socorristas, horarioTxt: f.horarioTxt, fichadoTxt: f.fichadoTxt
+      };
+      const val = sel => {
+        const i = document.querySelector(`[${sel}="${f.dia}"]`);
+        return i ? i.value.trim() : null;
+      };
       const iC = document.querySelector(`[data-ch-control="${f.dia}"]`);
       const iF = document.querySelector(`[data-ch-facturado="${f.dia}"]`);
-      const iP = document.querySelector(`[data-ch-personal="${f.dia}"]`);
       if (!iC || !iF) return;
       const ctrl = numeroDe(iC.value), fact = numeroDe(iF.value);
       if (Number.isNaN(ctrl) || Number.isNaN(fact)) { error = true; return; }
-      const pers = (iP && iP.value.trim()) || '';
 
+      const pers = val('data-ch-personal') || '';
+      const hora = val('data-ch-horario') || '';
+      const fich = val('data-ch-fichaje') || '';
+      const socN = parseInt(val('data-ch-socorristas') || '', 10);
+      const soc = Number.isFinite(socN) && socN >= 0 && socN <= 50 ? socN : null;
+
+      const igualTxt = (a, b) => (a || '').trim() === ((b === '—' ? '' : b) || '').trim();
       const cambiaCtrl = ctrl !== null && Math.abs(ctrl - (base.fichado || 0)) > 0.005;
       const cambiaFact = fact !== null && Math.abs(fact - (base.facturado || 0)) > 0.005;
-      const cambiaPers = pers && pers !== ((f.corregido ? '' : f.nombres) || '');
+      const cambiaPers = pers && !igualTxt(pers, base.nombres !== undefined ? base.nombres : f.nombres);
+      const cambiaHora = hora && !igualTxt(hora, base.horarioTxt);
+      const cambiaFich = fich && !igualTxt(fich, base.fichadoTxt);
+      const cambiaSoc  = soc !== null && soc !== (base.socorristas || 0);
 
-      if (cambiaCtrl || cambiaFact || cambiaPers) {
+      if (cambiaCtrl || cambiaFact || cambiaPers || cambiaHora || cambiaFich || cambiaSoc) {
         guardar.push({
           empresa_id: psSes.empresa_id || null,
           puesto_id: factCache.hotelId, mes: factCache.mes, dia: f.dia,
           control_h: cambiaCtrl ? ctrl : null,
           facturado_h: cambiaFact ? fact : null,
-          socorristas: f.socorristas || null,
+          socorristas: soc,
           personal: pers || null,
+          horario_txt: cambiaHora ? hora : null,
+          fichaje_txt: cambiaFich ? fich : null,
           actualizado_por: psSes.userId || null,
           actualizado_at: new Date().toISOString()
         });
@@ -7450,8 +7508,17 @@
           if (!u || !u.empresa_id) throw new Error('No se ha podido saber a qué empresa perteneces.');
           guardar.forEach(g => { g.empresa_id = u.empresa_id; });
         }
-        const { data, error: e1 } = await window.sb.from('horas_hotel_ajustes')
+        let { data, error: e1 } = await window.sb.from('horas_hotel_ajustes')
           .upsert(guardar, { onConflict: 'puesto_id,mes,dia' }).select('dia');
+        // Misma red que en el resto de la app: si falta una columna porque se
+        // ejecutó una versión anterior del SQL, se reintenta sin ella en vez de
+        // perder la corrección entera.
+        if (e1 && /horario_txt|fichaje_txt/i.test(e1.message || '')) {
+          console.warn('[facturación] sql/29 antiguo — guardo sin horario ni fichaje');
+          guardar.forEach(g => { delete g.horario_txt; delete g.fichaje_txt; });
+          ({ data, error: e1 } = await window.sb.from('horas_hotel_ajustes')
+            .upsert(guardar, { onConflict: 'puesto_id,mes,dia' }).select('dia'));
+        }
         if (e1) throw e1;
         // Postgres puede devolver 0 filas sin dar error si la RLS lo bloquea:
         // por eso se comprueba lo que ha vuelto y no sólo que no haya error.

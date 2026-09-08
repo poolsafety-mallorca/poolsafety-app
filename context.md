@@ -266,9 +266,18 @@ Se manda información de salud (categoría especial, art. 9 RGPD), así que:
 ## 💶 Corregir a mano las horas de un hotel (v149)
 
 Panel Hoteles → ficha del hotel → **Facturación** → botón **"Corregir horas"** (sólo lo
-ve el administrador). Tabla del mes con Control, Facturado y Personal editables, un
-importador del propio CSV de esa pantalla, y un atajo *"Poner a todos el horario
-contratado"*. Se guarda en `horas_hotel_ajustes` (sql/29) día a día.
+ve el administrador). Tabla del mes con **Socorristas, Horario contratado, Fichaje real,
+Control, Facturado y Personal** editables, un importador del propio CSV de esa pantalla,
+y un atajo *"Poner a todos el horario contratado"*. Se guarda en `horas_hotel_ajustes`
+(sql/29) día a día.
+
+⚠️ **La corrección se lleva TODAS las columnas, no sólo las horas.** En la primera
+versión (v149) sólo se guardaban las horas y el personal, y los días 29, 30 y 31 de Cala
+Azul —sin fichajes en la BD— salían con **5 socorristas, un guion en "Fichaje real" y la
+etiqueta *Imputada*** al lado de 12 h facturadas. En una factura eso parece un error
+nuestro. Desde v150 se guardan también `socorristas`, `horario_txt` y `fichaje_txt`, y un
+día corregido que aporta fichaje deja de contar como imputado. Si se añade alguna columna
+más al parte, hay que añadirla también aquí.
 
 **No se tocan los fichajes.** El registro horario del trabajador es un documento legal
 (RD-ley 8/2019) y no se retoca para cuadrar una factura de hotel. La corrección vive en
