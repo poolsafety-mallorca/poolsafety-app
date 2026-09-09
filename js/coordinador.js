@@ -6791,14 +6791,17 @@
         if (a.horario_txt) f.horarioTxt = a.horario_txt;
         if (a.fichaje_txt) f.fichadoTxt = a.fichaje_txt;
 
-        // Si la corrección aporta a qué hora se entró y se salió, ese día deja
-        // de ser "imputado": hubo servicio y consta el horario. Sin esto el
-        // parte enseñaba 12 h facturadas con un guion en la columna del fichaje
-        // y la etiqueta "Imputada", que es justo lo que hace desconfiar a quien
-        // recibe la factura.
-        const tieneFichaje = f.fichadoTxt && f.fichadoTxt !== '—';
-        if (tieneFichaje) f.estado = 'fichado';
-        else if (f.estado === 'vacio' && (f.facturado || f.fichado)) f.estado = 'corregido';
+        // El estado sigue diciendo LO MISMO QUE ANTES DE CORREGIR: si ese día
+        // hubo fichaje o no. Corregir cambia las horas, no cambia si se fichó.
+        //
+        // Antes se ponía 'corregido' aquí y esa palabra acababa en la columna
+        // Estado del parte que ve el director del hotel, que leía "Corregido"
+        // y entendía que algo estaba mal. Los días revisados se declaran en la
+        // nota de arriba del documento, que es su sitio.
+        //
+        // Un día que no tuvo fichaje y al que se le añaden horas es, por
+        // definición, un día imputado: se factura por el horario contratado.
+        if (f.estado === 'vacio' && (f.facturado || f.fichado)) f.estado = 'imputada';
       });
 
       // ---- Totales: SIEMPRE la suma de lo que se está imprimiendo ----
@@ -6956,7 +6959,12 @@
                   (f.hayEstimada ? ' <span class="small" style="color:#B45309;">· salida estimada</span>' : '') +
                   (f.haySinCerrar ? ' <span class="small" style="color:#B45309;">· sin cerrar</span>' : '')
                 : f.estado === 'imputada' ? '<span style="color:#B45309;font-weight:600;">Imputada</span>'
-                : f.estado === 'corregido' ? '' : '—')
+                : '—')
+                // La etiqueta "Corregido" se queda SOLO en esta pantalla, que
+                // la vemos nosotros. En el PDF que va al hotel no aparece: allí
+                // confundía al director, que leía "corregido" y entendía que
+                // algo estaba mal. Aquí en cambio hace falta, para saber de un
+                // vistazo qué días llevan mano humana y quién los tocó.
                 + (f.corregido ? ` <span class="badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;font-size:10px;padding:2px 6px;"
                      title="${[
                        f.calculado ? 'La app calculaba ' + fmtH(f.calculado.facturado) + ' h facturadas y ' + fmtH(f.calculado.fichado) + ' h de control' : '',

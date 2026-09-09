@@ -329,6 +329,23 @@ horas" y impresa al pie del parte completo, para explicar con palabras un día r
 Si vuelve a pedirlo: ofrecer la observación, o revisar el horario contratado si el
 servicio real termina antes de las 21:00. **Nunca tocar la hora fichada.**
 
+### La palabra "Corregido" no sale en el PDF (v155)
+
+La columna **Estado** del parte dice **si ese día quedó registro de fichaje o no**, y ya:
+`Fichado` o `Imputada`. Nada más.
+
+Antes ponía `Corregido` en los días revisados y el director del hotel lo leía como que
+algo estaba mal. Corregir cambia las horas, **no cambia si se fichó**: mezclar las dos
+cosas en la misma columna era el error.
+
+- El estado se calcula de lo que hay en la base de datos y **la corrección no lo toca**.
+  Un día sin fichaje al que se le añaden horas es `Imputada`, por definición.
+- La revisión humana se declara **en una frase arriba del documento**, no en 31 filas:
+  *"Parte revisado dia a dia por la direccion de PoolSafety antes de su emision."* Si son
+  pocos días, los enumera; si son todos, no ensucia con una lista de 31 números.
+- La etiqueta amarilla **Corregido** se queda **sólo en la pantalla del panel**, que la
+  vemos nosotros, con quién y cuándo al pasar el ratón.
+
 **No se tocan los fichajes.** El registro horario del trabajador es un documento legal
 (RD-ley 8/2019) y no se retoca para cuadrar una factura de hotel. La corrección vive en
 su propia tabla, con quién y cuándo, y el día sale marcado como **Corregido** en la

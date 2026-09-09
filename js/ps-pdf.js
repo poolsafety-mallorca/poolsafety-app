@@ -1450,13 +1450,19 @@ window.PSPdf = (function () {
     // Días revisados a mano. Se dice arriba, no escondido en una nota al pie:
     // quien firma la conformidad tiene derecho a saber que esas horas no salen
     // solas del reloj de fichar.
+    // Aquí, en una frase y arriba del todo, es donde se dice que hubo revisión
+    // humana. Neutra: revisar un parte antes de emitirlo es lo normal, no es
+    // reconocer un fallo. Cuando son muchos días no se listan uno a uno, que
+    // convierte una línea informativa en un muro de números.
     const nCorr = paraHotel ? 0 : (datos.diasCorregidos || []).length;
     if (nCorr) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
-      doc.setTextColor(146, 64, 14);
-      const dias = datos.diasCorregidos.join(', ');
-      const txt = `${nCorr} dia(s) con las horas revisadas y ajustadas manualmente por la direccion (dias ${dias}).`;
+      doc.setTextColor(100, 100, 100);
+      const detalle = nCorr <= 10 ? ` (dias ${datos.diasCorregidos.join(', ')})` : '';
+      const txt = nCorr === (datos.filas || []).length
+        ? 'Parte revisado dia a dia por la direccion de PoolSafety antes de su emision.'
+        : `Parte revisado por la direccion de PoolSafety antes de su emision: ${nCorr} dia(s) con el computo de horas ajustado sobre el registro automatico${detalle}.`;
       doc.splitTextToSize(limpiarTexto(txt), 180).forEach(l => { doc.text(l, 15, y); y += 4; });
       doc.setTextColor(0, 0, 0);
       y += 1;
@@ -1517,12 +1523,13 @@ window.PSPdf = (function () {
       else doc.setFillColor(255, 255, 255);
       doc.rect(15, y, ancho, 5.5, 'FD');
 
-      // Un día corregido a mano tiene que decirlo en el papel. Si no, quien lo
-      // recibe ve un fichaje de 09:02 a 20:07 y al lado 12 h facturadas, y lo
-      // que parece es un error nuestro.
-      const estadoTxt = f.corregido
-        ? (f.estado === 'imputada' ? 'Imputada · corr.' : 'Corregido')
-        : f.estado === 'fichado' ? 'Fichado' : f.estado === 'imputada' ? 'Imputada' : '';
+      // Esta columna dice si ese día quedó registro de fichaje o no. Y ya.
+      // Antes ponía "Corregido" en los días revisados, y el director del hotel
+      // leía "corregido" y entendía que algo estaba mal. Los días revisados se
+      // declaran en la nota de arriba del documento, que es su sitio: ahí se
+      // explica en una frase, en vez de sembrar una palabra suelta en 31 filas.
+      const estadoTxt = f.estado === 'fichado' ? 'Fichado'
+                      : f.estado === 'imputada' ? 'Imputada' : '';
 
       const valores = paraHotel ? [
         String(f.dia).padStart(2, '0') + ' ' + f.diaSem,
@@ -1610,7 +1617,6 @@ window.PSPdf = (function () {
       'Facturado: tiempo de servicio prestado dentro del horario contratado del hotel. Es la cifra que se factura.',
       'Control: horas efectivamente registradas por los socorristas en la aplicacion, con GPS y hora de entrada y salida.',
       'Imputada: dia sin registro en la aplicacion, facturado por el horario contratado.',
-      'Corregido: dia cuyas horas ha revisado y ajustado la direccion, por encima de lo que dio el registro automatico.',
       'Las dos cifras no coinciden por definicion: los minutos trabajados fuera del horario contratado no se facturan al hotel.'
     ]).forEach(t => {
       doc.splitTextToSize('- ' + limpiarTexto(t), 180).forEach(l => { doc.text(l, 15, y); y += 4; });
