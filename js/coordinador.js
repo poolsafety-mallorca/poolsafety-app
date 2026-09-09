@@ -7254,7 +7254,11 @@
     const v = n => (n || n === 0) ? String(n).replace('.', ',') : '';
     const esc = t => String(t == null ? '' : t).replace(/"/g, '&quot;');
     return `<tr data-dia="${f.dia}" style="${f.corregido ? 'background:#FFFBEB;' : ''}">
-      <td style="white-space:nowrap;"><b>${String(f.dia).padStart(2,'0')}</b> ${f.diaSem}</td>
+      <td style="white-space:nowrap;"><b>${String(f.dia).padStart(2,'0')}</b> ${f.diaSem}${
+        f.estado === 'imputada'
+          ? ` <span class="badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;font-size:9.5px;padding:1px 5px;"
+                title="Este día no tiene ningún fichaje en la app, así que en el parte sale como Imputada. Para que ponga Fichado hay que meter el fichaje que falta.">sin fichaje</span>`
+          : ''}</td>
       <td><input type="text" data-ch-socorristas="${f.dia}" value="${f.socorristas || ''}"
             style="width:44px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;text-align:right;"></td>
       <td><input type="text" data-ch-horario="${f.dia}" value="${esc(f.horarioTxt === '—' ? '' : f.horarioTxt)}"
@@ -7340,6 +7344,27 @@
                cada tecla al recalcular los totales y se los llevaba por delante. -->
           <div id="chAvisoSql"></div>
           <div id="chAviso"></div>
+          ${(() => {
+            // Días sin ningún fichaje en la app. En el parte salen como
+            // "Imputada", y corregirles las horas aquí NO cambia eso: el estado
+            // dice si se fichó, no cuántas horas se facturan. Para que pongan
+            // "Fichado" hay que meter el fichaje que falta, que además es lo
+            // que toca hacer con un registro horario incompleto. Se ofrece el
+            // atajo aquí mismo para no tener que ir a buscarlo.
+            const sinFichaje = factCache.filas.filter(f => f.estado === 'imputada');
+            if (!sinFichaje.length) return '';
+            return `<div style="background:#FFFBEB;border:1px solid #F59E0B;color:#92400E;padding:11px 13px;border-radius:9px;margin-bottom:10px;">
+              <div style="font-weight:700;">${sinFichaje.length} día(s) sin ningún fichaje: en el parte saldrán como "Imputada"</div>
+              <div class="small" style="margin-top:4px;">Días: <b>${sinFichaje.map(f => f.dia).join(', ')}</b>.</div>
+              <div class="small" style="margin-top:4px;">
+                Cambiarles las horas aquí no hace que pongan "Fichado": esa columna dice si se fichó o no.
+                Si esos días hubo servicio, mete el fichaje que falta y pasarán a estar fichados como el resto.
+              </div>
+              <button class="btn btn-primary btn-sm" style="margin-top:9px;background:#B45309;" onclick="irAFichajesQueFaltan()">
+                <svg class="ic ic-14"><use href="#ic-clock"/></svg> Añadir los fichajes que faltan
+              </button>
+            </div>`;
+          })()}
         </div>
 
         <div style="flex:1;overflow:auto;padding:0 18px;">
@@ -7677,6 +7702,20 @@
         'Puedes ir rellenando: al guardar te avisará otra vez si sigue sin hacerse.');
     }
   }
+
+  // Salta de la ventana de corregir a la de meter los fichajes que faltan.
+  // Avisa antes si hay algo escrito sin guardar, que perderlo por un clic sería
+  // exactamente el tipo de cosa que hace desconfiar de una herramienta.
+  window.irAFichajesQueFaltan = function () {
+    const hayCambios = [...document.querySelectorAll('#chCuerpo input')]
+      .some(i => i.dataset.chNota !== undefined ? false : i.defaultValue !== i.value);
+    if (hayCambios && !confirm(
+      'Tienes cambios sin guardar en esta ventana.\n\n' +
+      'Si sales ahora se pierden. ¿Quieres salir igualmente para meter los fichajes que faltan?'
+    )) return;
+    document.getElementById('corregirHorasModal')?.remove();
+    window.abrirFichajesQueFaltan();
+  };
 
   window.quitarCorreccionesMes = async function () {
     if (!factCache) return;

@@ -346,6 +346,23 @@ cosas en la misma columna era el error.
 - La etiqueta amarilla **Corregido** se queda **sólo en la pantalla del panel**, que la
   vemos nosotros, con quién y cuándo al pasar el ratón.
 
+### Y si un día pone "Imputada" y se quiere que ponga "Fichado" (v156)
+
+El cliente lo preguntó el 2026-09-09. **Corregirle las horas a mano no lo cambia, y no
+debe cambiarlo**: esa columna dice si hay registro de fichaje, no cuántas horas se
+facturan. Poner "Fichado" en un día sin registro es afirmar que existe una marca con GPS
+que no existe, en un documento que el hotel firma.
+
+**La forma buena es meter el fichaje que falta**, que además es lo que toca hacer con un
+registro horario incompleto: Facturación → *"Añadir los fichajes que faltan"*. Eso crea
+fichajes de verdad (`origen_manual = true`) y el día pasa a estar **Fichado** como el
+resto, en todas partes.
+
+Desde v156 ese atajo está dentro de la propia ventana de corregir: si el mes tiene días
+sin fichaje, sale arriba un aviso con los días, la explicación de por qué corregir las
+horas no los pone en Fichado, y un botón que lleva directo (avisando antes si hay cambios
+sin guardar). Los días afectados llevan además una etiqueta *sin fichaje* en su fila.
+
 **No se tocan los fichajes.** El registro horario del trabajador es un documento legal
 (RD-ley 8/2019) y no se retoca para cuadrar una factura de hotel. La corrección vive en
 su propia tabla, con quién y cuándo, y el día sale marcado como **Corregido** en la
