@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-08-26 (v121 · sesión 8ª · botiquín: hotel nuevo se siembra solo + ticks marcables por cualquier socorrista)
-**Cache SW actual: `poolsafety-v121`**
+Última actualización: 2026-09-15 (v122 · sesión 9ª · fichajes: editor por mes, se pueden corregir meses ya cerrados)
+**Cache SW actual: `poolsafety-v122`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -29,6 +29,29 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/22-diagnostico-reparar-unidades.sql` — reparar Botiquín 2/3 sin items (Cala Gran)
 - ✅ `sql/23-botiquin-hotel-nuevo-y-ticks.sql` — RLS inventario por empresa (ticks del 2º socorrista) + siembra hoteles creados vacíos
 - ⏳ `sql/10-asignaciones-temporales.sql` — cobertura del día (feature en curso, no urge)
+
+## 🕒 Editor de fichajes · navegación por mes (v122)
+
+`cargarFichajesEditables(empId, rango)` acepta `7`, `31` y **`'YYYY-MM'`**. El
+widget pinta una barra `◀ [mes] ▶` dentro del propio contenedor, así que vale
+igual en la ficha del empleado y en el modal "Horas del mes".
+
+Por qué: antes sólo existían "Últimos 7 días" y "Mes actual", y `renderHours`
+está fijada al mes en curso. Un fichaje de un mes ya cerrado se veía en la
+vista por día (que sí tiene calendario libre) pero salía **en sólo lectura**, y
+al pinchar el socorrista el editor abría el mes actual. Resultado: una salida
+del 14 de agosto era imposible de corregir en septiembre. Reportado por Adam.
+
+- `verHorasDeEmpleado(empId, mesRef)` hereda el mes de `#fichajesDia`.
+- El rango activo queda en `cont.dataset.rango`; los refrescos (editar, borrar,
+  verificar GPS, alta manual) vuelven a ese mes en vez de saltar al actual.
+- `editarFichaje()` ahora hace `.select()` y aborta si el UPDATE toca 0 filas.
+  Sin eso un bloqueo de RLS cantaba "✓ Fichaje actualizado" sin cambiar nada
+  (mismo patrón que ya usaban `borrarFichaje` y `verificarUbicacionFichaje`).
+
+Pendiente decidido NO hacer ahora: `renderHours` y `descargarInformeHoras`
+siguen siendo sólo del mes actual — para la gestoría haría falta un selector de
+mes también ahí.
 
 ## 🚨 Bugs conocidos abiertos (no bloquean pero atender)
 - **Hotel de Artá con GPS impreciso**: puede necesitar radio 150m manual o corregir coords GPS del pin del hotel desde admin.

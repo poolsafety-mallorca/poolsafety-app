@@ -2237,16 +2237,21 @@
   };
 
   // Click en empleado → abrir su ficha en pestaña Acciones (donde está el editor de fichajes)
-  window.verHorasDeEmpleado = function (empId) {
+  window.verHorasDeEmpleado = function (empId, mesRef) {
     if (window.openEmpleadoModal) {
       window.openEmpleadoModal(empId);
-      // Cambiar a pestaña Acciones tras abrir el modal y cargar los últimos 7 días
+      /* Si venimos de la vista por día (que tiene calendario libre), abrimos
+         el editor en ESE mes. Antes entraba siempre al mes actual: mirabas un
+         fichaje del 14 de agosto, pulsabas el socorrista y el editor te abría
+         septiembre vacío — la salida atrasada no había forma de tocarla. */
+      const delDia = (document.getElementById('fichajesDia') || {}).value || '';
+      const mes = mesRef || (/^\d{4}-\d{2}/.test(delDia) ? delDia.slice(0, 7) : 31);
       setTimeout(() => {
         const tabAcc = document.querySelector('.ficha-tab[data-ftab="acciones"]');
         if (tabAcc) tabAcc.click();
         setTimeout(() => {
           if (typeof window.cargarFichajesEditables === 'function') {
-            window.cargarFichajesEditables(empId, 31);
+            window.cargarFichajesEditables(empId, mes);
           }
         }, 300);
       }, 250);
@@ -4645,39 +4650,93 @@
       // Refrescar la lista de fichajes del editor si está abierto
       const cont = document.getElementById(`fichajesEdit_${empId}`);
       if (cont && typeof window.cargarFichajesEditables === 'function') {
-        // Determinar el rango actualmente cargado (por defecto 31)
-        window.cargarFichajesEditables(empId, 31);
+        // Volver al rango que el admin tuviera abierto (por defecto, mes actual)
+        window.cargarFichajesEditables(empId, cont.dataset.rango || 31);
       }
     } catch (err) {
       toast('Error: ' + err.message);
     }
   };
 
+  /* Rango del editor de fichajes.
+     Acepta 7 / 31 (compatibilidad con los botones de siempre) y además
+     'YYYY-MM' para abrir un mes CONCRETO. Sin esto el editor sólo alcanzaba
+     "últimos 7 días" o "mes actual": un fichaje de un mes ya cerrado se veía
+     en la vista por día (que sí tiene calendario libre) pero no había forma
+     de llegar a él con el lápiz, así que no se podía corregir. */
+  window.mesISO = function (d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+  function rangoFichajes(rango) {
+    if (typeof rango === 'string' && /^\d{4}-\d{2}$/.test(rango)) {
+      const [y, m] = rango.split('-').map(Number);
+      return {
+        desde: new Date(y, m - 1, 1, 0, 0, 0, 0),
+        hasta: new Date(y, m, 1, 0, 0, 0, 0),
+        mes: rango,
+        vacio: 'Sin fichajes en ese mes.'
+      };
+    }
+    const dias = Number(rango) || 31;
+    const hoy = new Date();
+    if (dias === 31) {
+      return {
+        desde: new Date(hoy.getFullYear(), hoy.getMonth(), 1, 0, 0, 0, 0),
+        hasta: null,
+        mes: window.mesISO(hoy),
+        vacio: 'Sin fichajes este mes.'
+      };
+    }
+    const desde = new Date();
+    desde.setDate(desde.getDate() - (dias - 1));
+    desde.setHours(0, 0, 0, 0);
+    return { desde, hasta: null, mes: window.mesISO(hoy), vacio: `Sin fichajes en los últimos ${dias} días.` };
+  }
+
+  // Barra de navegación por mes. Se pinta dentro del propio contenedor, así
+  // sirve igual en la ficha del empleado y en el modal de "Horas del mes".
+  function navMesHTML(empId, r, rangoTxt) {
+    const [y, m] = r.mes.split('-').map(Number);
+    const prev = window.mesISO(new Date(y, m - 2, 1));
+    const next = window.mesISO(new Date(y, m, 1));
+    const esMes = /^\d{4}-\d{2}$/.test(rangoTxt);
+    const etiqueta = new Date(y, m - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    return `
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 0 10px;border-bottom:1px solid #e2e8f0;margin-bottom:8px;">
+        <button class="btn btn-outline btn-sm" title="Mes anterior" onclick="cargarFichajesEditables('${empId}','${prev}')">◀</button>
+        <input type="month" value="${r.mes}" aria-label="Mes a editar"
+          onchange="cargarFichajesEditables('${empId}', this.value)"
+          style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-weight:600;" />
+        <button class="btn btn-outline btn-sm" title="Mes siguiente" onclick="cargarFichajesEditables('${empId}','${next}')">▶</button>
+        <span class="small text-muted" style="margin-left:4px;">${esMes ? etiqueta : 'últimos ' + Number(rangoTxt) + ' días'}</span>
+      </div>`;
+  }
+
   // Listar / editar / borrar fichajes existentes de un empleado.
-  window.cargarFichajesEditables = async function (empId, dias) {
+  window.cargarFichajesEditables = async function (empId, rango) {
     const cont = document.getElementById(`fichajesEdit_${empId}`);
     if (!cont) return;
+    const rangoTxt = String(rango == null ? 31 : rango);
+    const r = rangoFichajes(rangoTxt);
+    // Lo dejamos anotado para que quien refresque la lista (verificar GPS,
+    // editar, borrar) vuelva al MISMO mes y no salte al actual.
+    cont.dataset.rango = rangoTxt;
     cont.innerHTML = '<div class="text-muted small" style="padding:10px;text-align:center;">Cargando fichajes…</div>';
     try {
-      const desde = new Date();
-      if (dias === 31) {
-        desde.setDate(1); desde.setHours(0,0,0,0);
-      } else {
-        desde.setDate(desde.getDate() - (dias - 1));
-        desde.setHours(0,0,0,0);
-      }
-      const { data, error } = await window.sb.from('fichajes')
+      let q = window.sb.from('fichajes')
         .select('id, tipo, hora, gps_ok, gps_lat, gps_lng, fuera_de_zona, distancia_m, origen_manual, motivo_manual, puesto_id, puestos(nombre, gps_lat, gps_lng, gps_radio_m)')
         .eq('empleado_id', empId)
-        .gte('hora', desde.toISOString())
-        .order('hora', { ascending: false });
+        .gte('hora', r.desde.toISOString());
+      if (r.hasta) q = q.lt('hora', r.hasta.toISOString());
+      const { data, error } = await q.order('hora', { ascending: false });
       if (error) throw error;
       const rows = data || [];
       // Cache global para verMapaFichajeIndividual (sin tener que refetchear)
       window.__fichajesCache = window.__fichajesCache || {};
       rows.forEach(f => { window.__fichajesCache[f.id] = f; });
       if (rows.length === 0) {
-        cont.innerHTML = `<div class="text-muted small" style="padding:14px;text-align:center;">Sin fichajes en los últimos ${dias === 31 ? 'del mes' : dias + ' días'}.</div>`;
+        cont.innerHTML = navMesHTML(empId, r, rangoTxt) +
+          `<div class="text-muted small" style="padding:14px;text-align:center;">${r.vacio}</div>`;
         return;
       }
       // Agrupar por día para claridad
@@ -4688,7 +4747,7 @@
         (porDia[key] = porDia[key] || []).push(f);
       });
       const esAdmin = ((window.PS_SESSION || {}).rol || rol) === 'dueno';
-      cont.innerHTML = Object.entries(porDia).map(([diaTxt, arr]) => `
+      cont.innerHTML = navMesHTML(empId, r, rangoTxt) + Object.entries(porDia).map(([diaTxt, arr]) => `
         <div style="margin-bottom:10px;">
           <div style="font-weight:700;font-size:12px;color:#475569;padding:4px 0;text-transform:uppercase;">${diaTxt}</div>
           ${arr.map(f => {
@@ -4720,11 +4779,11 @@
             const botones = esAdmin ? `
                 ${botonMapa}
                 ${botonVerificar}
-                <button class="btn-icon" title="Editar hora" onclick="editarFichaje('${f.id}','${empId}',${dias})"
+                <button class="btn-icon" title="Editar hora" onclick="editarFichaje('${f.id}','${empId}','${rangoTxt}')"
                   style="width:30px;height:30px;background:#EFF6FF;color:#1D4ED8;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-pen"/></svg>
                 </button>
-                <button class="btn-icon" title="Borrar" onclick="borrarFichaje('${f.id}','${empId}',${dias})"
+                <button class="btn-icon" title="Borrar" onclick="borrarFichaje('${f.id}','${empId}','${rangoTxt}')"
                   style="width:30px;height:30px;background:#FEF2F2;color:#DC2626;border-radius:6px;border:none;cursor:pointer;">
                   <svg class="ic ic-14"><use href="#ic-x"/></svg>
                 </button>` : (botonMapa + botonVerificar);
@@ -4828,7 +4887,7 @@
       if (contEditor) {
         const empId = contEditor.dataset.empid || (contEditor.id.split('fichajesEdit_')[1]);
         if (empId && typeof window.cargarFichajesEditables === 'function') {
-          window.cargarFichajesEditables(empId, 31);
+          window.cargarFichajesEditables(empId, contEditor.dataset.rango || 31);
         }
       }
     } catch (err) { toast('Error: ' + err.message); alert('Error verificando ubicación:\n\n' + err.message); }
@@ -4872,18 +4931,32 @@
       const psSes = window.PS_SESSION || {};
       const updateData = { hora: nueva.toISOString() };
       // Intentar guardar motivo si la columna existe (misma columna que motivo_manual)
-      try {
-        const { error: errUp } = await window.sb.from('fichajes').update({
-          ...updateData,
-          motivo_manual: `[Editado ${new Date().toLocaleDateString('es-ES')}] ${motivo}`,
-          registrado_por: psSes.userId || null
-        }).eq('id', fichajeId);
-        if (errUp && String(errUp.message).includes('column')) {
-          // Sin columnas de auditoría: solo la hora
-          const { error: err2 } = await window.sb.from('fichajes').update(updateData).eq('id', fichajeId);
-          if (err2) throw err2;
-        } else if (errUp) throw errUp;
-      } catch (e) { throw e; }
+      /* OJO: siempre con .select(). Sin él, un UPDATE que no toca ninguna fila
+         (RLS que lo bloquea, id que ya no existe) vuelve SIN error y el toast
+         cantaba "✓ actualizado" sin haber cambiado nada. Es el mismo patrón
+         que ya usan verificarUbicacionFichaje() y borrarFichaje(). */
+      let filas = null;
+      const { data: upd, error: errUp } = await window.sb.from('fichajes').update({
+        ...updateData,
+        motivo_manual: `[Editado ${new Date().toLocaleDateString('es-ES')}] ${motivo}`,
+        registrado_por: psSes.userId || null
+      }).eq('id', fichajeId).select();
+      if (errUp && String(errUp.message).includes('column')) {
+        // Sin columnas de auditoría: solo la hora
+        const { data: upd2, error: err2 } = await window.sb.from('fichajes')
+          .update(updateData).eq('id', fichajeId).select();
+        if (err2) throw err2;
+        filas = upd2;
+      } else if (errUp) {
+        throw errUp;
+      } else {
+        filas = upd;
+      }
+      if (!filas || !filas.length) {
+        alert('No se ha podido guardar el cambio.\n\nEl fichaje no se ha modificado (0 filas). Revisa la policy UPDATE de fichajes o que sigas siendo administrador.');
+        toast('No se guardó: 0 filas modificadas');
+        return;
+      }
 
       toast(`✓ Fichaje actualizado a ${nuevaFecha} ${nuevaHora}`);
       cargarFichajesEditables(empId, dias);
@@ -4969,8 +5042,9 @@
         toast('No disponible aquí, hazlo desde la ficha del empleado.'); return;
       }
       await window.ficharPorEmpleado(empId, nombreEmp || 'este empleado', tipo);
-      // Refrescar la lista tras crear
-      cargarFichajesEditables(empId, 31);
+      // Refrescar la lista tras crear, en el mes que estuviera abierto
+      const contEd = document.getElementById(`fichajesEdit_${empId}`);
+      cargarFichajesEditables(empId, (contEd && contEd.dataset.rango) || 31);
     };
     // Alias antiguo por compatibilidad (por si algún onclick sigue apuntando aquí)
     window.ficharPorEmpleadoDesdeEditor = () => window.addFichajeDesdeEditor('entrada');
