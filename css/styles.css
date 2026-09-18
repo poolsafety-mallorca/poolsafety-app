@@ -3534,3 +3534,80 @@ img, svg { display: block; max-width: 100%; }
 .emp-folder-chevron { transition: transform var(--t-fast); flex: none; opacity: .6; }
 .emp-folder.open .emp-folder-chevron { transform: rotate(180deg); }
 .emp-folder-body { padding: 14px; border-top: 1px solid var(--line); }
+
+/* ==========================================================================
+   TAREAS DE DIRECCIÓN PARA COORDINADORES (sql/30)
+   Lista sencilla con su casilla de "hecha". Nada de tabla: esto se mira
+   también desde el móvil mientras se va de hotel en hotel.
+   ========================================================================== */
+.tc-kpis { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.tc-kpi {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 20px;
+  background: var(--warning-bg);
+  color: #92400E;
+}
+
+.tc-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 2px;
+  border-top: 1px solid var(--line);
+}
+.tc-item:first-child { border-top: 0; }
+.tc-item.hecha { opacity: .55; }
+.tc-item.hecha .tc-titulo { text-decoration: line-through; }
+
+.tc-check {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border: 2px solid var(--ink-500);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.tc-check:hover { border-color: #059669; }
+.tc-check.on { background: #059669; border-color: #059669; }
+
+.tc-body { flex: 1; min-width: 0; }
+.tc-titulo { font-size: 14px; font-weight: 700; line-height: 1.35; }
+.tc-desc { font-size: 12.5px; color: var(--ink-700); margin-top: 3px; line-height: 1.45; }
+.tc-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+
+.tc-prio {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 20px;
+  background: var(--ink-100);
+  color: var(--ink-700);
+}
+.tc-prio.alta { background: #FEE2E2; color: #B91C1C; }
+.tc-prio.baja { background: var(--ink-100); color: var(--ink-500); }
+
+.tc-lim { font-size: 11.5px; font-weight: 600; color: var(--ink-500); }
+.tc-lim.hoy   { color: #B45309; font-weight: 700; }
+.tc-lim.tarde { color: #B91C1C; font-weight: 700; }
+.tc-para { font-size: 11.5px; color: var(--ink-500); }
+
+.tc-hechas-head {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-500);
+  cursor: pointer;
+  user-select: none;
+}
+.tc-hechas-head:hover { color: var(--ink-700); }

@@ -8235,8 +8235,17 @@
       (data || []).forEach(u => coordUsuariosMap[u.id] = { nombre: u.nombre || u.email.split('@')[0], email: u.email, rol: u.rol });
       if (coordFilterCoord) {
         const coords = (data || []).filter(u => u.rol === 'coordinador');
+        // Esta función se vuelve a llamar cada vez que se recarga el panel, y
+        // el panel se recarga al usar el propio filtro. Al reconstruir las
+        // opciones el desplegable se quedaba en "Todos los coordinadores"
+        // aunque por dentro siguiera filtrando por uno: parecía que el filtro
+        // no hacía nada y que faltaban eventos. Por eso se repone la elección.
         coordFilterCoord.innerHTML = '<option value="todos">Todos los coordinadores</option>' +
-          coords.map(u => `<option value="${u.id}">${u.nombre || u.email.split('@')[0]}</option>`).join('');
+          coords.map(u => `<option value="${u.id}">${escapeHtml(u.nombre || u.email.split('@')[0])}</option>`).join('');
+        const sigueExistiendo = coordFilterCoordVal === 'todos'
+          || coords.some(u => u.id === coordFilterCoordVal);
+        if (!sigueExistiendo) coordFilterCoordVal = 'todos';
+        coordFilterCoord.value = coordFilterCoordVal;
       }
     } catch (e) { console.warn('[Coord] usuarios:', e.message); }
   }
@@ -8403,6 +8412,356 @@
   // Cargar al inicio y después de que auth-guard confirme sesión
   cargarCoordinacion();
   document.addEventListener('ps-session-updated', () => cargarCoordinacion());
+
+  /* ==========================================================================
+     TAREAS DE DIRECCIÓN PARA COORDINADORES (sql/30)
+     El apartado Coordinación sólo iba de abajo arriba: ellos apuntaban y Adam
+     miraba. Esto es el camino de vuelta — dirección pone tareas, el coordinador
+     las ve al entrar y las marca cuando las hace, y queda constancia.
+     ========================================================================== */
+
+  let tareasCoordFaltaSQL = false;   // true si aún no se ha ejecutado sql/30
+  let tareasCoordVerHechas = false;
+
+  // La tabla puede no existir todavía (sql/30 sin ejecutar). En vez de soltar
+  // un error en inglés, lo decimos en castellano y explicamos qué hacer.
+  function esTablaQueFalta(err) {
+    const m = (err && err.message || '') + ' ' + (err && err.code || '');
+    return /tareas_coordinador/i.test(m) && /(does not exist|schema cache|42P01|PGRST205)/i.test(m);
+  }
+
+  function avisoFaltaSQL() {
+    return `
+      <div class="panel" style="margin-bottom:16px;border:1px solid #F59E0B;">
+        <div class="panel-body" style="padding:16px;">
+          <div style="font-weight:700;margin-bottom:6px;color:#92400E;">
+            Falta un paso en la base de datos para poder usar las tareas
+          </div>
+          <div class="small" style="color:var(--ink-700);line-height:1.5;">
+            Entra en Supabase → <b>SQL Editor</b>, pega entero el fichero
+            <code>sql/30-tareas-coordinadores.sql</code> del proyecto y dale a <b>Run</b>.
+            Sólo hay que hacerlo una vez. Después recarga esta página y ya aparecerá el
+            apartado de tareas. No borra ni cambia nada de lo que ya hay.
+          </div>
+        </div>
+      </div>`;
+  }
+
+  async function cargarTareasCoord() {
+    const psSes = window.PS_SESSION || {};
+    if (!window.sb || !psSes.empresa_id) return [];
+    const esAdmin = psSes.rol === 'dueno';
+    let q = window.sb.from('tareas_coordinador')
+      .select('*')
+      .order('hecha', { ascending: true })
+      .order('fecha_limite', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .limit(200);
+    // El coordinador sólo pide las suyas: así no se trae las de los demás
+    // aunque la RLS ya se lo impediría. Menos datos por el cable.
+    if (!esAdmin) q = q.eq('coordinador_id', psSes.userId);
+    else q = q.eq('empresa_id', psSes.empresa_id);
+    const { data, error } = await q;
+    if (error) {
+      if (esTablaQueFalta(error)) { tareasCoordFaltaSQL = true; return []; }
+      throw error;
+    }
+    tareasCoordFaltaSQL = false;
+    return data || [];
+  }
+
+  function pintaPrioridad(p) {
+    if (p === 'alta') return '<span class="tc-prio alta">Prioritaria</span>';
+    if (p === 'baja') return '<span class="tc-prio baja">Cuando puedas</span>';
+    return '<span class="tc-prio media">Normal</span>';
+  }
+
+  // "Para el viernes", "Se pasó hace 2 días"… en cristiano, no una fecha suelta.
+  function pintaLimite(t) {
+    if (!t.fecha_limite) return '';
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const lim = new Date(t.fecha_limite + 'T00:00:00');
+    const dias = Math.round((lim - hoy) / 86400000);
+    const txt = lim.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+    if (t.hecha) return `<span class="tc-lim">Para el ${txt}</span>`;
+    if (dias < 0)  return `<span class="tc-lim tarde">Se pasó el ${txt}</span>`;
+    if (dias === 0) return `<span class="tc-lim hoy">Para hoy</span>`;
+    if (dias === 1) return `<span class="tc-lim hoy">Para mañana</span>`;
+    return `<span class="tc-lim">Para el ${txt}</span>`;
+  }
+
+  function filaTarea(t, opts) {
+    const quien = coordUsuariosMap[t.coordinador_id];
+    const puso  = coordUsuariosMap[t.asignada_por];
+    const hechaEl = t.hecha_el
+      ? new Date(t.hecha_el).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })
+      : '';
+    return `
+      <div class="tc-item ${t.hecha ? 'hecha' : ''}">
+        <button type="button" class="tc-check ${t.hecha ? 'on' : ''}"
+                title="${t.hecha ? 'Marcar como pendiente otra vez' : 'Marcar como hecha'}"
+                onclick="marcarTareaCoord('${t.id}', ${t.hecha ? 'false' : 'true'})">
+          ${t.hecha ? '<svg class="ic ic-14"><use href="#ic-check"/></svg>' : ''}
+        </button>
+        <div class="tc-body">
+          <div class="tc-titulo">${escapeHtml(t.titulo)}</div>
+          ${t.descripcion ? `<div class="tc-desc">${escapeHtml(t.descripcion)}</div>` : ''}
+          <div class="tc-meta">
+            ${pintaPrioridad(t.prioridad)}
+            ${pintaLimite(t)}
+            ${opts.admin && quien ? `<span class="tc-para">Para ${escapeHtml(quien.nombre)}</span>` : ''}
+            ${!opts.admin && puso ? `<span class="tc-para">De ${escapeHtml(puso.nombre)}</span>` : ''}
+            ${t.hecha && hechaEl ? `<span class="tc-para">Hecha el ${hechaEl}</span>` : ''}
+          </div>
+        </div>
+        ${opts.admin ? `
+          <button class="icon-btn-mini danger" title="Borrar esta tarea"
+                  onclick="borrarTareaCoord('${t.id}','${escapeHtml(t.titulo).replace(/'/g,"&#39;")}')">
+            <svg class="ic ic-14"><use href="#ic-x"/></svg>
+          </button>` : ''}
+      </div>`;
+  }
+
+  window.renderTareasCoord = async function () {
+    const psSes = window.PS_SESSION || {};
+    const admBox = document.getElementById('tareasCoordBlock');
+    const selfBox = document.getElementById('misTareasCoordBlock');
+    if (!admBox || !selfBox || !window.sb) return;
+    const esAdmin = psSes.rol === 'dueno';
+    const esCoord = psSes.rol === 'coordinador';
+    admBox.innerHTML = ''; selfBox.innerHTML = '';
+    if (!esAdmin && !esCoord) return;
+    if (!psSes.empresa_id) { setTimeout(window.renderTareasCoord, 400); return; }
+    // Los nombres (para quién es, quién la puso) salen de esta copia en
+    // memoria. Si este bloque se pinta antes que la actividad, aún está
+    // vacía y saldrían guiones donde debería ir el nombre.
+    if (Object.keys(coordUsuariosMap).length === 0) { try { await cargarUsuariosCoord(); } catch (e) {} }
+
+    let tareas = [];
+    try {
+      tareas = await cargarTareasCoord();
+    } catch (err) {
+      const caja = esAdmin ? admBox : selfBox;
+      caja.innerHTML = `<div class="text-muted small" style="padding:12px;color:var(--danger);">No se han podido cargar las tareas: ${escapeHtml(err.message)}</div>`;
+      return;
+    }
+    if (tareasCoordFaltaSQL) {
+      (esAdmin ? admBox : selfBox).innerHTML = avisoFaltaSQL();
+      return;
+    }
+
+    const pendientes = tareas.filter(t => !t.hecha);
+    const hechas     = tareas.filter(t => t.hecha);
+
+    if (esCoord) {
+      // Vista del coordinador: sólo lo suyo, y sin poder borrar ni editar.
+      selfBox.innerHTML = `
+        <section class="panel" style="margin-bottom:16px;${pendientes.length ? 'border-left:3px solid #F59E0B;' : ''}">
+          <div class="panel-head">
+            <div class="panel-title-wrap">
+              <div class="kpi-icon" style="width:30px;height:30px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;">
+                <svg class="ic ic-16"><use href="#ic-clipboard"/></svg>
+              </div>
+              <h3 class="panel-title">Tareas que te ha puesto dirección</h3>
+              <span class="panel-count">${pendientes.length} pendiente${pendientes.length === 1 ? '' : 's'}</span>
+            </div>
+            <button class="btn btn-outline btn-icon" onclick="renderTareasCoord()" title="Refrescar">
+              <svg class="ic ic-16"><use href="#ic-refresh"/></svg>
+            </button>
+          </div>
+          <div class="panel-body">
+            ${pendientes.length === 0
+              ? `<div class="coord-empty"><div>No tienes ninguna tarea pendiente ahora mismo.</div></div>`
+              : pendientes.map(t => filaTarea(t, { admin: false })).join('')}
+            ${hechas.length ? `
+              <div class="tc-hechas-head" onclick="toggleTareasHechas()">
+                ${tareasCoordVerHechas ? 'Ocultar' : 'Ver'} las ${hechas.length} que ya has hecho
+              </div>
+              ${tareasCoordVerHechas ? hechas.map(t => filaTarea(t, { admin: false })).join('') : ''}
+            ` : ''}
+          </div>
+        </section>`;
+      return;
+    }
+
+    // Vista de dirección: todas, con quién las tiene, y el botón de poner una nueva.
+    const porCoord = {};
+    pendientes.forEach(t => { porCoord[t.coordinador_id] = (porCoord[t.coordinador_id] || 0) + 1; });
+    const resumen = Object.keys(porCoord).map(id => {
+      const u = coordUsuariosMap[id];
+      return `<span class="tc-kpi">${escapeHtml(u ? u.nombre : '—')}: ${porCoord[id]}</span>`;
+    }).join('');
+
+    admBox.innerHTML = `
+      <section class="panel" style="margin-bottom:20px;">
+        <div class="panel-head">
+          <div class="panel-title-wrap">
+            <div class="kpi-icon" style="width:30px;height:30px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;">
+              <svg class="ic ic-16"><use href="#ic-clipboard"/></svg>
+            </div>
+            <h3 class="panel-title">Tareas que has puesto a los coordinadores</h3>
+            <span class="panel-count">${pendientes.length} sin hacer · ${hechas.length} hechas</span>
+          </div>
+          <div class="row gap-2">
+            <button class="btn btn-primary btn-sm" onclick="openNuevaTareaCoord()">
+              <svg class="ic ic-14"><use href="#ic-plus"/></svg>
+              Nueva tarea
+            </button>
+            <button class="btn btn-outline btn-icon" onclick="renderTareasCoord()" title="Refrescar">
+              <svg class="ic ic-16"><use href="#ic-refresh"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="panel-body">
+          ${resumen ? `<div class="tc-kpis">${resumen}</div>` : ''}
+          ${pendientes.length === 0
+            ? `<div class="coord-empty">
+                 <svg class="ic ic-24"><use href="#ic-clipboard"/></svg>
+                 <div>No hay tareas pendientes. Pulsa <b>"Nueva tarea"</b> para mandarle algo a Alex o a Óscar: les saldrá nada más entrar en este apartado.</div>
+               </div>`
+            : pendientes.map(t => filaTarea(t, { admin: true })).join('')}
+          ${hechas.length ? `
+            <div class="tc-hechas-head" onclick="toggleTareasHechas()">
+              ${tareasCoordVerHechas ? 'Ocultar' : 'Ver'} las ${hechas.length} ya hechas
+            </div>
+            ${tareasCoordVerHechas ? hechas.map(t => filaTarea(t, { admin: true })).join('') : ''}
+          ` : ''}
+        </div>
+      </section>`;
+  };
+
+  window.toggleTareasHechas = function () {
+    tareasCoordVerHechas = !tareasCoordVerHechas;
+    window.renderTareasCoord();
+  };
+
+  window.marcarTareaCoord = async function (id, hecha) {
+    const psSes = window.PS_SESSION || {};
+    try {
+      const patch = hecha
+        ? { hecha: true,  hecha_el: new Date().toISOString(), hecha_por: psSes.userId }
+        : { hecha: false, hecha_el: null, hecha_por: null };
+      const { data, error } = await window.sb.from('tareas_coordinador')
+        .update(patch).eq('id', id).select('id');
+      if (error) throw error;
+      if (!data || !data.length) { toast('No se ha podido guardar (0 filas). Puede ser un tema de permisos en Supabase.'); return; }
+      toast(hecha ? '✓ Tarea marcada como hecha' : 'Tarea otra vez pendiente');
+      window.renderTareasCoord();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  window.borrarTareaCoord = async function (id, titulo) {
+    const psSes = window.PS_SESSION || {};
+    if (psSes.rol !== 'dueno') { alert('Sólo dirección puede borrar tareas.'); return; }
+    if (!confirm(`¿Borrar la tarea "${titulo}"?\n\nDesaparece para el coordinador y no queda registro de ella.`)) return;
+    try {
+      const { error } = await window.sb.from('tareas_coordinador').delete().eq('id', id);
+      if (error) throw error;
+      toast('Tarea borrada');
+      window.renderTareasCoord();
+    } catch (err) { toast('Error: ' + err.message); }
+  };
+
+  window.openNuevaTareaCoord = async function () {
+    const psSes = window.PS_SESSION || {};
+    if (psSes.rol !== 'dueno') { alert('Sólo dirección puede poner tareas.'); return; }
+    let coords = [];
+    try {
+      const { data, error } = await window.sb.from('usuarios')
+        .select('id, nombre, email').eq('rol', 'coordinador').eq('activo', true).order('nombre');
+      if (error) throw error;
+      coords = data || [];
+    } catch (err) { alert('No se ha podido cargar la lista de coordinadores: ' + err.message); return; }
+    if (coords.length === 0) { alert('No hay ningún coordinador activo al que ponerle una tarea.'); return; }
+
+    let modal = document.getElementById('nuevaTareaCoordModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'nuevaTareaCoordModal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;';
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:14px;max-width:520px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+        <div style="padding:14px 18px;background:#FEF3C7;color:#78350F;display:flex;justify-content:space-between;align-items:center;border-radius:14px 14px 0 0;">
+          <div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Nueva tarea</div>
+            <div style="font-size:16px;font-weight:700;margin-top:2px;">Mandar algo a un coordinador</div>
+          </div>
+          <button onclick="document.getElementById('nuevaTareaCoordModal').remove()" style="background:rgba(255,255,255,.6);border:0;color:#78350F;width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:20px;">×</button>
+        </div>
+        <div style="padding:18px;">
+          <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">¿Para quién?</label>
+          <select id="ntc_coord" style="width:100%;padding:11px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;background:#fff;margin-bottom:12px;">
+            ${coords.map(u => `<option value="${u.id}">${escapeHtml(u.nombre || u.email.split('@')[0])}</option>`).join('')}
+          </select>
+
+          <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">¿Qué tiene que hacer?</label>
+          <input type="text" id="ntc_titulo" maxlength="120" placeholder="Ej.: Pasar por Cala Azul a revisar el botiquín"
+            style="width:100%;padding:11px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:12px;" />
+
+          <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Detalles (opcional)</label>
+          <textarea id="ntc_desc" rows="3" placeholder="Lo que quieras añadir: a quién preguntar, qué mirar…"
+            style="width:100%;padding:11px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;margin-bottom:12px;resize:vertical;"></textarea>
+
+          <div class="row gap-2" style="flex-wrap:wrap;">
+            <div style="flex:1;min-width:150px;">
+              <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Importancia</label>
+              <select id="ntc_prio" style="width:100%;padding:11px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;background:#fff;">
+                <option value="media" selected>Normal</option>
+                <option value="alta">Prioritaria</option>
+                <option value="baja">Cuando pueda</option>
+              </select>
+            </div>
+            <div style="flex:1;min-width:150px;">
+              <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Para cuándo (opcional)</label>
+              <input type="date" id="ntc_fecha" style="width:100%;padding:11px;border:1px solid #CBD5E1;border-radius:8px;font-size:14px;" />
+            </div>
+          </div>
+        </div>
+        <div style="padding:14px 18px;border-top:1px solid #E2E8F0;display:flex;gap:8px;justify-content:flex-end;background:#F8FAFC;border-radius:0 0 14px 14px;">
+          <button class="btn btn-outline" onclick="document.getElementById('nuevaTareaCoordModal').remove()">Cancelar</button>
+          <button class="btn btn-primary" onclick="guardarNuevaTareaCoord()">Mandar tarea</button>
+        </div>
+      </div>`;
+    setTimeout(() => { const i = document.getElementById('ntc_titulo'); if (i) i.focus(); }, 60);
+  };
+
+  window.guardarNuevaTareaCoord = async function () {
+    const psSes = window.PS_SESSION || {};
+    const coordinador_id = document.getElementById('ntc_coord').value;
+    const titulo = document.getElementById('ntc_titulo').value.trim();
+    const descripcion = document.getElementById('ntc_desc').value.trim();
+    const prioridad = document.getElementById('ntc_prio').value;
+    const fecha = document.getElementById('ntc_fecha').value;
+    if (!titulo) { alert('Escribe al menos qué tiene que hacer.'); return; }
+    try {
+      const { error } = await window.sb.from('tareas_coordinador').insert({
+        empresa_id: psSes.empresa_id,
+        coordinador_id,
+        titulo,
+        descripcion: descripcion || null,
+        prioridad,
+        fecha_limite: fecha || null,
+        asignada_por: psSes.userId
+      });
+      if (error) throw error;
+      document.getElementById('nuevaTareaCoordModal')?.remove();
+      toast('✓ Tarea mandada. Le saldrá al entrar en Coordinación.');
+      window.renderTareasCoord();
+    } catch (err) {
+      if (esTablaQueFalta(err)) { alert('Falta ejecutar sql/30-tareas-coordinadores.sql en Supabase. Está explicado en el aviso naranja del apartado.'); return; }
+      alert('Error guardando la tarea: ' + err.message);
+    }
+  };
+
+  // Se pinta al entrar en Coordinación, al arrancar y cuando cambia la sesión.
+  document.querySelectorAll('[data-section="coordinacion"]').forEach(el => {
+    el.addEventListener('click', () => setTimeout(() => window.renderTareasCoord(), 250));
+  });
+  setTimeout(() => window.renderTareasCoord(), 1700);
+  document.addEventListener('ps-session-updated', () => setTimeout(() => window.renderTareasCoord(), 500));
 
   /* ---------- Modal nueva actividad ---------- */
   window.openNuevaActividad = () => document.getElementById('actividadModal').classList.add('open');
@@ -9230,6 +9589,10 @@
         alert(`✓ Ficha actualizada.\n\n⚠️ El email de LOGIN sigue siendo el antiguo: ${prev.email}\n\nPara cambiarlo también en Supabase Auth ve a Dashboard → Authentication → Users → busca el usuario → Edit → nuevo email → Save. El miembro tendrá que confirmar el cambio desde su bandeja de entrada.`);
       }
       renderEquipoBlock();
+      // El nombre también sale en la actividad de coordinadores y en su filtro,
+      // y esos se leen de una copia en memoria: sin esto seguía viéndose el
+      // nombre antiguo hasta recargar la página, y parecía que no se guardaba.
+      if (window.cargarCoordinacion) window.cargarCoordinacion();
     } catch (err) { alert('Error guardando: ' + err.message); }
   };
 

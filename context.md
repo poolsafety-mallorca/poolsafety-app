@@ -34,6 +34,13 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
   `incidencias.email_enviado_at / email_enviado_a / email_modo / email_error`. Deja
   constancia de a quién y cuándo se mandó cada parte, evita mandarlo dos veces y
   permite ver los pendientes. Termina con un SELECT de partes pendientes.
+- ⏳ **`sql/30-tareas-coordinadores.sql` — PENDIENTE DE EJECUTAR**: tabla
+  `tareas_coordinador` para que dirección mande tareas a Alex y Óscar y ellos las
+  marquen como hechas. **Crear/borrar sólo el dueño**; el coordinador ve las suyas y
+  sólo puede cambiar el estado (lo impone un trigger, no sólo la interfaz). No toca la
+  tabla `tareas` que ya existía (ésa es coordinador → socorrista y apunta a
+  `empleados`, donde los coordinadores no tienen ficha). Mientras no se ejecute, el
+  apartado Coordinación enseña un aviso naranja en castellano explicando el paso.
 - ⏳ **`sql/29-horas-hotel-ajustes.sql` — PENDIENTE DE EJECUTAR**: tabla
   `horas_hotel_ajustes` para corregir a mano las horas facturables de un hotel, día a
   día, sin tocar los fichajes. Ver la sección "Corregir horas de un hotel" más abajo.
@@ -388,6 +395,27 @@ fichaje impreso al lado dice 09:02–20:07. Es su decisión (factura el horario 
 pero **el PDF enseña las dos cosas**: por eso los días corregidos van marcados, para que
 quien lo reciba entienda por qué no cuadran y no parezca un error nuestro.
 
+## 🧭 Apartado Coordinación · dos fallos corregidos (v158)
+
+Adam avisó de que "cambiamos el nombre de un coordinador y no nos deja, o no sale
+nada". Eran dos cosas distintas, las dos en `js/coordinador.js`:
+
+1. **El filtro de coordinadores se reseteaba solo.** `cargarUsuariosCoord()` reconstruye
+   el `<select>` de coordinadores en cada recarga del panel, y el propio filtro
+   dispara esa recarga. Al reconstruir las opciones el desplegable volvía visualmente
+   a "Todos los coordinadores" mientras por dentro seguía filtrando por la persona
+   elegida: parecía que el filtro no hacía nada y que faltaban eventos. Ahora se
+   repone el valor elegido tras reconstruir. **Si alguien vuelve a tocar ese
+   `innerHTML`, tiene que reponer `coordFilterCoord.value`.**
+2. **Al renombrar un miembro, la actividad seguía con el nombre viejo.** El nombre se
+   guardaba bien, pero `guardarMiembroEquipo()` sólo repintaba "Miembros del equipo";
+   el panel de actividad lee los nombres de `coordUsuariosMap`, que no se refrescaba.
+   Hasta recargar la página parecía que el cambio no se había guardado. Ahora llama
+   también a `cargarCoordinacion()`.
+
+Ojo con lo segundo: el email que se edita ahí es sólo el visible. **El email de LOGIN
+se cambia en Supabase → Authentication → Users**, y la app ya lo avisa al guardar.
+
 ## ⚠️ `js/data.js` son MOCKS · no usarlos para nada real
 
 `PS.socorristas` son 40 nombres inventados de cuando la app era una maqueta (María
@@ -559,6 +587,7 @@ app poolsafety/
 | `inventario_puesto` | Stock por hotel. Poblado 2026-07-29 con SQL cross join (23 hoteles × 41 items = 943 filas) |
 | `alertas` | Auto stock-bajo + manuales socorrista + mensajes al coordinador (tipo='otro') |
 | `tareas` | Del coordinador al socorrista (real). Rellenada al usar "Solicitar firma Kit Alta" también |
+| `tareas_coordinador` | De dirección al coordinador (sql/30). Separada de `tareas` porque los coordinadores no tienen ficha en `empleados` |
 | `notas` | Mensajes coordinador → socorrista (con autor_nombre) |
 | `titulaciones_empleado` | DNI, SVB, DEA, socorrismo, PRL, contrato, nómina. Max 20 MB por archivo |
 
