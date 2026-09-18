@@ -4678,18 +4678,34 @@
       );
     }
 
-    if (visibles.length === 0) {
+    // Las bajas van a su propia carpeta, plegada, para que no entierren a
+    // las fichas de quien está trabajando.
+    const enActivo = visibles.filter(e => e.estado !== 'baja');
+    const enBaja   = visibles.filter(e => e.estado === 'baja');
+    renderCarpetaBajas(enBaja);
+
+    if (enActivo.length === 0) {
       const empty = empleados.length === 0
         ? `<div style="grid-column:1/-1; padding: 40px; text-align:center; color: var(--ink-500);">
              <svg class="ic ic-24" style="opacity:.4; margin: 0 auto 10px;"><use href="#ic-users"/></svg>
              <div>Aún no hay empleados. Pulsa <b>"+ Nuevo empleado"</b> para dar de alta al primero.</div>
            </div>`
+        : enBaja.length > 0
+        ? `<div style="grid-column:1/-1; padding: 30px; text-align:center; color: var(--ink-500);">Ninguna ficha activa con este filtro — mira la carpeta de bajas, ahí abajo.</div>`
         : `<div style="grid-column:1/-1; padding: 40px; text-align:center; color: var(--ink-500);">Sin resultados con este filtro</div>`;
       empleadosGrid.innerHTML = empty;
+      engancharTarjetas(empleadosGrid);
       return;
     }
 
-    empleadosGrid.innerHTML = visibles.map(e => {
+    empleadosGrid.innerHTML = enActivo.map(e => tarjetaEmpleado(e)).join('');
+
+    engancharTarjetas(empleadosGrid);
+  }
+
+  // Plantilla de tarjeta, compartida por la rejilla principal y por la
+  // carpeta de bajas: una sola definición para que no se desincronicen.
+  function tarjetaEmpleado(e) {
       const puestoObj = e.puestoId ? PS.puestos.find(p => p.id === e.puestoId) : null;
       const puesto = puestoObj ? puestoObj.nombre : 'Sin puesto';
       const photoStyle = e.fotoUrl ? `style="background-image:url('${e.fotoUrl}');"` : '';
@@ -4714,11 +4730,48 @@
           <div class="emp-card-role">${e.esCorreturnos ? 'Correturnos · sin puesto fijo' : puesto}</div>
           <div class="emp-card-badges">${badges.join('')}</div>
         </div>`;
-    }).join('');
+  }
 
-    empleadosGrid.querySelectorAll('.emp-card').forEach(c => {
+  function engancharTarjetas(cont) {
+    if (!cont) return;
+    cont.querySelectorAll('.emp-card').forEach(c => {
       c.addEventListener('click', () => openEmpleadoModal(c.dataset.emp));
     });
+  }
+
+  /* ---------- Carpeta de empleados dados de baja ----------
+     Se pliega y despliega, y recuerda cómo la dejaste. Si filtras por
+     "De baja" se abre sola: si no, parecería que no hay nada. */
+  function renderCarpetaBajas(bajas) {
+    const folder = document.getElementById('empleadosBajasFolder');
+    const grid   = document.getElementById('empleadosBajasGrid');
+    const body   = document.getElementById('empleadosBajasBody');
+    const count  = document.getElementById('empleadosBajasCount');
+    const toggle = document.getElementById('empleadosBajasToggle');
+    if (!folder || !grid || !body || !count || !toggle) return;
+
+    if (bajas.length === 0) { folder.classList.add('hidden'); return; }
+    folder.classList.remove('hidden');
+    count.textContent = bajas.length;
+
+    grid.innerHTML = bajas.map(e => tarjetaEmpleado(e)).join('');
+    engancharTarjetas(grid);
+
+    const abrir = empFiltro === 'baja' || localStorage.getItem('ps-bajas-abierto') === '1';
+    body.classList.toggle('hidden', !abrir);
+    folder.classList.toggle('open', abrir);
+    toggle.setAttribute('aria-expanded', String(abrir));
+
+    if (!toggle.dataset.listo) {
+      toggle.dataset.listo = '1';
+      toggle.addEventListener('click', () => {
+        const nuevo = body.classList.contains('hidden');
+        body.classList.toggle('hidden', !nuevo);
+        folder.classList.toggle('open', nuevo);
+        toggle.setAttribute('aria-expanded', String(nuevo));
+        localStorage.setItem('ps-bajas-abierto', nuevo ? '1' : '0');
+      });
+    }
   }
 
   if (empleadoSearch) empleadoSearch.addEventListener('input', e => { empQuery = e.target.value; renderEmpleadosGrid(); });
@@ -9254,51 +9307,59 @@
         return d.toLocaleDateString('es-ES');
       };
 
+      // Los que tienen algo pendiente van primero: es a lo que hay que mirar.
+      const ordenados = emps.slice().sort((a, b) => {
+        const pa = (loginPorUsuario.get(a.usuario_id) ? 0 : 2) + (firmadoPorId.has(a.id) ? 0 : 1);
+        const pb = (loginPorUsuario.get(b.usuario_id) ? 0 : 2) + (firmadoPorId.has(b.id) ? 0 : 1);
+        if (pa !== pb) return pb - pa;
+        return a.nombre.localeCompare(b.nombre, 'es');
+      });
+
+      const abierto = localStorage.getItem('ps-estado-equipo-abierto') === '1';
+
       cont.innerHTML = `
-        <div class="panel">
-          <div class="panel-head">
-            <div class="panel-title-wrap">
-              <div class="kpi-icon" style="width:30px;height:30px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;">
-                <svg class="ic ic-16"><use href="#ic-alert"/></svg>
-              </div>
-              <h3 class="panel-title">Estado del equipo</h3>
-              <span class="panel-count">${total} socorristas · <b style="color:${noEntrado?'#B91C1C':'#059669'};">${noEntrado} sin entrar</b> · <b style="color:${noFirmado?'#B91C1C':'#059669'};">${noFirmado} sin firmar Kit Alta</b></span>
-            </div>
-            <button class="btn btn-outline btn-icon" onclick="renderEstadoEquipo()" title="Refrescar">
-              <svg class="ic ic-16"><use href="#ic-refresh"/></svg>
-            </button>
+        <div class="emp-side-panel${abierto ? ' open' : ''}" id="estadoEquipoPanel">
+          <button type="button" class="emp-side-head" id="estadoEquipoToggle" aria-expanded="${abierto}">
+            <svg class="ic ic-16" style="color:#D97706;flex:none;"><use href="#ic-alert"/></svg>
+            <span class="emp-side-title">Estado del equipo</span>
+            <svg class="ic ic-16 emp-side-chevron"><use href="#ic-chevron-down"/></svg>
+          </button>
+          <div class="emp-side-kpis">
+            <span class="emp-side-kpi">${total} socorristas</span>
+            <span class="emp-side-kpi ${noEntrado ? 'bad' : ''}">${noEntrado} sin entrar</span>
+            <span class="emp-side-kpi ${noFirmado ? 'warn' : ''}">${noFirmado} sin firmar</span>
           </div>
-          <div class="hor-table-wrap" style="padding:0 12px 12px;">
-            <table class="hor-table">
-              <thead>
-                <tr>
-                  <th>Socorrista</th>
-                  <th>App</th>
-                  <th>Kit Alta</th>
-                  <th>Fichajes ${hoy.toLocaleDateString('es-ES',{month:'long'})}</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                ${emps.map(e => {
-                  const login = loginPorUsuario.get(e.usuario_id);
-                  const firma = firmadoPorId.get(e.id);
-                  const nf = fichajesPorId.get(e.id) || 0;
-                  return `
-                    <tr>
-                      <td><b>${e.nombre}</b><div class="hor-td-sub">${e.email || '—'}</div></td>
-                      <td>${login ? `<span class="badge badge-ok"><span class="dot"></span>Ha entrado</span><div class="hor-td-sub">${fmtFecha(login)}</div>` : `<span class="badge" style="background:#FEE2E2;color:#B91C1C;"><span class="dot" style="background:#DC2626;"></span>Sin entrar</span>`}</td>
-                      <td>${firma ? `<span class="badge badge-ok"><span class="dot"></span>Firmado</span><div class="hor-td-sub">${fmtFecha(firma)}</div>` : `<span class="badge" style="background:#FEF3C7;color:#92400E;"><span class="dot" style="background:#F59E0B;"></span>Pendiente</span>`}</td>
-                      <td>${nf > 0 ? `<b>${nf}</b>` : `<span class="text-muted">0</span>`}</td>
-                      <td class="hor-actions">
-                        ${e.email ? `<button class="icon-btn-mini" title="Reenviar acceso por email" onclick="enviarAccesoDesdeEquipo('${e.email}')"><svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg></button>` : ''}
-                      </td>
-                    </tr>`;
-                }).join('')}
-              </tbody>
-            </table>
+          <div class="emp-side-body${abierto ? '' : ' hidden'}" id="estadoEquipoBody">
+            ${ordenados.map(e => {
+              const login = loginPorUsuario.get(e.usuario_id);
+              const firma = firmadoPorId.get(e.id);
+              const nf = fichajesPorId.get(e.id) || 0;
+              return `
+                <div class="emp-side-row">
+                  <div class="emp-side-name">${escHtml(e.nombre)}<span>${login ? fmtFecha(login) : 'nunca ha entrado'} · ${nf} fichaje${nf === 1 ? '' : 's'}</span></div>
+                  <span class="emp-side-tag ${login ? 'ok' : 'bad'}" title="${login ? 'Ha entrado en la app' : 'Todavía no ha entrado en la app'}">App</span>
+                  <span class="emp-side-tag ${firma ? 'ok' : 'warn'}" title="${firma ? 'Kit Alta firmado' : 'Kit Alta sin firmar'}">Kit</span>
+                  ${e.email ? `<button class="icon-btn-mini" title="Reenviar acceso por email" onclick="enviarAccesoDesdeEquipo('${e.email}')"><svg class="ic ic-14"><use href="#ic-arrow-up-right"/></svg></button>` : ''}
+                </div>`;
+            }).join('')}
+            <div style="padding-top:10px;text-align:center;">
+              <button class="btn btn-outline btn-sm" onclick="renderEstadoEquipo()">
+                <svg class="ic ic-14"><use href="#ic-refresh"/></svg> Refrescar
+              </button>
+            </div>
           </div>
         </div>`;
+
+      const tgl = document.getElementById('estadoEquipoToggle');
+      if (tgl) tgl.addEventListener('click', () => {
+        const panel = document.getElementById('estadoEquipoPanel');
+        const body = document.getElementById('estadoEquipoBody');
+        const nuevo = body.classList.contains('hidden');
+        body.classList.toggle('hidden', !nuevo);
+        panel.classList.toggle('open', nuevo);
+        tgl.setAttribute('aria-expanded', String(nuevo));
+        localStorage.setItem('ps-estado-equipo-abierto', nuevo ? '1' : '0');
+      });
     } catch (err) {
       cont.innerHTML = `<div class="text-muted small" style="padding:12px;color:var(--danger);">Error: ${err.message}</div>`;
     }

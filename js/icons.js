@@ -56,6 +56,7 @@
     <symbol id="ic-download" viewBox="0 0 24 24"><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/><path d="M7 11l5 5 5-5M12 4v12"/></symbol>
     <symbol id="ic-more-vertical" viewBox="0 0 24 24"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></symbol>
     <symbol id="ic-bar-chart" viewBox="0 0 24 24"><path d="M3 20V10M9 20V4M15 20v-8M21 20V6"/></symbol>
+    <symbol id="ic-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
     <symbol id="ic-briefcase" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></symbol>
     <symbol id="ic-waves" viewBox="0 0 24 24"><path d="M2 6c2.5-2 5-2 7.5 0S15 8 17.5 6 22 4 22 4"/><path d="M2 12c2.5-2 5-2 7.5 0s5 2 7.5 0 4.5-2 4.5-2"/><path d="M2 18c2.5-2 5-2 7.5 0s5 2 7.5 0 4.5-2 4.5-2"/></symbol>
     <symbol id="ic-award" viewBox="0 0 24 24"><circle cx="12" cy="9" r="6"/><path d="M8.2 13.5L7 22l5-3 5 3-1.2-8.5"/></symbol>
