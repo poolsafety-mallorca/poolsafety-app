@@ -3407,3 +3407,130 @@ img, svg { display: block; max-width: 100%; }
     box-shadow: 0 20px 40px rgba(0, 0, 0, .3);
   }
 }
+
+/* ==========================================================================
+   EMPLEADOS · dos columnas + carpeta de bajas
+   Antes "Estado del equipo" ocupaba todo el ancho arriba y empujaba las
+   fichas al final de la página. Ahora va en un lateral plegable y las
+   fichas mandan. Bajo 1100px se apila: primero fichas, luego el lateral.
+   ========================================================================== */
+.emp-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 18px;
+  align-items: start;
+}
+.emp-main { min-width: 0; }
+.emp-side { position: sticky; top: 16px; }
+
+@media (max-width: 1100px) {
+  .emp-layout { grid-template-columns: 1fr; }
+  .emp-side { position: static; order: 2; }
+}
+
+/* --- Lateral: estado del equipo, compacto y plegable --- */
+.emp-side-panel {
+  background: var(--surface, #fff);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  overflow: hidden;
+}
+.emp-side-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: background var(--t-fast);
+}
+.emp-side-head:hover { background: var(--ink-100); }
+.emp-side-panel.open .emp-side-head { border-bottom-color: var(--line); }
+.emp-side-title { font-weight: 700; font-size: 14px; flex: 1; }
+.emp-side-chevron { transition: transform var(--t-fast); flex: none; opacity: .6; }
+.emp-side-panel.open .emp-side-chevron { transform: rotate(180deg); }
+.emp-side-body { padding: 6px 10px 12px; }
+
+/* Resumen siempre visible aunque esté plegado: si hay algo que atender, se ve */
+.emp-side-kpis { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 14px 12px; }
+.emp-side-kpi {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: var(--success-bg);
+  color: #065F46;
+}
+.emp-side-kpi.warn { background: var(--warning-bg); color: #92400E; }
+.emp-side-kpi.bad  { background: #FEE2E2; color: #B91C1C; }
+
+.emp-side-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 4px;
+  border-top: 1px solid var(--line);
+}
+.emp-side-row:first-child { border-top: 0; }
+.emp-side-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; }
+.emp-side-name span {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.emp-side-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 6px;
+  flex: none;
+}
+.emp-side-tag.ok   { background: var(--success-bg); color: #065F46; }
+.emp-side-tag.warn { background: var(--warning-bg); color: #92400E; }
+.emp-side-tag.bad  { background: #FEE2E2; color: #B91C1C; }
+
+/* --- Carpeta de empleados dados de baja --- */
+.emp-folder {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  overflow: hidden;
+}
+.emp-folder-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  background: var(--ink-100);
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--ink-700);
+  transition: background var(--t-fast);
+}
+.emp-folder-head:hover { background: var(--line); }
+.emp-folder-title { font-weight: 700; font-size: 13.5px; flex: 1; }
+.emp-folder-count {
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--ink-500);
+  color: #fff;
+  border-radius: 20px;
+  padding: 1px 9px;
+  flex: none;
+}
+.emp-folder-chevron { transition: transform var(--t-fast); flex: none; opacity: .6; }
+.emp-folder.open .emp-folder-chevron { transform: rotate(180deg); }
+.emp-folder-body { padding: 14px; border-top: 1px solid var(--line); }

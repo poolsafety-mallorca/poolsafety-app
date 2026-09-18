@@ -302,8 +302,11 @@
     <!-- ============ PANEL: EMPLEADOS ============ -->
     <div class="tab-panel hidden" data-panel="empleados">
 
-    <!-- Panel estado de acceso y firmas por socorrista -->
-    <div id="estadoEquipoBlock" style="margin-bottom:20px;"></div>
+    <!-- Dos columnas: las fichas mandan, el estado del equipo va al lateral.
+         Antes el estado ocupaba todo el ancho arriba y empujaba las fichas
+         al final de la página. -->
+    <div class="emp-layout">
+    <div class="emp-main">
 
     <section class="panel" style="margin-bottom: 20px;">
       <div class="panel-head">
@@ -340,8 +343,31 @@
           <span>Fichas completas de empleados con foto, datos personales, contrato, documentación firmada, horario asignado y acciones (enviar tarea, alta, baja con finiquito, eliminar). Los datos son editables y se sincronizan al momento con la app del socorrista.</span>
         </div>
         <div class="empleados-grid" id="empleadosGrid"></div>
+
+        <!-- Carpeta de bajas: plegada por defecto, para que no estorbe a las
+             fichas de la gente que está trabajando. -->
+        <div class="emp-folder hidden" id="empleadosBajasFolder">
+          <button type="button" class="emp-folder-head" id="empleadosBajasToggle" aria-expanded="false">
+            <svg class="ic ic-16 emp-folder-chevron"><use href="#ic-chevron-down"/></svg>
+            <svg class="ic ic-16"><use href="#ic-folder"/></svg>
+            <span class="emp-folder-title">Empleados dados de baja</span>
+            <span class="emp-folder-count" id="empleadosBajasCount">0</span>
+          </button>
+          <div class="emp-folder-body hidden" id="empleadosBajasBody">
+            <div class="empleados-grid" id="empleadosBajasGrid"></div>
+          </div>
+        </div>
       </div>
     </section>
+
+    </div><!-- /.emp-main -->
+
+    <aside class="emp-side">
+      <!-- Panel estado de acceso y firmas por socorrista -->
+      <div id="estadoEquipoBlock"></div>
+    </aside>
+
+    </div><!-- /.emp-layout -->
 
     </div><!-- /panel empleados -->
 
