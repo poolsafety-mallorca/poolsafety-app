@@ -5825,7 +5825,15 @@
       window.__fichajesCache = window.__fichajesCache || {};
       rows.forEach(f => { window.__fichajesCache[f.id] = f; });
       if (rows.length === 0) {
-        cont.innerHTML = `<div class="text-muted small" style="padding:14px;text-align:center;">Sin fichajes en los últimos ${dias === 31 ? 'del mes' : dias + ' días'}.</div>`;
+        /* `dias` ya no existe: la función recibe `opts`. Al quedarse aquí
+           reventaba con "dias is not defined" y el admin veía un Error rojo
+           en vez de un simple "no hay fichajes". */
+        const sinDatos = opts.mes === 'actual' ? 'Sin fichajes este mes.'
+          : opts.mes ? 'Sin fichajes en ese mes.'
+          : opts.dias ? `Sin fichajes en los últimos ${opts.dias} días.`
+          : (opts.desde || opts.hasta) ? 'Sin fichajes en ese periodo.'
+          : 'Este trabajador no tiene ningún fichaje registrado.';
+        cont.innerHTML = `<div class="text-muted small" style="padding:14px;text-align:center;">${sinDatos}</div>`;
         return;
       }
       // Agrupar por día para claridad
