@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-09-01 (v144 · sesión 10ª · jornada 40 h/semana en las tres hojas + salida olvidada + hoja de nómina admin · safe-area iOS · nombre del mes legible en Firmas)
-**Cache SW actual: `poolsafety-v144`**
+Última actualización: 2026-09-25 (v160 · sesión 11ª · el panel distingue "asignado" de "fichado" y el botón Asignar socorrista ya lleva a Horarios)
+**Cache SW actual: `poolsafety-v160`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -456,6 +456,30 @@ Arriba queda un aviso de estado con el recuento y de dónde salen; si algún dí
 no se pueden imputar en la facturación por hotel.
 
 ---
+
+## 🗺️ Panel de puestos · "asignado" no es lo mismo que "fichado" (v160)
+
+`renderPosts()` decidía el estado de un hotel mirando **sólo los fichajes del
+día**. Los horarios se consultaban únicamente para saber SI había servicio
+(`horariosPorPuesto[id] = true`), nunca QUIÉN lo cubría. Por eso un hotel con su
+socorrista puesto toda la semana salía como **"Este puesto no tiene socorrista
+asignado hoy"** hasta que esa persona fichaba: decía lo contrario de la verdad.
+
+Y el botón "Asignar socorrista" de esa ventana era literalmente
+`onclick="toast('Abriendo asignador…')"` — enseñaba el aviso y no abría nada.
+Reportado por Adam con el Gavimar La Mirada (Francisco Galán, asignado toda la
+semana). No era de permisos: fallaba igual desde admin y desde coordinación.
+
+- La consulta de `horarios` trae ya `empleado_id` + `empleados(...)` y se monta
+  `asignadosPorPuesto`, filtrando bajas y eliminados.
+- `postsCache[].asignados` = asignados hoy que **aún no han fichado**.
+- Etiqueta "Vacante" → **"Sin fichar"** cuando hay alguien asignado. `estado`
+  NO cambia, así que los chips de filtro siguen contando igual.
+- El botón lleva a la sección **Horarios** (`irAHorariosDesdePuesto()`), que es
+  donde se asigna de verdad quién cubre cada hotel.
+
+Ojo para el próximo Claude: asignar ≠ fichar. `horarios` dice quién DEBERÍA
+estar; `fichajes` dice quién ESTÁ. El panel necesita las dos.
 
 ## 🚨 Bugs conocidos abiertos (no bloquean pero atender)
 - **Hotel de Artá con GPS impreciso**: puede necesitar radio 150m manual o corregir coords GPS del pin del hotel desde admin.

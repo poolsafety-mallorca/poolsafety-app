@@ -193,15 +193,27 @@
       // y no hay fichajes, se marca "sin servicio hoy" en vez de vacante.
       const hoyDay = hoy.getDay();
       let horariosPorPuesto = {};
+      /* Además de SI hay servicio, QUIÉN está asignado hoy. Sin esto el panel
+         sólo miraba los fichajes, así que un hotel con su socorrista puesto
+         toda la semana salía como "no tiene socorrista asignado hoy" hasta
+         que esa persona fichaba. Decía justo lo contrario de la verdad. */
+      let asignadosPorPuesto = {};
       try {
         const { data: allHors } = await window.sb.from('horarios')
-          .select('puesto_id, dias, fecha_desde, fecha_hasta, activo')
+          .select('puesto_id, empleado_id, hora_inicio, dias, fecha_desde, fecha_hasta, activo, empleados(id, nombre, telefono, estado, fecha_baja)')
           .eq('activo', true);
         (allHors || []).forEach(h => {
           const aplica = horarioAplicaEnDiaCoord(h, hoyDay) &&
             (!h.fecha_desde || new Date(h.fecha_desde) <= hoy) &&
             (!h.fecha_hasta || new Date(h.fecha_hasta) >= hoy);
-          if (aplica) horariosPorPuesto[h.puesto_id] = true;
+          if (!aplica) return;
+          horariosPorPuesto[h.puesto_id] = true;
+          const e = h.empleados;
+          if (!e || e.estado === 'eliminado' || e.fecha_baja) return;
+          const lista = (asignadosPorPuesto[h.puesto_id] = asignadosPorPuesto[h.puesto_id] || []);
+          if (!lista.some(x => x.id === e.id)) {
+            lista.push({ id: e.id, nombre: e.nombre, telefono: e.telefono || '', hora: (h.hora_inicio || '').slice(0,5) });
+          }
         });
       } catch (_) {}
 
@@ -223,7 +235,9 @@
           if (rank[s] > rank[estado]) estado = s;
         });
         if (estado === 'vacante' && !tieneServicioHoy) estado = 'sin_servicio';
-        return { puesto: p, fichajes: fichajesPuesto, estado, tieneServicioHoy };
+        // Asignados que todavía no han fichado hoy.
+        const asignados = (asignadosPorPuesto[p.id] || []).filter(a => !socsMap[a.id]);
+        return { puesto: p, fichajes: fichajesPuesto, estado, tieneServicioHoy, asignados };
       });
 
       renderPostsFromCache();
@@ -295,19 +309,30 @@
                  : r.estado === 'fuera' ? { cls: 'danger', badge: 'badge-danger', icon: 'ic-signal', label: fichs.length > 1 ? `${fichs.length} · alguno fuera` : 'Fuera de zona' }
                  : r.estado === 'terminado' ? { cls: '', badge: 'badge-neutral', icon: 'ic-check', label: 'Turno terminado' }
                  : r.estado === 'sin_servicio' ? { cls: '', badge: 'badge-neutral', icon: 'ic-clock', label: 'Sin servicio hoy' }
-                 : { cls: '', badge: 'badge-neutral', icon: 'ic-clock', label: 'Vacante' };
+                 : { cls: '', badge: 'badge-neutral', icon: 'ic-clock', label: (r.asignados && r.asignados.length) ? 'Sin fichar' : 'Vacante' };
       const hIni = (p.hora_inicio_default || '10:00:00').slice(0,5);
       // Renderiza UNA fila por socorrista fichado (puede haber varios en el mismo hotel)
-      const workers = fichs.length === 0 ? `
+      const asignados = r.asignados || [];
+      const workers = fichs.length === 0 ? (asignados.length ? asignados.map(a => {
+              const ini = (a.nombre||'').split(' ').map(x => x[0]).join('').substring(0,2).toUpperCase();
+              return `
+            <div class="post-worker">
+              <div class="mini-av" style="background: var(--ink-200); color: var(--ink-500);">${ini}</div>
+              <div>
+                <div class="post-worker-name">${a.nombre}</div>
+                <div class="post-time">Asignado${a.hora ? ' · turno ' + a.hora : ''} — aún no ha fichado</div>
+              </div>
+            </div>`;
+            }).join('') : `
             <div class="post-worker">
               <div class="mini-av" style="background: var(--ink-200); color: var(--ink-500);">
                 <svg class="ic ic-14"><use href="#ic-user"/></svg>
               </div>
               <div>
-                <div class="post-worker-name" style="color: var(--ink-500);">Sin fichaje hoy</div>
+                <div class="post-worker-name" style="color: var(--ink-500);">Nadie asignado hoy</div>
                 <div class="post-time">Puesto vacante</div>
               </div>
-            </div>` : fichs.map(f => {
+            </div>`) : fichs.map(f => {
               const soc = f.empleados;
               if (!soc) return '';
               const iniciales = soc.nombre.split(' ').map(s => s[0]).join('').substring(0,2).toUpperCase();
@@ -549,7 +574,7 @@
     const info = row.estado === 'ok' ? { cls:'ok', badge:'badge-ok', icon:'ic-check-circle', label:'Fichado' }
                : row.estado === 'fuera' ? { cls:'danger', badge:'badge-danger', icon:'ic-signal', label:'Fuera de zona' }
                : row.estado === 'terminado' ? { cls:'', badge:'badge-neutral', icon:'ic-check', label:'Turno terminado' }
-               : { cls:'', badge:'badge-neutral', icon:'ic-clock', label:'Vacante' };
+               : { cls:'', badge:'badge-neutral', icon:'ic-clock', label:(row.asignados && row.asignados.length) ? 'Sin fichar' : 'Vacante' };
     const body = document.getElementById('postModalBody');
 
     body.innerHTML = `
@@ -654,12 +679,32 @@
         </div>
         `;
       })() : `
-        <p class="mt-3 text-muted" style="font-size: 14px;">Este puesto no tiene socorrista asignado hoy.</p>
+        ${(row.asignados && row.asignados.length) ? `
+        <div style="margin-top:12px;padding:12px;background:#F1F5F9;border-radius:10px;">
+          <div style="font-weight:700;font-size:13px;color:#111827;margin-bottom:8px;">
+            Asignado${row.asignados.length > 1 ? 's' : ''} hoy · ${row.asignados.length} — todavía sin fichar
+          </div>
+          ${row.asignados.map(a => {
+            const ini = (a.nombre||'').split(' ').map(x => x[0]).join('').substring(0,2).toUpperCase();
+            const tel = (a.telefono || '').replace(/\s+/g,'');
+            const telHref = tel ? (tel.startsWith('+') ? tel : (tel.length === 9 ? '+34' + tel : tel)) : '';
+            return `
+              <div style="display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border-radius:8px;margin:6px 0;">
+                <div class="mini-av" style="width:32px;height:32px;font-size:11px;">${ini}</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:600;font-size:13px;">${a.nombre}</div>
+                  <div style="font-size:11.5px;color:#64748B;">${a.hora ? 'Turno ' + a.hora : 'Con horario asignado'} · aún no ha fichado</div>
+                </div>
+                ${telHref ? `<a class="btn-icon" href="tel:${telHref}" title="Llamar" style="width:32px;height:32px;background:#059669;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;text-decoration:none;"><svg class="ic ic-14"><use href="#ic-phone"/></svg></a>` : ''}
+              </div>`;
+          }).join('')}
+        </div>` : `
+        <p class="mt-3 text-muted" style="font-size: 14px;">Este puesto no tiene a nadie asignado hoy en los horarios.</p>`}
         <div class="modal-actions">
           <button class="btn btn-outline" onclick="closePostModal()">Cerrar</button>
-          <button class="btn btn-primary" onclick="toast('Abriendo asignador…')">
+          <button class="btn btn-primary" onclick="irAHorariosDesdePuesto()">
             <svg class="ic ic-16"><use href="#ic-users"/></svg>
-            Asignar socorrista
+            ${(row.asignados && row.asignados.length) ? 'Ver o cambiar horarios' : 'Asignar socorrista'}
           </button>
         </div>
       `}
@@ -667,6 +712,16 @@
     document.getElementById('postModal').classList.add('open');
   };
   window.closePostModal = () => document.getElementById('postModal').classList.remove('open');
+
+  /* El botón "Asignar socorrista" era un `toast('Abriendo asignador…')` y nada
+     más: no abría nada. Los horarios (que es donde se asigna de verdad quién
+     cubre cada hotel) viven en su propia sección, así que lo llevamos allí. */
+  window.irAHorariosDesdePuesto = function () {
+    window.closePostModal();
+    const btn = document.querySelector('[data-section="horarios"]');
+    if (btn) btn.click();
+    else toast('No encuentro la sección de Horarios');
+  };
 
   /* ---------- Alertas botiquín (REAL desde BD) ---------- */
   const alertsList = document.getElementById('alertsList');
