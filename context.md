@@ -34,6 +34,13 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
   `incidencias.email_enviado_at / email_enviado_a / email_modo / email_error`. Deja
   constancia de a quién y cuándo se mandó cada parte, evita mandarlo dos veces y
   permite ver los pendientes. Termina con un SELECT de partes pendientes.
+- ⏳ **`sql/31-fecha-fin-prevista.sql` — PENDIENTE DE EJECUTAR**: columna
+  `empleados.fecha_fin_prevista`. **NO es `fecha_baja`, y esto importa**: `fecha_baja`
+  saca a la persona de horarios, cuadrantes, estado del equipo y recuentos
+  (`.is('fecha_baja', null)` aparece en 9 sitios). Poner ahí un fin de temporada
+  dejaría hoteles sin cubrir sobre el papel desde hoy. `fecha_fin_prevista` es sólo un
+  plan: no filtra nada, sólo se enseña en la ficha y en el informe de altas y bajas.
+  **La baja se sigue dando a mano**: nada la aplica sola al llegar el día, a propósito.
 - ⏳ **`sql/30-tareas-coordinadores.sql` — PENDIENTE DE EJECUTAR**: tabla
   `tareas_coordinador` para que dirección mande tareas a Alex y Óscar y ellos las
   marquen como hechas. **Crear/borrar sólo el dueño**; el coordinador ve las suyas y
@@ -395,6 +402,25 @@ fichaje impreso al lado dice 09:02–20:07. Es su decisión (factura el horario 
 pero **el PDF enseña las dos cosas**: por eso los días corregidos van marcados, para que
 quien lo reciba entienda por qué no cuadran y no parezca un error nuestro.
 
+## 📋 Fin de contrato previsto e informe de altas y bajas (v161)
+
+Adam lo pidió porque muchas bajas se saben con meses de antelación (los hoteles cierran
+y se acaba el servicio) y la gestoría necesita las fechas por adelantado.
+
+- **`empleados.fecha_fin_prevista`** (sql/31), editable en la ficha bajo la fecha de
+  alta. **Nunca reutilizar `fecha_baja` para esto**: esa columna saca a la persona de
+  horarios, cuadrantes, estado del equipo y recuentos en 9 consultas distintas, así que
+  un fin de temporada apuntado ahí vaciaría cuadrantes de gente que aún trabaja.
+- **Nada da la baja solo al llegar la fecha.** Es deliberado: extinguir un contrato sin
+  que nadie lo mire afecta a una nómina. El informe avisa en rojo de las fechas ya
+  pasadas que siguen de alta, y la baja se da a mano desde la ficha.
+- **Informe "Altas y bajas"** (botón en el panel Empleados): listado ordenado por fin
+  previsto más cercano, con aviso de los que terminan en 30 días, y descarga en CSV con
+  `;` y BOM para que Excel en español lo abra bien de una.
+- De paso, `actualizarEmpleado()` ya no se rompe cuando falta una columna: antes sólo
+  contemplaba las de sql/25 y ahora quita la columna que Postgres señale, reintenta y
+  avisa en castellano de lo único que no se pudo guardar.
+
 ## 🧭 Apartado Coordinación · dos fallos corregidos (v158)
 
 Adam avisó de que "cambiamos el nombre de un coordinador y no nos deja, o no sale
@@ -612,6 +638,7 @@ app poolsafety/
 | `alertas` | Auto stock-bajo + manuales socorrista + mensajes al coordinador (tipo='otro') |
 | `tareas` | Del coordinador al socorrista (real). Rellenada al usar "Solicitar firma Kit Alta" también |
 | `tareas_coordinador` | De dirección al coordinador (sql/30). Separada de `tareas` porque los coordinadores no tienen ficha en `empleados` |
+| `empleados.fecha_fin_prevista` | (sql/31) Fin de contrato previsto. Informativo: NO saca de listados. La baja real es `fecha_baja` |
 | `notas` | Mensajes coordinador → socorrista (con autor_nombre) |
 | `titulaciones_empleado` | DNI, SVB, DEA, socorrismo, PRL, contrato, nómina. Max 20 MB por archivo |
 
