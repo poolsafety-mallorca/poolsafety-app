@@ -4562,6 +4562,10 @@
       direccion: r.direccion || '',
       ss: r.numero_ss || '',
       fechaAlta: r.fecha_alta || new Date().toISOString().slice(0,10),
+      // Fin de contrato PREVISTO (sql/31). Es un plan, no una baja: no saca a
+      // nadie de cuadrantes ni listados. La baja real sigue siendo fecha_baja.
+      fechaFinPrevista: r.fecha_fin_prevista || '',
+      fechaBajaReal: r.fecha_baja || '',
       contrato: r.tipo_contrato || 'Indefinido',
       estado: r.estado || 'activo',
       fotoUrl: r.foto_url || null,
@@ -4658,6 +4662,154 @@
     return empleadosDB.find(e => e.id === id) || null;
   }
 
+  /* ==========================================================================
+     INFORME DE ALTAS Y BAJAS (sql/31)
+     Para que la gestoría prepare los papeles con antelación: quién entró
+     cuándo, cuándo termina según lo previsto y quién está ya de baja.
+     ========================================================================== */
+
+  function diasHasta(iso) {
+    if (!iso) return null;
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    return Math.round((new Date(iso + 'T00:00:00') - hoy) / 86400000);
+  }
+  const fFecha = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('es-ES') : '';
+
+  // Los que hay que mirar primero: fin previsto más cercano arriba, los que no
+  // tienen fecha después, y los que ya están de baja al final del todo.
+  function filasInforme() {
+    return empleadosDB
+      .filter(e => e.estado !== 'eliminado')
+      .map(e => {
+        const puestoObj = e.puestoId ? PS.puestos.find(p => p.id === e.puestoId) : null;
+        return {
+          nombre: e.nombre,
+          dni: e.dni || '',
+          puesto: e.esCorreturnos ? 'Correturnos' : (puestoObj ? puestoObj.nombre : 'Sin puesto'),
+          contrato: e.contrato || '',
+          alta: e.fechaAlta || '',
+          fin: e.fechaFinPrevista || '',
+          baja: e.fechaBajaReal || '',
+          estado: e.estado,
+          dias: e.fechaFinPrevista ? diasHasta(e.fechaFinPrevista) : null
+        };
+      })
+      .sort((a, b) => {
+        const ba = a.baja ? 1 : 0, bb = b.baja ? 1 : 0;
+        if (ba !== bb) return ba - bb;                 // los ya de baja, al final
+        if (!!a.fin !== !!b.fin) return a.fin ? -1 : 1; // con fin previsto, arriba
+        if (a.fin && b.fin && a.fin !== b.fin) return a.fin < b.fin ? -1 : 1;
+        return a.nombre.localeCompare(b.nombre, 'es');
+      });
+  }
+
+  window.openInformeAltasBajas = function () {
+    const filas = filasInforme();
+    const conFin   = filas.filter(f => f.fin && !f.baja);
+    const proximos = conFin.filter(f => f.dias !== null && f.dias >= 0 && f.dias <= 30);
+    const pasados  = conFin.filter(f => f.dias !== null && f.dias < 0);
+
+    let modal = document.getElementById('informeAltasBajasModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'informeAltasBajasModal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;';
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:14px;max-width:1000px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+        <div style="padding:14px 18px;background:#0F2C5F;color:#fff;display:flex;justify-content:space-between;align-items:center;border-radius:14px 14px 0 0;">
+          <div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;opacity:.8;">Informe</div>
+            <div style="font-size:16px;font-weight:700;margin-top:2px;">Altas y fines de contrato</div>
+          </div>
+          <button onclick="document.getElementById('informeAltasBajasModal').remove()" style="background:rgba(255,255,255,.2);border:0;color:#fff;width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:20px;">×</button>
+        </div>
+
+        <div style="padding:14px 18px 0;">
+          <div class="iab-kpis">
+            <span class="iab-kpi">${filas.filter(f => !f.baja).length} en plantilla</span>
+            <span class="iab-kpi">${conFin.length} con fin previsto</span>
+            ${proximos.length ? `<span class="iab-kpi warn">${proximos.length} termina${proximos.length === 1 ? '' : 'n'} en 30 días</span>` : ''}
+            ${pasados.length ? `<span class="iab-kpi bad">${pasados.length} ya pasó la fecha y sigue${pasados.length === 1 ? '' : 'n'} de alta</span>` : ''}
+            <span class="iab-kpi">${filas.filter(f => f.baja).length} ya de baja</span>
+          </div>
+          ${pasados.length ? `
+            <div style="margin:0 0 12px;padding:10px 12px;background:#FEE2E2;border:1px solid #FCA5A5;border-radius:8px;font-size:12.5px;color:#991B1B;">
+              <b>Atención:</b> ${pasados.length === 1 ? 'hay 1 persona cuya fecha de fin ya pasó' : `hay ${pasados.length} personas cuya fecha de fin ya pasó`} y sigue${pasados.length === 1 ? '' : 'n'} figurando de alta.
+              La fecha de fin es sólo una previsión: la baja hay que darla a mano desde la ficha.
+            </div>` : ''}
+        </div>
+
+        <div style="flex:1;overflow:auto;padding:0 18px;">
+          <table class="hor-table iab-table">
+            <thead>
+              <tr>
+                <th>Nombre</th><th>DNI</th><th>Hotel</th><th>Contrato</th>
+                <th>Alta</th><th>Fin previsto</th><th>Baja efectiva</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filas.length === 0
+                ? `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--ink-500);">No hay empleados.</td></tr>`
+                : filas.map(f => {
+                    let clase = '', nota = '';
+                    if (f.baja) { clase = 'iab-baja'; }
+                    else if (f.dias !== null && f.dias < 0)  { clase = 'iab-pasado'; nota = ' · ya pasó'; }
+                    else if (f.dias !== null && f.dias <= 30) { clase = 'iab-pronto'; nota = f.dias === 0 ? ' · hoy' : ` · en ${f.dias} día${f.dias === 1 ? '' : 's'}`; }
+                    return `
+                      <tr class="${clase}">
+                        <td><b>${escapeHtml(f.nombre)}</b></td>
+                        <td class="small">${escapeHtml(f.dni) || '—'}</td>
+                        <td class="small">${escapeHtml(f.puesto)}</td>
+                        <td class="small">${escapeHtml(f.contrato)}</td>
+                        <td class="small">${fFecha(f.alta) || '—'}</td>
+                        <td class="small">${f.fin ? fFecha(f.fin) + nota : '—'}</td>
+                        <td class="small">${f.baja ? fFecha(f.baja) : ''}</td>
+                      </tr>`;
+                  }).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="padding:14px 18px;border-top:1px solid #E2E8F0;display:flex;gap:8px;justify-content:space-between;align-items:center;background:#F8FAFC;border-radius:0 0 14px 14px;flex-wrap:wrap;">
+          <div class="small text-muted" style="max-width:520px;line-height:1.4;">
+            El fin previsto se rellena en la ficha de cada empleado. Es sólo una previsión:
+            no da de baja a nadie ni le saca de los cuadrantes.
+          </div>
+          <div class="row gap-2">
+            <button class="btn btn-outline" onclick="document.getElementById('informeAltasBajasModal').remove()">Cerrar</button>
+            <button class="btn btn-primary" onclick="descargarInformeAltasBajas()">
+              <svg class="ic ic-16"><use href="#ic-download"/></svg>
+              Descargar para la gestoría
+            </button>
+          </div>
+        </div>
+      </div>`;
+  };
+
+  window.descargarInformeAltasBajas = function () {
+    const filas = filasInforme();
+    // Punto y coma y BOM: es lo que abre bien el Excel en español sin tener que
+    // andar importando columnas a mano.
+    const celda = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+    const linea = arr => arr.map(celda).join(';');
+    const out = [
+      linea(['Nombre', 'DNI', 'Hotel', 'Tipo de contrato', 'Fecha de alta', 'Fin previsto', 'Baja efectiva', 'Estado']),
+      ...filas.map(f => linea([
+        f.nombre, f.dni, f.puesto, f.contrato,
+        fFecha(f.alta), fFecha(f.fin), fFecha(f.baja),
+        f.baja ? 'De baja' : (f.estado === 'alta-pendiente' ? 'Alta pendiente' : 'En plantilla')
+      ]))
+    ];
+    const blob = new Blob(['﻿' + out.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const hoy = new Date().toISOString().slice(0, 10);
+    window.PSPdf.guardarArchivo(blob, `altas-y-bajas-${hoy}.csv`);
+    toast('✓ Listado descargado');
+  };
+
   async function actualizarEmpleado(id, patch) {
     // Mapea claves del frontend a nombres de columna de BD
     const dbPatch = {};
@@ -4670,6 +4822,7 @@
     if ('direccion' in patch) dbPatch.direccion = patch.direccion;
     if ('ss' in patch) dbPatch.numero_ss = patch.ss;
     if ('fechaAlta' in patch) dbPatch.fecha_alta = patch.fechaAlta;
+    if ('fechaFinPrevista' in patch) dbPatch.fecha_fin_prevista = patch.fechaFinPrevista || null;
     if ('contrato' in patch) dbPatch.tipo_contrato = patch.contrato;
     if ('estado' in patch) dbPatch.estado = patch.estado;
     if ('fotoUrl' in patch) dbPatch.foto_url = patch.fotoUrl;
@@ -4678,23 +4831,39 @@
 
     try {
       let { error } = await window.sb.from('empleados').update(dbPatch).eq('id', id);
-      // Si sql/25 aún no se ha ejecutado, las columnas del contacto de emergencia
-      // no existen y Postgres rechaza el UPDATE ENTERO: se perderían también el
-      // nombre, el teléfono y la dirección. Se reintenta sin ellas para que
-      // guardar la ficha siga funcionando mientras tanto.
-      if (error && /emergencia_nombre|emergencia_telefono|column/i.test(error.message)) {
-        const { emergencia_nombre, emergencia_telefono, ...sinEmergencia } = dbPatch;
-        if (Object.keys(sinEmergencia).length) {
-          const r2 = await window.sb.from('empleados').update(sinEmergencia).eq('id', id);
-          error = r2.error;
-        } else {
-          error = null;
-        }
-        if (!error && (dbPatch.emergencia_nombre !== undefined || dbPatch.emergencia_telefono !== undefined)) {
-          toast('Guardado, pero el contacto de emergencia no: falta ejecutar sql/25 en Supabase.');
-        }
+
+      // Si una columna todavía no existe en la BD (un sql/NN sin ejecutar),
+      // Postgres rechaza el UPDATE ENTERO: se perderían también el nombre, el
+      // teléfono y la dirección, que sí existen. Antes esto estaba resuelto
+      // sólo para el contacto de emergencia (sql/25); ahora se quita la columna
+      // que Postgres señale, sea cual sea, y se reintenta. Así guardar la ficha
+      // sigue funcionando y se avisa en castellano de lo único que faltó.
+      const omitidas = [];
+      let reintentos = 0;
+      while (error && reintentos < 4) {
+        // El nombre de la columna viene entrecomillado tanto en el error de
+        // Postgres ("column \"x\" ... does not exist") como en el de PostgREST
+        // ("Could not find the 'x' column ... in the schema cache").
+        const m = /'([a-z0-9_]+)'|"([a-z0-9_]+)"/i.exec(error.message || '');
+        const col = m && (m[1] || m[2]);
+        if (!col || !(col in dbPatch)) break;   // no sabemos qué quitar: se deja fallar
+        delete dbPatch[col];
+        omitidas.push(col);
+        reintentos++;
+        if (Object.keys(dbPatch).length === 0) { error = null; break; }
+        const r = await window.sb.from('empleados').update(dbPatch).eq('id', id);
+        error = r.error;
       }
       if (error) throw error;
+      if (omitidas.length) {
+        const comoSeLlama = {
+          emergencia_nombre: 'el contacto de emergencia (falta ejecutar sql/25)',
+          emergencia_telefono: 'el contacto de emergencia (falta ejecutar sql/25)',
+          fecha_fin_prevista: 'la fecha de fin prevista (falta ejecutar sql/31)'
+        };
+        const lista = [...new Set(omitidas.map(c => comoSeLlama[c] || c))];
+        toast('Guardado, pero esto no: ' + lista.join(' y ') + '.');
+      }
       // Actualiza cache local para respuesta inmediata
       const idx = empleadosDB.findIndex(e => e.id === id);
       if (idx >= 0) empleadosDB[idx] = { ...empleadosDB[idx], ...patch };
@@ -4986,6 +5155,21 @@
           <div class="ficha-data-label">Fecha de alta</div>
           <div class="ficha-data-value"><input type="date" id="ed-fecha" value="${e.fechaAlta}" /></div>
         </div>
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Fin previsto</div>
+          <div class="ficha-data-value">
+            <input type="date" id="ed-fecha-fin" value="${e.fechaFinPrevista || ''}" />
+            <div class="small text-muted" style="margin-top:4px;line-height:1.4;">
+              Para bajas que ya se saben (cierre de hotel, fin de temporada).
+              <b>Sólo es una previsión</b>: la persona sigue en cuadrantes y listados
+              con normalidad. Cuando llegue el día hay que dar la baja a mano.
+            </div>
+          </div>
+        </div>${e.fechaBajaReal ? `
+        <div class="ficha-data-row">
+          <div class="ficha-data-label">Baja efectiva</div>
+          <div class="ficha-data-value"><b>${new Date(e.fechaBajaReal).toLocaleDateString('es-ES')}</b> · ya dada de baja</div>
+        </div>` : ''}
         <div class="ficha-data-row">
           <div class="ficha-data-label">Tipo de contrato</div>
           <div class="ficha-data-value">
@@ -5609,6 +5793,7 @@
       direccion: document.getElementById('ed-dir').value.trim(),
       ss: document.getElementById('ed-ss').value.trim(),
       fechaAlta: document.getElementById('ed-fecha').value,
+      fechaFinPrevista: document.getElementById('ed-fecha-fin')?.value ?? undefined,
       contrato: document.getElementById('ed-contrato').value,
       puestoId: puestoSel ? (puestoSel.value || null) : undefined,
       esCorreturnos: corrChk ? corrChk.checked : undefined
