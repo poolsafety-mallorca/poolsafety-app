@@ -4,7 +4,7 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-09-25 (v160 · sesión 11ª · el panel distingue "asignado" de "fichado" y el botón Asignar socorrista ya lleva a Horarios)
+Última actualización: 2026-09-28 (sql/30 y sql/31 ejecutados en Supabase por el cliente — fin previsto de contrato y tareas de dirección para coordinadores ya operativos)
 **Cache SW actual: `poolsafety-v160`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
@@ -34,20 +34,20 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
   `incidencias.email_enviado_at / email_enviado_a / email_modo / email_error`. Deja
   constancia de a quién y cuándo se mandó cada parte, evita mandarlo dos veces y
   permite ver los pendientes. Termina con un SELECT de partes pendientes.
-- ⏳ **`sql/31-fecha-fin-prevista.sql` — PENDIENTE DE EJECUTAR**: columna
+- ✅ **`sql/31-fecha-fin-prevista.sql` — EJECUTADO el 2026-09-28.** Columna
   `empleados.fecha_fin_prevista`. **NO es `fecha_baja`, y esto importa**: `fecha_baja`
   saca a la persona de horarios, cuadrantes, estado del equipo y recuentos
   (`.is('fecha_baja', null)` aparece en 9 sitios). Poner ahí un fin de temporada
   dejaría hoteles sin cubrir sobre el papel desde hoy. `fecha_fin_prevista` es sólo un
   plan: no filtra nada, sólo se enseña en la ficha y en el informe de altas y bajas.
   **La baja se sigue dando a mano**: nada la aplica sola al llegar el día, a propósito.
-- ⏳ **`sql/30-tareas-coordinadores.sql` — PENDIENTE DE EJECUTAR**: tabla
+- ✅ **`sql/30-tareas-coordinadores.sql` — EJECUTADO el 2026-09-28.** Tabla
   `tareas_coordinador` para que dirección mande tareas a Alex y Óscar y ellos las
   marquen como hechas. **Crear/borrar sólo el dueño**; el coordinador ve las suyas y
   sólo puede cambiar el estado (lo impone un trigger, no sólo la interfaz). No toca la
   tabla `tareas` que ya existía (ésa es coordinador → socorrista y apunta a
-  `empleados`, donde los coordinadores no tienen ficha). Mientras no se ejecute, el
-  apartado Coordinación enseña un aviso naranja en castellano explicando el paso.
+  `empleados`, donde los coordinadores no tienen ficha). El aviso naranja del apartado
+  Coordinación ya no debería salir; si sale, es que el SQL no llegó a aplicarse.
 - ⏳ **`sql/29-horas-hotel-ajustes.sql` — PENDIENTE DE EJECUTAR**: tabla
   `horas_hotel_ajustes` para corregir a mano las horas facturables de un hotel, día a
   día, sin tocar los fichajes. Ver la sección "Corregir horas de un hotel" más abajo.
