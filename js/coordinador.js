@@ -4864,9 +4864,26 @@
         const lista = [...new Set(omitidas.map(c => comoSeLlama[c] || c))];
         toast('Guardado, pero esto no: ' + lista.join(' y ') + '.');
       }
-      // Actualiza cache local para respuesta inmediata
+      // Actualiza cache local para respuesta inmediata. OJO: hay que quitar
+      // antes lo que Postgres rechazó. Si no, el campo se queda en pantalla
+      // como si hubiera cuajado, el aviso pasa desapercibido, y sólo al
+      // recargar la ficha se descubre que no estaba. Con el fin previsto
+      // parecía que la app "a veces guarda y a veces no".
+      const COL_A_CLAVE = {
+        nombre: 'nombre', dni: 'dni', email: 'email', telefono: 'telefono',
+        emergencia_nombre: 'emergNombre', emergencia_telefono: 'emergTelefono',
+        direccion: 'direccion', numero_ss: 'ss', fecha_alta: 'fechaAlta',
+        fecha_fin_prevista: 'fechaFinPrevista', tipo_contrato: 'contrato',
+        estado: 'estado', foto_url: 'fotoUrl', puesto_id: 'puestoId',
+        es_correturnos: 'esCorreturnos'
+      };
+      const patchAplicado = { ...patch };
+      omitidas.forEach(col => {
+        const clave = COL_A_CLAVE[col];
+        if (clave) delete patchAplicado[clave];
+      });
       const idx = empleadosDB.findIndex(e => e.id === id);
-      if (idx >= 0) empleadosDB[idx] = { ...empleadosDB[idx], ...patch };
+      if (idx >= 0) empleadosDB[idx] = { ...empleadosDB[idx], ...patchAplicado };
     } catch (err) {
       toast('Error guardando: ' + err.message);
       throw err;
