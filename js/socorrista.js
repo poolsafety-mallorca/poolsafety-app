@@ -16,6 +16,14 @@
     } catch (_) { window.location.replace('index.html'); }
   }, true);
 
+  /* Cuántos registros mensuales tiene pendientes de firmar. Lo calcula
+     renderJornadasReales() y lo leen la cabecera de Documentación y el punto
+     rojo de la pestaña. Antes ninguno de los dos lo miraba: el último día del
+     mes aparecía dentro la tarjeta "Firma hoy", pero fuera ponía "toda la
+     documentación al día" y no salía punto rojo, así que nadie entraba a
+     firmarla. Sólo se avisaba si el coordinador lo pedía a mano. */
+  let jornadasPendientes = 0;
+
   // Sesión real de Supabase (set por auth-guard.js). Fallback a mock por compatibilidad.
   const psSession = window.PS_SESSION || PS.getSession() || {};
   const email = psSession.email || 'maria@poolsafety.es';
@@ -1492,9 +1500,11 @@
     const notifDot = document.getElementById('notifDot');
     if (notifDot) notifDot.style.display = (tareasPend > 0 || kitAltaPendiente) ? '' : 'none';
 
-    // Badge Docs en tabbar (rojo si kit alta pendiente)
+    // Badge Docs en tabbar. Ojo: esto se repinta cada 2 min por PSPoll, así que
+    // si aquí no se mira lo de la jornada, el punto que encendiera la cabecera
+    // se volvía a apagar solo a los dos minutos.
     const dot = document.getElementById('docsPendingDot');
-    if (dot) dot.style.display = kitAltaPendiente ? '' : 'none';
+    if (dot) dot.style.display = (kitAltaPendiente || jornadasPendientes > 0) ? '' : 'none';
   }
   document.addEventListener('ps-session-updated', () => setTimeout(renderPendientesYCampana, 700));
   setTimeout(renderPendientesYCampana, 1200);
@@ -2628,6 +2638,7 @@
   const docAltaBadge = document.getElementById('docAltaBadge');
   const docsPendingDot = document.getElementById('docsPendingDot');
 
+
   // Cache de firmas reales desde BD (mucho más fiable que localStorage)
   let firmasBDCache = {};
   async function cargarFirmasBD() {
@@ -2673,20 +2684,11 @@
     try {
       const firmas = misFirmas();
       const kitOk = !!firmas['kit-alta'];
-      // Solo cuenta solicitudes REALES de jornada mensual (tarea pendiente del coord)
-      let jornadaPend = 0;
-      const empId = empleadoReal?.id;
-      if (empId && window.sb) {
-        try {
-          const { count } = await window.sb.from('tareas')
-            .select('id', { count: 'exact', head: true })
-            .eq('empleado_id', empId)
-            .eq('titulo', 'Firmar registro mensual pendiente')
-            .eq('hecha', false);
-          jornadaPend = count || 0;
-        } catch (_) {}
-      }
-      const total = (kitOk ? 0 : 1) + jornadaPend;
+      // Lo pendiente de jornada lo cuenta renderJornadasReales(), que ya hace
+      // esas consultas: solicitud del coordinador, cierre de mes y meses
+      // atrasados. Aquí se lee su resultado en vez de repetir una consulta que
+      // además sólo veía las solicitudes a mano.
+      const total = (kitOk ? 0 : 1) + jornadasPendientes;
       const nom = empleadoReal?.nombre || me?.nombre || 'Empleado';
       if (docsSummary) {
         docsSummary.textContent = total === 0
@@ -2868,6 +2870,13 @@
         });
         docsJornadaList.appendChild(card);
       });
+
+      // Ya sabemos cuántas quedan por firmar: que se entere el resto de la app.
+      jornadasPendientes = (tieneSolicitud ? 1 : 0)
+        + ((esUltimoDia && trabajadoEsteMes && !tieneSolicitud) ? 1 : 0)
+        + mesesPendientes.length;
+      renderDocsHeader();
+      renderPendientesYCampana();
 
       // Historial de firmadas. Se excluyen las archivadas: cuando el
       // coordinador corrige fichajes y le pide firmar de nuevo, la firma vieja

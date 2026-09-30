@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-09-28 (sql/30 y sql/31 ejecutados en Supabase por el cliente — fin previsto de contrato y tareas de dirección para coordinadores ya operativos)
-**Cache SW actual: `poolsafety-v160`**
+Última actualización: 2026-09-30 (v163 · el punto rojo de Documentación ya avisa de la firma mensual pendiente, no sólo del Kit de Alta)
+**Cache SW actual: `poolsafety-v163`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -506,6 +506,31 @@ semana). No era de permisos: fallaba igual desde admin y desde coordinación.
 
 Ojo para el próximo Claude: asignar ≠ fichar. `horarios` dice quién DEBERÍA
 estar; `fichajes` dice quién ESTÁ. El panel necesita las dos.
+
+## ✍️ Firma del registro mensual · el aviso no avisaba (v163)
+
+La tarjeta para firmar la jornada del mes **sí** aparecía sola: el último día
+del mes, si hay fichajes y no está firmada. También los 3 meses atrasados.
+
+Pero **nadie se enteraba**. El punto rojo de la pestaña Documentación y el
+texto "N documentos pendientes" sólo contaban el Kit de Alta y las solicitudes
+a mano del coordinador (`tareas` con título 'Firmar registro mensual
+pendiente'). Con el Kit ya firmado, el socorrista leía "toda la documentación
+al día" el mismo día que tenía dentro la tarjeta "Firma hoy".
+
+Peor: `renderPendientesYCampana()` se repinta cada 2 min por `PSPoll` y ponía
+el punto **sólo** con `kitAltaPendiente`, así que aunque otra función lo
+encendiera, se apagaba solo a los dos minutos.
+
+- `jornadasPendientes` (declarada arriba del módulo, antes de sus usos) la
+  calcula `renderJornadasReales()`: solicitud + cierre de mes + meses atrasados.
+- La cabecera y el punto de la pestaña la leen los dos. Se quitó de
+  `renderDocsHeader()` la consulta duplicada a `tareas`: una consulta menos
+  por socorrista y por carga (×51, cuenta para el Egress).
+
+Ojo para el próximo Claude: **hay dos sitios que tocan `docsPendingDot`**
+(`renderDocsHeader` y `renderPendientesYCampana`). Si cambias uno, mira el otro
+o el poll te lo revierte.
 
 ## 🚨 Bugs conocidos abiertos (no bloquean pero atender)
 - **Hotel de Artá con GPS impreciso**: puede necesitar radio 150m manual o corregir coords GPS del pin del hotel desde admin.
