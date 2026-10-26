@@ -4,7 +4,7 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-10-26 (v164 · sección Presupuestos sólo para administrador, con dictado por voz y PDF de presentación · sql/32 PENDIENTE)
+Última actualización: 2026-10-26 (v164 · sql/32 ejecutado: la sección Presupuestos ya es operativa)
 **Cache SW actual: `poolsafety-v164`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
@@ -27,12 +27,13 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/20-revisiones-diarias.sql` — auditoría revisiones botiquín/DESA/oxígeno
 - ✅ `sql/21-rls-correturnos-inventario.sql` — correturnos leen/escriben inventario del hotel donde fichan
 - ✅ `sql/22-diagnostico-reparar-unidades.sql` — reparar Botiquín 2/3 sin items (Cala Gran)
-- ⏳ **`sql/32-presupuestos.sql` — PENDIENTE DE EJECUTAR**: tabla `presupuestos`
+- ✅ **`sql/32-presupuestos.sql` — EJECUTADO el 2026-10-26.** Tabla `presupuestos`
   para la sección nueva. **Sólo el dueño** (aquí hay precios: el coordinador no
   entra). `servicios` y `extras` van en jsonb porque son líneas que sólo tienen
   sentido dentro de su presupuesto. Incluye la función
   `siguiente_numero_presupuesto()` para la numeración PRE-AAAA-NNNN. Mientras no
-  se ejecute, la sección enseña un aviso en castellano explicando el paso.
+  se ejecute, la sección enseña un aviso en castellano explicando el paso. Si ese
+  aviso vuelve a salir, es que el SQL no llegó a aplicarse.
 - ⏳ **`sql/27-email-direccion-hoteles.sql` — PENDIENTE DE EJECUTAR**: columna
   `puestos.email_direccion` + los dos correos que dio el cliente (Esmeralda Park y
   Dragoland). Lleva un SELECT al final para comprobar qué hoteles quedaron con correo.
