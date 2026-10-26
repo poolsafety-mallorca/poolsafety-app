@@ -1378,6 +1378,23 @@ window.PSPdf = (function () {
     }
   }
 
+  /* Cómo se cobra un extra. Debe cuadrar con MODOS de ps-presupuestos.js.
+     Se traducen también los presupuestos viejos, que guardaban periodicidad +
+     incluido en vez de un solo campo. */
+  const MODO_EXTRA = {
+    incluido: 'Incluido', hora: '€/hora', servicio: '€/servicio',
+    mes: '€/mes', contrato: 'Pago único'
+  };
+  function modoExtra(e) {
+    if (e && e.modo) return e.modo;
+    if (!e) return 'contrato';
+    if (e.incluido) return 'incluido';
+    if (/mensual|mes/i.test(e.periodicidad || '')) return 'mes';
+    if (/hora/i.test(e.periodicidad || '')) return 'hora';
+    if (/servicio/i.test(e.periodicidad || '')) return 'servicio';
+    return 'contrato';
+  }
+
   const ROJO = [185, 28, 28];
   const GRIS = [92, 85, 83];
 
@@ -1442,7 +1459,7 @@ window.PSPdf = (function () {
       let x = M;
       cols.forEach((c, i) => {
         const der = anchos[i] < 0;
-        doc.text(t(c).toUpperCase(), der ? x + Math.abs(anchos[i]) : x, y, der ? { align: 'right' } : undefined);
+        doc.text(t(c).toUpperCase(), der ? x + Math.abs(anchos[i]) - 1.5 : x, y, der ? { align: 'right' } : undefined);
         x += Math.abs(anchos[i]);
       });
       doc.setDrawColor(ROJO[0], ROJO[1], ROJO[2]); doc.setLineWidth(0.5);
@@ -1684,11 +1701,15 @@ window.PSPdf = (function () {
     const extras = (p.extras || []);
     if (extras.length) {
       h2('5 · Extras presupuestados');
-      parr('Los extras son opcionales y se acuerdan con Dirección. Se facturan de forma mensual o por contrato, según se indique.', 9);
-      tabla(['Concepto', 'Detalle', 'Uds.', 'Precio/ud.', 'Periodicidad'],
-        extras.map(e => [e.concepto || '—', e.detalle || '', String(e.uds || 1),
-                         e.incluido ? 'Incluido' : eur(e.precio), e.periodicidad || '—']),
-        [42, 60, -14, -26, 36]);
+      parr('Los extras son opcionales y se acuerdan con Dirección. Cada uno indica cómo se cobra: incluido sin coste, por hora, por servicio, al mes o en un pago único al contratar.', 9);
+      tabla(['Concepto', 'Detalle', 'Uds.', 'Precio/ud.', 'Cómo se cobra'],
+        extras.map(e => {
+          const m = modoExtra(e);
+          return [e.concepto || '—', e.detalle || '', String(e.uds || 1),
+                  m === 'incluido' ? 'Incluido' : eur(e.precio),
+                  MODO_EXTRA[m] || '—'];
+        }),
+        [40, 55, -13, -26, 44]);
     }
 
     /* ---------------- 5 · PRECIO Y CONDICIONES ---------------- */

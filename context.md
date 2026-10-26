@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-10-26 (v165 · el PDF de presupuesto ya lleva las fotos de uniformidad y mochila)
-**Cache SW actual: `poolsafety-v165`**
+Última actualización: 2026-10-26 (v166 · los extras del presupuesto dicen cómo se cobran: gratis, por hora, por servicio, al mes o pago único)
+**Cache SW actual: `poolsafety-v166`**
 
 ## ⚡ SQL EN SUPABASE · al día a 2026-10-26
 
@@ -553,6 +553,20 @@ número de socorristas por instalación y precio/hora; se factura sobre horas
 realmente prestadas al cierre de mes. Un total impreso se lee como precio
 cerrado, y el horario varía con temporada, turnos y ocupación. Decisión de
 dirección, no un olvido. Ni la tabla guarda totales ni el PDF los imprime.
+
+**Extras · cómo se cobra (v166):** un solo campo `modo` con cinco valores —
+`incluido`, `hora`, `servicio`, `mes`, `contrato`. Antes había dos controles
+para lo mismo (casilla "incluido" + desplegable de periodicidad) y podían
+contradecirse. `modoDe()`, en el módulo y en `ps-pdf.js`, traduce los
+presupuestos guardados antes del cambio, así que los viejos se siguen abriendo
+bien. Con «Crear extra nuevo» se añade cualquier concepto, esté o no en la lista
+de habituales.
+
+Ojo con el parser de voz: «por servicio» y «por hora» llevan dentro palabras que
+abren bloque, así que se pegan (`porservicio`, `porhora`) ANTES de partir el
+texto, y los bloques exigen `\b`. Sin las dos cosas, «350 euros por servicio»
+abría un servicio fantasma. Se hace así y no con lookbehind porque el Safari de
+los iPhone viejos no lo soporta.
 
 **Dictado por voz**: `SpeechRecognition` del navegador — gratis, sin servidor y
 **sin clave de API**, que importa porque este repositorio es público. El texto
