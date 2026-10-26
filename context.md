@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-09-30 (v163 · el punto rojo de Documentación ya avisa de la firma mensual pendiente, no sólo del Kit de Alta)
-**Cache SW actual: `poolsafety-v163`**
+Última actualización: 2026-10-26 (v164 · sección Presupuestos sólo para administrador, con dictado por voz y PDF de presentación · sql/32 PENDIENTE)
+**Cache SW actual: `poolsafety-v164`**
 
 ## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
@@ -27,6 +27,12 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/20-revisiones-diarias.sql` — auditoría revisiones botiquín/DESA/oxígeno
 - ✅ `sql/21-rls-correturnos-inventario.sql` — correturnos leen/escriben inventario del hotel donde fichan
 - ✅ `sql/22-diagnostico-reparar-unidades.sql` — reparar Botiquín 2/3 sin items (Cala Gran)
+- ⏳ **`sql/32-presupuestos.sql` — PENDIENTE DE EJECUTAR**: tabla `presupuestos`
+  para la sección nueva. **Sólo el dueño** (aquí hay precios: el coordinador no
+  entra). `servicios` y `extras` van en jsonb porque son líneas que sólo tienen
+  sentido dentro de su presupuesto. Incluye la función
+  `siguiente_numero_presupuesto()` para la numeración PRE-AAAA-NNNN. Mientras no
+  se ejecute, la sección enseña un aviso en castellano explicando el paso.
 - ⏳ **`sql/27-email-direccion-hoteles.sql` — PENDIENTE DE EJECUTAR**: columna
   `puestos.email_direccion` + los dos correos que dio el cliente (Esmeralda Park y
   Dragoland). Lleva un SELECT al final para comprobar qué hoteles quedaron con correo.
@@ -531,6 +537,31 @@ encendiera, se apagaba solo a los dos minutos.
 Ojo para el próximo Claude: **hay dos sitios que tocan `docsPendingDot`**
 (`renderDocsHeader` y `renderPendientesYCampana`). Si cambias uno, mira el otro
 o el poll te lo revierte.
+
+## 💼 Presupuestos (v164 · sql/32)
+
+Sección nueva en el panel, **sólo administrador** (`menuPresupuestos` va oculto
+en el HTML y lo enseña `coordinador.js` si el rol es dueño). Ficheros:
+`js/ps-presupuestos.js` (módulo `PSPresup`) y `PSPdf.generarPresupuesto()`.
+
+**REGLA QUE NO SE PUEDE ROMPER: el presupuesto NO lleva ningún total.** Fija
+número de socorristas por instalación y precio/hora; se factura sobre horas
+realmente prestadas al cierre de mes. Un total impreso se lee como precio
+cerrado, y el horario varía con temporada, turnos y ocupación. Decisión de
+dirección, no un olvido. Ni la tabla guarda totales ni el PDF los imprime.
+
+**Dictado por voz**: `SpeechRecognition` del navegador — gratis, sin servidor y
+**sin clave de API**, que importa porque este repositorio es público. El texto
+se interpreta con reglas en castellano (`GRAMATICA`, `interpretar()`) y SIEMPRE
+se enseña lo entendido antes de aplicarlo: nunca crea nada a ciegas. Formato:
+«cliente X cif Y precio hora quince con sesenta servicio Piscina dos socorristas
+de mayo a octubre de 10 a 18 extra desfibrilador 7 unidades 980 euros contrato».
+Ojo al tocar el parser: «servicio» y «extra» cortan los campos simples; sin ese
+corte, «precio hora quince con sesenta … de 10 a 18» se quedaba con el 10.
+
+Pendiente decidido NO hacer ahora: el PDF generado por la app es sólo texto, sin
+las fotos de uniformidad y botiquín que sí lleva la plantilla HTML. Meterlas
+obliga a subir las imágenes a `assets/` y a cachearlas en el SW.
 
 ## 🚨 Bugs conocidos abiertos (no bloquean pero atender)
 - **Hotel de Artá con GPS impreciso**: puede necesitar radio 150m manual o corregir coords GPS del pin del hotel desde admin.

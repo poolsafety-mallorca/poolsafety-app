@@ -3904,6 +3904,20 @@
      NAVEGACIÓN POR SECCIONES DEL DASHBOARD
      ========================================================================== */
 
+  /* PRESUPUESTOS · sólo el administrador. El menú va oculto en el HTML y se
+     enseña aquí si el rol es dueño; la sección se carga al abrirla, no al
+     arrancar, para no gastar consultas de quien no entra nunca. */
+  (function presupuestosMenu() {
+    const el = document.getElementById('menuPresupuestos');
+    if (!el) return;
+    const esDueno = ((window.PS_SESSION || {}).rol || rol) === 'dueno';
+    el.style.display = esDueno ? '' : 'none';
+    if (!esDueno) return;
+    el.addEventListener('click', () => {
+      setTimeout(() => { if (window.PSPresup) window.PSPresup.iniciar(); }, 120);
+    });
+  })();
+
   document.querySelectorAll('.dash-menu-item').forEach(btn => {
     btn.addEventListener('click', () => {
       const sec = btn.dataset.section;

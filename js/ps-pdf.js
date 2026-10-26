@@ -1336,6 +1336,358 @@ window.PSPdf = (function () {
     return typeof firma.documento_codigo === 'string' && firma.documento_codigo.startsWith('finiquito-');
   }
 
+
+  /* ==========================================================================
+     PRESUPUESTO PARA CLIENTE (sql/32)
+     --------------------------------------------------------------------------
+     Documento comercial de 5 partes: presentación, diferencias, servicio,
+     servicios presupuestados y precio. Mismo contenido que la plantilla que
+     validó dirección.
+
+     NO IMPRIME NINGÚN TOTAL, y es deliberado: el presupuesto fija socorristas
+     y precio/hora, y se factura sobre horas realmente prestadas al cierre de
+     mes. Un total impreso se lee como precio cerrado y el horario varía con la
+     temporada, los turnos y la ocupación. Si alguien añade aquí un total,
+     romperá lo que el documento promete.
+     ========================================================================== */
+  const ROJO = [185, 28, 28];
+  const GRIS = [92, 85, 83];
+
+  function generarPresupuesto(p) {
+    const doc = nuevoPdf();
+    const W = 210, M = 16, ANCHO = W - M * 2;
+    let y = 0;
+
+    const t = (v) => limpiarTexto(String(v == null ? '' : v));
+    const eur = (n) => (n == null || n === '' || isNaN(n)) ? '—'
+      : Number(n).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+
+    function pagina() {
+      doc.setFillColor(ROJO[0], ROJO[1], ROJO[2]);
+      doc.rect(0, 0, W, 8, 'F');
+      y = 20;
+    }
+    function h2(txt) {
+      y += 3;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5);
+      doc.setTextColor(ROJO[0], ROJO[1], ROJO[2]);
+      doc.text(t(txt).toUpperCase(), M, y);
+      doc.setDrawColor(222, 214, 212); doc.line(M, y + 1.8, W - M, y + 1.8);
+      doc.setTextColor(0, 0, 0);
+      y += 7;
+    }
+    function parr(txt, size) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(size || 9.6);
+      doc.setTextColor(40, 36, 35);
+      const ls = doc.splitTextToSize(t(txt), ANCHO);
+      doc.text(ls, M, y);
+      y += ls.length * (size ? size * 0.45 : 4.4) + 2.2;
+      doc.setTextColor(0, 0, 0);
+    }
+    function vineta(txt) {
+      doc.setFillColor(ROJO[0], ROJO[1], ROJO[2]);
+      doc.rect(M, y - 1.8, 1.6, 1.6, 'F');
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.4);
+      doc.setTextColor(40, 36, 35);
+      const ls = doc.splitTextToSize(t(txt), ANCHO - 5);
+      doc.text(ls, M + 4.5, y);
+      y += ls.length * 4.3 + 1.4;
+      doc.setTextColor(0, 0, 0);
+    }
+    function bloque(titulo, cuerpo, nota) {
+      doc.setDrawColor(ROJO[0], ROJO[1], ROJO[2]); doc.setLineWidth(0.6);
+      doc.line(M, y - 3.5, W - M, y - 3.5); doc.setLineWidth(0.2);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.8);
+      doc.text(t(titulo), M, y); y += 4.4;
+      parr(cuerpo, 9.2);
+      if (nota) { doc.setTextColor(GRIS[0], GRIS[1], GRIS[2]); parr(nota, 8.4); doc.setTextColor(0, 0, 0); }
+      y += 1.5;
+    }
+    function tabla(cols, filas, anchos) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.4);
+      doc.setTextColor(GRIS[0], GRIS[1], GRIS[2]);
+      let x = M;
+      cols.forEach((c, i) => {
+        const der = anchos[i] < 0;
+        doc.text(t(c).toUpperCase(), der ? x + Math.abs(anchos[i]) : x, y, der ? { align: 'right' } : undefined);
+        x += Math.abs(anchos[i]);
+      });
+      doc.setDrawColor(ROJO[0], ROJO[1], ROJO[2]); doc.setLineWidth(0.5);
+      doc.line(M, y + 1.6, W - M, y + 1.6); doc.setLineWidth(0.2);
+      doc.setTextColor(0, 0, 0);
+      y += 5.5;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6);
+      filas.forEach(f => {
+        let alto = 4.6, x2 = M;
+        const trozos = f.map((celda, i) => doc.splitTextToSize(t(celda), Math.abs(anchos[i]) - 2.5));
+        trozos.forEach(tr => { alto = Math.max(alto, tr.length * 3.9 + 1.4); });
+        f.forEach((celda, i) => {
+          const der = anchos[i] < 0;
+          doc.text(trozos[i], der ? x2 + Math.abs(anchos[i]) - 1.5 : x2, y, der ? { align: 'right' } : undefined);
+          x2 += Math.abs(anchos[i]);
+        });
+        y += alto;
+        doc.setDrawColor(228, 222, 220);
+        doc.line(M, y - 2.4, W - M, y - 2.4);
+      });
+      y += 2;
+    }
+    function recuadro(titulo, lineas, color) {
+      const c = color || ROJO;
+      const alto = 7 + lineas.reduce((a, l) => a + doc.splitTextToSize(t(l), ANCHO - 8).length * 3.9 + 1.2, 0);
+      doc.setDrawColor(c[0], c[1], c[2]);
+      doc.setFillColor(254, 247, 246);
+      doc.rect(M, y - 4, ANCHO, alto, 'FD');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.6);
+      doc.setTextColor(c[0], c[1], c[2]);
+      doc.text(t(titulo).toUpperCase(), M + 4, y);
+      doc.setTextColor(40, 36, 35);
+      let yy = y + 4.6;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.8);
+      lineas.forEach(l => {
+        const ls = doc.splitTextToSize(t(l), ANCHO - 8);
+        doc.text(ls, M + 4, yy); yy += ls.length * 3.9 + 1.2;
+      });
+      doc.setTextColor(0, 0, 0);
+      y = y + alto + 2;
+    }
+
+    /* ---------------- 1 · PORTADA Y PRESENTACIÓN ---------------- */
+    doc.setFillColor(ROJO[0], ROJO[1], ROJO[2]);
+    doc.rect(0, 0, W, 38, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(23);
+    doc.text('PoolSafety', M, 17);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.4);
+    doc.text(EMPRESA.razonSocial + ' · CIF ' + EMPRESA.cif, M, 24);
+    doc.text(EMPRESA.domicilio, M, 29);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(17);
+    doc.text('PRESUPUESTO', W - M, 18, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6);
+    doc.text('Servicio de socorrismo acuático', W - M, 24, { align: 'right' });
+    doc.setTextColor(0, 0, 0);
+    y = 48;
+
+    const metas = [
+      ['Número', p.numero || '—'],
+      ['Fecha', p.fecha ? new Date(p.fecha).toLocaleDateString('es-ES') : '—'],
+      ['Validez', (p.validez_dias || 30) + ' días']
+    ];
+    let mx = M;
+    metas.forEach(([k, v]) => {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
+      doc.setTextColor(GRIS[0], GRIS[1], GRIS[2]); doc.text(t(k).toUpperCase(), mx, y);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0, 0, 0);
+      doc.text(t(v), mx, y + 5.4);
+      mx += 45;
+    });
+    doc.setDrawColor(ROJO[0], ROJO[1], ROJO[2]); doc.setLineWidth(0.6);
+    doc.line(M, y + 8.6, W - M, y + 8.6); doc.setLineWidth(0.2);
+    y += 16;
+
+    const mitad = ANCHO / 2;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.4);
+    doc.setTextColor(ROJO[0], ROJO[1], ROJO[2]);
+    doc.text('EMITE', M, y); doc.text('CLIENTE', M + mitad, y);
+    doc.setTextColor(0, 0, 0); y += 5;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    doc.text(t(EMPRESA.razonSocial), M, y);
+    doc.text(doc.splitTextToSize(t(p.cliente_nombre || '—'), mitad - 4), M + mitad, y);
+    y += 5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6);
+    doc.setTextColor(40, 36, 35);
+    doc.text(doc.splitTextToSize(t(EMPRESA.domicilio + '\nCIF ' + EMPRESA.cif + '\n' + EMPRESA.email), mitad - 4), M, y);
+    const cli = [p.cliente_att ? 'Att. ' + p.cliente_att : null, p.cliente_direccion,
+                 p.cliente_cif ? 'CIF ' + p.cliente_cif : null, p.cliente_instalaciones]
+                 .filter(Boolean).join('\n');
+    doc.text(doc.splitTextToSize(t(cli || '—'), mitad - 4), M + mitad, y);
+    doc.setTextColor(0, 0, 0);
+    y += 20;
+
+    h2('Quiénes somos');
+    parr('Pool Safety Des Llevant es una empresa mallorquina dedicada en exclusiva al socorrismo acuático profesional. Cubrimos piscinas de hotel, playas e instalaciones acuáticas en todas las Illes Balears, con equipo propio, coordinación en la isla y material homologado.');
+    parr('No subcontratamos el servicio. Cada socorrista que pisa su instalación es personal nuestro, con su titulación en vigor, su uniforme y su material revisado a diario. Eso nos permite responder de lo que pasa en su piscina, porque responde de ello alguien de nuestra plantilla.');
+    parr('La diferencia entre una empresa de socorrismo y otra no se ve el día que todo va bien. Se ve el día que falta un socorrista, el día que hay un incidente con un cliente o el día que llega una inspección. Hemos construido nuestro servicio pensando en esos tres días.');
+
+    h2('Compromiso de servicio');
+    doc.setDrawColor(ROJO[0], ROJO[1], ROJO[2]); doc.setLineWidth(0.6);
+    doc.rect(M, y - 4, ANCHO, 26);
+    doc.line(M + mitad, y - 4, M + mitad, y + 22); doc.setLineWidth(0.2);
+    [['< 2 h', 'Sustitución de un socorrista', 'Si un socorrista no puede estar en su puesto, lo reponemos en menos de dos horas.'],
+     ['24/7', 'Atención a su dirección', 'Coordinación localizable las 24 horas, todos los días del servicio.']
+    ].forEach(([big, tit, txt], i) => {
+      const x = M + 4 + i * mitad;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(19);
+      doc.setTextColor(ROJO[0], ROJO[1], ROJO[2]); doc.text(big, x, y + 3);
+      doc.setTextColor(0, 0, 0); doc.setFontSize(9); doc.text(t(tit), x, y + 9);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+      doc.setTextColor(40, 36, 35);
+      doc.text(doc.splitTextToSize(t(txt), mitad - 8), x, y + 13.5);
+      doc.setTextColor(0, 0, 0);
+    });
+
+    /* ---------------- 2 · LO QUE NOS DIFERENCIA ---------------- */
+    doc.addPage(); pagina();
+    h2('Lo que nos diferencia');
+    parr('Trabajamos con aplicación propia de gestión, desarrollada por nosotros para este servicio. No es un extra de marketing: es la herramienta con la que controlamos el día a día y con la que usted puede comprobar, en cualquier momento, que el servicio que ha contratado se está prestando.');
+    y += 2;
+    bloque('Control horario verificado con GPS',
+      'El socorrista ficha su entrada y su salida desde el propio puesto, y la aplicación comprueba que está físicamente allí. No es una hoja de firmas que se rellena el viernes.',
+      'Queda un registro horario auditable, como exige el RD-ley 8/2019. Si usted pide las horas de un día concreto, las tiene con su respaldo documental.');
+    bloque('Revisión diaria de botiquín y material',
+      'Cada jornada, antes de abrir, el socorrista repasa botiquín, desfibrilador y equipo de oxigenoterapia y lo deja firmado en la aplicación, artículo por artículo.',
+      'Si falta material o una existencia baja del mínimo, salta el aviso a coordinación en ese momento y se repone. Conforme al Decreto 53/1995 y al Decreto 137/2008.');
+    bloque('Partes de incidencia en el momento',
+      'Cualquier incidencia con un cliente se levanta desde el móvil, en el sitio: qué pasó, a quién, qué se hizo, con firma del socorrista y del testigo.',
+      'El parte queda numerado y guardado. Ante una reclamación o una aseguradora, usted tiene un documento firmado el mismo día, no un recuerdo.');
+    bloque('Sin huecos de cobertura',
+      'Bolsa propia de socorristas correturnos para bajas, vacaciones y ausencias imprevistas. La sustitución se activa desde coordinación en cuanto se detecta la ausencia.',
+      'Compromiso de reposición en menos de dos horas, recogido en este presupuesto.');
+    bloque('Toda la carga laboral, fuera de su empresa',
+      'Altas y bajas, nóminas, seguros, prevención de riesgos, formación y titulaciones en vigor corren de nuestra cuenta. Usted contrata un servicio, no una plantilla.',
+      'Controlamos el vencimiento de cada titulación: ningún socorrista trabaja en su instalación con un título caducado.');
+    recuadro('Lo que esto le evita', [
+      'Una inspección sin papeles. Registro horario, revisiones de material y titulaciones al día.',
+      'Una reclamación sin pruebas. Parte firmado el mismo día por socorrista y testigo.',
+      'Un día sin socorrista. Reposición en menos de dos horas, sin cerrar la piscina.',
+      'Facturas con sorpresas. El precio/hora incluye uniformidad, botiquín, reposición de material, sustituciones y coordinación.'
+    ]);
+
+    /* ---------------- 3 · EL SERVICIO ---------------- */
+    doc.addPage(); pagina();
+    h2('1 · Servicio que presta Pool Safety');
+    ['Supervisión permanente de los objetivos de satisfacción.',
+     'Coordinador disponible en la isla 24 horas.',
+     'Todos los aspectos fiscales y administrativos de los empleados: seguros, prevención de riesgos laborales y Seguridad Social.',
+     'Uniforme completo para el equipo de socorrismo, coordinado con Dirección en cuanto a logotipos.',
+     'Sustituciones por baja o incidencia dentro de los plazos marcados.',
+     'Material de curas conforme al BOIB.',
+     'Acceso de Dirección a la aplicación de gestión: fichajes, revisiones de material y partes de incidencia.'
+    ].forEach(vineta);
+
+    h2('2 · Servicio a cargo de la empresa contratante');
+    ['Información sobre el alojamiento, la tipología de clientes y las incidencias que afecten a los huéspedes.',
+     'Medios materiales para el desarrollo de las actividades programadas.',
+     'Manutención del socorrista.'].forEach(vineta);
+
+    h2('3 · Dotación del botiquín · Decreto 53/1995');
+    [['Curas', 'Gasas estériles, vendas elásticas y cohesivas, esparadrapo hipoalergénico, apósitos surtidos, algodón hidrófilo, suturas adhesivas.'],
+     ['Antisépticos y lavado', 'Povidona yodada, clorhexidina, alcohol 96°, agua oxigenada, suero fisiológico.'],
+     ['Protección', 'Guantes de nitrilo y guantes estériles.'],
+     ['Instrumental', 'Tijeras y pinzas de acero inoxidable, pinzas de lengua, termómetro digital.'],
+     ['Emergencia', 'Mantas térmicas, bolsas de hielo instantáneo, collarín cervical ajustable.'],
+     ['Medicación tópica', 'Antiinflamatorio y neutralizante de picaduras de medusa.']
+    ].forEach(([k, v]) => {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+      doc.setTextColor(ROJO[0], ROJO[1], ROJO[2]); doc.text(t(k), M, y);
+      doc.setTextColor(0, 0, 0); y += 4;
+      parr(v, 8.8);
+    });
+    parr('Cada artículo tiene un mínimo fijado. Si el stock baja de ese mínimo, la aplicación avisa a coordinación el mismo día y se repone sin cargo.', 8.4);
+
+    /* ---------------- 4 · SERVICIOS Y EXTRAS ---------------- */
+    doc.addPage(); pagina();
+    h2('4 · Servicios presupuestados');
+    const svc = (p.servicios || []);
+    tabla(['Instalación', 'Periodo', 'Horario', 'Socorristas'],
+      svc.length ? svc.map(s => [s.instalacion || '—', s.periodo || '—', s.horario || '—', String(s.socorristas || 1)])
+                 : [['(sin servicios)', '', '', '']],
+      [72, 36, 36, -34]);
+    const totalSoc = svc.reduce((a, s) => a + (parseInt(s.socorristas) || 0), 0);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+    doc.text('Servicios a cubrir', M, y);
+    doc.text(String(totalSoc), W - M, y, { align: 'right' });
+    y += 6;
+
+    recuadro('Cómo se factura', [
+      'Se indica el número de socorristas por instalación y el precio/hora del servicio. Este presupuesto no fija un importe total: el horario real varía según temporada, turnos y ocupación.',
+      'Se factura mensualmente sobre las horas realmente prestadas, al precio/hora pactado, cerrando el cómputo el último día de cada mes.',
+      'Cada hora queda registrada con el fichaje del socorrista en el puesto, y Dirección dispone del parte de horas del mes para conciliarlo con la factura.'
+    ]);
+
+    recuadro('El precio/hora incluye', [
+      'Socorrista titulado y en activo · Uniformidad completa · Botiquín reglamentario y su reposición',
+      'Coordinación y supervisión · Sustituciones por baja · Seguros y PRL',
+      'Aplicación de gestión · Partes de incidencia firmados'
+    ]);
+
+    const extras = (p.extras || []);
+    if (extras.length) {
+      h2('5 · Extras presupuestados');
+      parr('Los extras son opcionales y se acuerdan con Dirección. Se facturan de forma mensual o por contrato, según se indique.', 9);
+      tabla(['Concepto', 'Detalle', 'Uds.', 'Precio/ud.', 'Periodicidad'],
+        extras.map(e => [e.concepto || '—', e.detalle || '', String(e.uds || 1),
+                         e.incluido ? 'Incluido' : eur(e.precio), e.periodicidad || '—']),
+        [42, 60, -14, -26, 36]);
+    }
+
+    /* ---------------- 5 · PRECIO Y CONDICIONES ---------------- */
+    doc.addPage(); pagina();
+    h2('6 · Precio del servicio');
+    doc.setDrawColor(ROJO[0], ROJO[1], ROJO[2]); doc.setLineWidth(0.7);
+    doc.setFillColor(ROJO[0], ROJO[1], ROJO[2]);
+    doc.rect(M, y - 4, 62, 26, 'F');
+    doc.rect(M, y - 4, ANCHO, 26); doc.setLineWidth(0.2);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
+    doc.text('PRECIO HORA SOCORRISTA', M + 5, y + 2);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(21);
+    doc.text(eur(p.precio_hora) + ' /h', M + 5, y + 13);
+    doc.setTextColor(40, 36, 35);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6);
+    doc.text(doc.splitTextToSize(
+      'IVA no incluido. Al precio/hora se le aplicará el IVA vigente para servicios de socorrismo, actualmente del ' +
+      (p.iva_pct == null ? 21 : p.iva_pct) + ' %. Este presupuesto no fija un importe total: se factura mensualmente sobre las horas realmente prestadas. Los extras contratados se facturan aparte.',
+      ANCHO - 72), M + 67, y + 2);
+    doc.setTextColor(0, 0, 0);
+    y += 30;
+
+    const dea = extras.find(e => /desa|desfibril/i.test(e.concepto || ''));
+    const form = extras.find(e => /formaci/i.test(e.concepto || ''));
+    if (dea || form) {
+      recuadro('Programa de desfibriladores · incluido en este contrato', [
+        dea ? (dea.uds + ' equipos DESA, uno por establecimiento, con baterías y parches de repuesto incluidos durante toda la vigencia del contrato.') : null,
+        form ? (form.uds + ' plazas de formación en uso del desfibrilador para personal del hotel, sin coste mientras dure el contrato.') : null,
+        'Todos los equipos quedan registrados en la Dirección General de Emergencias del Govern de les Illes Balears, como exige el Decreto 137/2008.',
+        'Los equipos cuentan con seguro de responsabilidad civil.'
+      ].filter(Boolean), [15, 107, 63]);
+    }
+
+    function legal(titulo, cuerpo) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.6);
+      doc.text(t(titulo).toUpperCase(), M, y); y += 4;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.8);
+      doc.setTextColor(GRIS[0], GRIS[1], GRIS[2]);
+      const ls = doc.splitTextToSize(t(cuerpo), ANCHO);
+      doc.text(ls, M, y); y += ls.length * 3.3 + 4;
+      doc.setTextColor(0, 0, 0);
+    }
+    legal('Facturación sobre horas reales',
+      'Este presupuesto no recoge un número cerrado de horas ni un importe total: fija el número de socorristas por instalación y el precio/hora del servicio. La facturación se emitirá mensualmente sobre las horas efectivamente prestadas, al precio/hora pactado, cerrándose el cómputo el último día de cada mes. Las variaciones de horario por temporada, turnos u ocupación se reflejarán en la factura del mes correspondiente. El cliente dispondrá del detalle de horas por instalación y jornada.');
+    legal('Revisión del precio',
+      'El precio por hora establecido en el contrato quedará modificado porcentualmente al alza por cualquier aumento salarial que se produzca como consecuencia del incremento del Salario Mínimo Interprofesional, o bien por la aplicación de un nuevo Convenio Colectivo del sector, desde el mes de su aplicación; quedando facultada cualquiera de las partes para resolver el contrato sin penalización alguna en caso de desacuerdo con el nuevo precio hora, en cuyo caso deberá preavisarse con quince días de antelación a la fecha prevista de resolución. El precio se incrementará anualmente de acuerdo con el porcentaje en que se vea incrementado el Salario Mínimo Interprofesional o, en su defecto, el IPC.');
+
+    if (p.notas) { legal('Observaciones', p.notas); }
+
+    y += 4;
+    parr('Quedamos a su disposición para cualquier información o aclaración de su interés.');
+    parr('Saludos cordiales,');
+    y += 10;
+    doc.setDrawColor(60, 60, 60);
+    doc.line(W - M - 60, y, W - M, y);
+    doc.setFontSize(7.8); doc.setTextColor(GRIS[0], GRIS[1], GRIS[2]);
+    doc.text('Conforme, el cliente', W - M - 30, y + 4, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+
+    numerarPaginas(doc);
+    return doc;
+  }
+
+  async function descargarPresupuesto(p) {
+    const doc = generarPresupuesto(p);
+    await guardarPdf(doc, `PoolSafety-presupuesto-${String(p.numero || '').replace(/\s+/g, '')}.pdf`);
+  }
+
   async function generarDocSegunTipo(empleado, firma, subdocs) {
     if (firma.documento_codigo === 'kit-alta') return generarKitAlta(empleado, firma, subdocs);
     if (esFiniquito(firma))                    return generarFiniquito(empleado, firma);
@@ -1668,5 +2020,5 @@ window.PSPdf = (function () {
     return { blob: generarHorasHotel(datos, opts).output('blob'), nombre: nombreArchivoHoras(datos, opts) };
   }
 
-  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarIncidencia, generarInformesHotel, generarHorasHotel, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito, descargarIncidencia, descargarInformesHotel, nombreArchivoInformes, descargarHorasHotel, blobHorasHotel, guardarArchivo };
+  return { generarKitAlta, generarJornadaResumen, generarJornadaOficial, generarFiniquito, generarIncidencia, generarInformesHotel, generarHorasHotel, generarYSubir, descargar, descargarJornadaOficial, descargarFiniquito, descargarIncidencia, descargarInformesHotel, nombreArchivoInformes, descargarHorasHotel, blobHorasHotel, guardarArchivo, generarPresupuesto, descargarPresupuesto, guardarPdf };
 })();
