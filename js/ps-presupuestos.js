@@ -27,12 +27,33 @@ window.PSPresup = (function () {
   let actual = null;        // presupuesto en edición
   let faltaSQL = false;     // sql/32 sin ejecutar
 
+  /* Cómo se cobra un extra. Antes había dos controles para lo mismo (una
+     casilla "incluido" y un desplegable de periodicidad) y podían
+     contradecirse: se marcaba incluido Y mensual a la vez. Ahora es UN campo.
+     `modoDe()` traduce los presupuestos viejos para que sigan abriéndose. */
+  const MODOS = [
+    { v:'incluido', lab:'Incluido sin coste', corto:'Incluido' },
+    { v:'hora',     lab:'Por hora',           corto:'€/hora' },
+    { v:'servicio', lab:'Por servicio',       corto:'€/servicio' },
+    { v:'mes',      lab:'Al mes',             corto:'€/mes' },
+    { v:'contrato', lab:'Pago único (contrato)', corto:'Pago único' }
+  ];
+  function modoDe(e) {
+    if (e && e.modo) return e.modo;
+    if (!e) return 'contrato';
+    if (e.incluido) return 'incluido';
+    if (/mensual|mes/i.test(e.periodicidad || '')) return 'mes';
+    if (/hora/i.test(e.periodicidad || '')) return 'hora';
+    if (/servicio/i.test(e.periodicidad || '')) return 'servicio';
+    return 'contrato';
+  }
+
   const EXTRAS_SUGERIDOS = [
-    { concepto: 'Desfibrilador (DESA)',        detalle: 'Equipo homologado por establecimiento. Baterías y parches incluidos durante toda la vigencia del contrato.', periodicidad: 'Contrato' },
-    { concepto: 'Formación en DESA',           detalle: 'Uso del desfibrilador y primeros auxilios para personal del hotel.', periodicidad: 'Contrato', incluido: true },
-    { concepto: 'Equipo de oxigenoterapia',    detalle: 'Botella, caudalímetro, mascarillas y revisión periódica de carga.', periodicidad: 'Contrato' },
-    { concepto: 'Sistema de intercomunicación',detalle: 'Emisoras para comunicación directa entre socorristas y con recepción.', periodicidad: 'Mensual' },
-    { concepto: 'App de gestión · Dirección',  detalle: 'Acceso del hotel a fichajes, revisiones de material y partes en tiempo real.', periodicidad: '—', incluido: true }
+    { concepto: 'Desfibrilador (DESA)',        detalle: 'Equipo homologado por establecimiento. Baterías y parches incluidos durante toda la vigencia del contrato.', modo: 'contrato' },
+    { concepto: 'Formación en DESA',           detalle: 'Uso del desfibrilador y primeros auxilios para personal del hotel.', modo: 'incluido' },
+    { concepto: 'Equipo de oxigenoterapia',    detalle: 'Botella, caudalímetro, mascarillas y revisión periódica de carga.', modo: 'contrato' },
+    { concepto: 'Sistema de intercomunicación',detalle: 'Emisoras para comunicación directa entre socorristas y con recepción.', modo: 'mes' },
+    { concepto: 'App de gestión · Dirección',  detalle: 'Acceso del hotel a fichajes, revisiones de material y partes en tiempo real.', modo: 'incluido' }
   ];
 
   const vacio = () => ({
@@ -167,7 +188,16 @@ window.PSPresup = (function () {
   ];
 
   function interpretar(textoCrudo) {
-    const texto = ' ' + sinTildes(textoCrudo).replace(/[.;]/g, ' ') + ' ';
+    /* "por servicio" y "por hora" llevan dentro palabras que abren bloque
+       ("servicio") o son clave ("hora"), así que se pegan ANTES de partir el
+       texto. Sin esto, "350 euros por servicio" cortaba el extra en seco y
+       abría un servicio fantasma. Se hace pegándolas y no con lookbehind
+       porque el Safari de los iPhone viejos no lo soporta. */
+    const texto = ' ' + sinTildes(textoCrudo).replace(/[.;]/g, ' ')
+      .replace(/\bpor\s+servicio\b/g, 'porservicio')
+      .replace(/\bpor\s+hora\b/g, 'porhora')
+      .replace(/\bal\s+mes\b/g, 'almes')
+      .replace(/\bpor\s+mes\b/g, 'almes') + ' ';
     const out = { campos:{}, servicios:[], extras:[], noEntendido:[] };
 
     // --- campos simples ---
@@ -200,7 +230,7 @@ window.PSPresup = (function () {
     });
 
     // --- servicios: "servicio <nombre> <N> socorristas de <mes> a <mes> de <h> a <h>" ---
-    const reSvc = /servicio\s+(.+?)(?=\s+servicio\s+|\s+extra\s+|$)/g;
+    const reSvc = /\bservicio\s+(.+?)(?=\s+\bservicio\s+|\s+\bextra\s+|$)/g;
     let m2;
     while ((m2 = reSvc.exec(texto)) !== null) {
       const t = m2[1].trim(); if (!t) continue;
@@ -220,24 +250,28 @@ window.PSPresup = (function () {
     }
 
     // --- extras: "extra <concepto> <N> unidades <P> euros mensual|contrato" ---
-    const reExt = /extra\s+(.+?)(?=\s+extra\s+|\s+servicio\s+|$)/g;
+    const reExt = /\bextra\s+(.+?)(?=\s+\bextra\s+|\s+\bservicio\s+|$)/g;
     while ((m2 = reExt.exec(texto)) !== null) {
       const t = m2[1].trim(); if (!t) continue;
       const uds = t.match(/(\d+|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(?:unidades?|uds)/);
       const eur = t.match(/([\d.,]+|[a-z\s]+?)\s*euros/);
-      const per = /mensual/.test(t) ? 'Mensual' : (/contrato/.test(t) ? 'Contrato' : '—');
-      const inc = /incluid/.test(t);
+      const inc = /incluid|gratis|sin coste|sin cargo/.test(t);
+      const modo = inc ? 'incluido'
+        : /porhora/.test(t) ? 'hora'
+        : /porservicio/.test(t) ? 'servicio'
+        : /mensual|almes/.test(t) ? 'mes'
+        : 'contrato';
       let concepto = t
         .replace(/\s*(\d+|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(?:unidades?|uds).*/,'')
         .replace(/\s*([\d.,]+)\s*euros.*/,'')
-        .replace(/\s*(mensual|contrato|incluido|incluida)\b.*/,'').trim();
+        .replace(/\s*(mensual|almes|porhora|porservicio|contrato|incluido|incluida|gratis|sin coste|sin cargo)\b.*/,'').trim();
       const sug = EXTRAS_SUGERIDOS.find(e => sinTildes(e.concepto).includes(concepto) || concepto.includes(sinTildes(e.concepto).slice(0,8)));
       out.extras.push({
         concepto: sug ? sug.concepto : (concepto || '(sin nombre)'),
         detalle: sug ? sug.detalle : '',
         uds: uds ? (aNumero(uds[1]) || 1) : 1,
         precio: inc ? null : (eur ? aNumero(eur[1]) : null),
-        periodicidad: per, incluido: inc
+        modo: modo
       });
     }
     return out;
@@ -383,11 +417,12 @@ window.PSPresup = (function () {
       <td><input class="in" data-e="${i}" data-k="concepto" value="${esc(e.concepto)}" placeholder="Concepto"></td>
       <td><input class="in" data-e="${i}" data-k="detalle" value="${esc(e.detalle)}" placeholder="Detalle"></td>
       <td><input class="in" type="number" min="0" data-e="${i}" data-k="uds" value="${e.uds||1}" style="width:66px"></td>
-      <td><input class="in" type="number" step="0.01" data-e="${i}" data-k="precio" value="${e.precio==null?'':e.precio}" placeholder="—" style="width:90px"></td>
-      <td><select class="in" data-e="${i}" data-k="periodicidad" style="width:104px">
-        ${['Contrato','Mensual','—'].map(o => `<option ${e.periodicidad===o?'selected':''}>${o}</option>`).join('')}
+      <td><input class="in" type="number" step="0.01" data-e="${i}" data-k="precio"
+          value="${modoDe(e)==='incluido'?'':(e.precio==null?'':e.precio)}"
+          placeholder="${modoDe(e)==='incluido'?'gratis':'0,00'}" ${modoDe(e)==='incluido'?'disabled':''} style="width:86px"></td>
+      <td><select class="in" data-e="${i}" data-k="modo" style="width:150px">
+        ${MODOS.map(o => `<option value="${o.v}" ${modoDe(e)===o.v?'selected':''}>${o.lab}</option>`).join('')}
       </select></td>
-      <td style="text-align:center"><input type="checkbox" data-e="${i}" data-k="incluido" ${e.incluido?'checked':''} title="Incluido sin coste"></td>
       <td><button class="btn-icon" data-qe="${i}" title="Quitar" style="width:28px;height:28px;background:#FEF2F2;color:#DC2626;border:none;border-radius:6px;cursor:pointer;">✕</button></td>
     </tr>`;
   }
@@ -450,21 +485,27 @@ window.PSPresup = (function () {
 
         <h4>Extras (opcionales)</h4>
         <div style="overflow-x:auto"><table class="tb">
-          <thead><tr><th>Concepto</th><th>Detalle</th><th>Uds.</th><th>Precio/ud.</th><th>Periodicidad</th><th>Incluido</th><th></th></tr></thead>
+          <thead><tr><th>Concepto</th><th>Detalle</th><th>Uds.</th><th>Cómo se cobra</th><th>Precio/ud.</th><th></th></tr></thead>
           <tbody id="pExt">${(p.extras||[]).map(filaExtra).join('')}</tbody>
         </table></div>
         <div class="row gap-2" style="margin-top:6px;flex-wrap:wrap;">
-          <button class="btn btn-outline btn-sm" id="pAddExt">+ Añadir extra</button>
-          <select class="in" id="pSugExt"><option value="">Añadir de la lista…</option>
+          <button class="btn btn-primary btn-sm" id="pAddExt">+ Crear extra nuevo</button>
+          <span class="small text-muted">o coge uno de los habituales:</span>
+          <select class="in" id="pSugExt"><option value="">Elegir…</option>
             ${EXTRAS_SUGERIDOS.map((e,i)=>`<option value="${i}">${esc(e.concepto)}</option>`).join('')}
           </select>
         </div>
+        <p class="small text-muted" style="margin:7px 0 0;">
+          «Crear extra nuevo» deja una fila en blanco: escribe el concepto que quieras,
+          no tiene por qué estar en la lista. Si eliges <b>Incluido sin coste</b>, el precio
+          se desactiva y en el presupuesto sale como «Incluido».
+        </p>
 
         <h4>Notas</h4>
         <textarea class="in" data-p="notas" rows="2" style="width:100%">${esc(p.notas||'')}</textarea>
 
         <div style="margin-top:12px;padding:9px 12px;background:#FEF7F6;border:1px solid #B91C1C;border-radius:8px;font-size:12.5px;color:#7F1212;">
-          El presupuesto <b>no lleva importes totales</b>: fija socorristas y precio/hora. Se factura sobre horas realmente prestadas al cierre de mes.
+          El presupuesto <b>no lleva importes totales</b>: fija socorristas y precio/hora. Se factura sobre horas realmente prestadas al cierre de mes. Los extras van aparte, cada uno con su forma de cobro.
         </div>
       </div>`;
   }
@@ -493,14 +534,23 @@ window.PSPresup = (function () {
     });
     relee('[data-s]', p.servicios);
     relee('[data-e]', p.extras);
+    // Cambiar "cómo se cobra" repinta: si pasa a gratis hay que desactivar el
+    // precio, y si deja de serlo hay que volver a activarlo.
+    document.querySelectorAll('[data-e][data-k="modo"]').forEach(el => {
+      el.onchange = () => {
+        const i = parseInt(el.dataset.e);
+        p.extras[i].modo = el.value;
+        if (el.value === 'incluido') p.extras[i].precio = null;
+        render();
+      };
+    });
 
     $('pAddSvc').onclick = () => { p.servicios.push({instalacion:'',periodo:'',horario:'',socorristas:1}); render(); };
-    $('pAddExt').onclick = () => { p.extras.push({concepto:'',detalle:'',uds:1,precio:null,periodicidad:'Contrato',incluido:false}); render(); };
+    $('pAddExt').onclick = () => { p.extras.push({concepto:'',detalle:'',uds:1,precio:null,modo:'contrato'}); render(); };
     $('pSugExt').onchange = (e) => {
       const i = e.target.value; if (i === '') return;
       const s = EXTRAS_SUGERIDOS[parseInt(i)];
-      p.extras.push({ concepto:s.concepto, detalle:s.detalle, uds:1, precio:null,
-                      periodicidad:s.periodicidad, incluido:!!s.incluido });
+      p.extras.push({ concepto:s.concepto, detalle:s.detalle, uds:1, precio:null, modo:s.modo });
       render();
     };
     document.querySelectorAll('[data-qs]').forEach(el => el.onclick = () => { p.servicios.splice(parseInt(el.dataset.qs),1); render(); });
@@ -548,7 +598,10 @@ window.PSPresup = (function () {
       const c = leido.campos;
       const filas = Object.keys(c).map(k => `<li><b>${k.replace(/_/g,' ')}:</b> ${esc(c[k])}</li>`).join('')
         + leido.servicios.map(s => `<li><b>servicio:</b> ${esc(s.instalacion)} · ${s.socorristas} socorrista(s) · ${esc(s.periodo)} ${esc(s.horario)}</li>`).join('')
-        + leido.extras.map(e => `<li><b>extra:</b> ${esc(e.concepto)} · ${e.uds} ud · ${e.incluido?'incluido':eur(e.precio)} · ${esc(e.periodicidad)}</li>`).join('');
+        + leido.extras.map(e => {
+            const md = MODOS.find(x => x.v === modoDe(e));
+            return `<li><b>extra:</b> ${esc(e.concepto)} · ${e.uds} ud · ${modoDe(e)==='incluido' ? 'incluido sin coste' : eur(e.precio) + ' ' + (md ? md.corto : '')}</li>`;
+          }).join('');
       const hay = !!filas;
       prev.innerHTML = hay
         ? `<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:9px 12px;">
@@ -589,7 +642,7 @@ window.PSPresup = (function () {
     render();
   }
 
-  return { cargar, guardar, borrar, siguienteNumero, vacio, interpretar, dictar,
+  return { cargar, guardar, borrar, siguienteNumero, vacio, interpretar, dictar, MODOS, modoDe,
            pararDictado, hayVoz, sinTildes, aNumero,
            get lista(){ return lista; }, get faltaSQL(){ return faltaSQL; },
            get actual(){ return actual; }, set actual(v){ actual = v; },
