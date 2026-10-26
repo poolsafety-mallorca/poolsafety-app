@@ -4,10 +4,13 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-10-26 (v164 · sql/32 ejecutado: la sección Presupuestos ya es operativa)
+Última actualización: 2026-10-26 (v164 · sql/27, 28, 29 y 32 ejecutados — no queda ningún SQL pendiente)
 **Cache SW actual: `poolsafety-v164`**
 
-## ⚡ SQL PENDIENTES DE EJECUTAR EN SUPABASE (por orden)
+## ⚡ SQL EN SUPABASE · al día a 2026-10-26
+
+**No queda ninguno pendiente.** Si añades un fichero nuevo, márcalo ⏳ aquí hasta
+que el cliente lo ejecute, y pásale el SQL para copiar y pegar: él no entra al repo.
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
 Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 
@@ -34,10 +37,10 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
   `siguiente_numero_presupuesto()` para la numeración PRE-AAAA-NNNN. Mientras no
   se ejecute, la sección enseña un aviso en castellano explicando el paso. Si ese
   aviso vuelve a salir, es que el SQL no llegó a aplicarse.
-- ⏳ **`sql/27-email-direccion-hoteles.sql` — PENDIENTE DE EJECUTAR**: columna
+- ✅ **`sql/27-email-direccion-hoteles.sql` — EJECUTADO el 2026-10-26**: columna
   `puestos.email_direccion` + los dos correos que dio el cliente (Esmeralda Park y
   Dragoland). Lleva un SELECT al final para comprobar qué hoteles quedaron con correo.
-- ⏳ **`sql/28-envio-partes-hotel.sql` — PENDIENTE DE EJECUTAR** (va después del 27):
+- ✅ **`sql/28-envio-partes-hotel.sql` — EJECUTADO el 2026-10-26** (va después del 27):
   `incidencias.email_enviado_at / email_enviado_a / email_modo / email_error`. Deja
   constancia de a quién y cuándo se mandó cada parte, evita mandarlo dos veces y
   permite ver los pendientes. Termina con un SELECT de partes pendientes.
@@ -55,7 +58,7 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
   tabla `tareas` que ya existía (ésa es coordinador → socorrista y apunta a
   `empleados`, donde los coordinadores no tienen ficha). El aviso naranja del apartado
   Coordinación ya no debería salir; si sale, es que el SQL no llegó a aplicarse.
-- ⏳ **`sql/29-horas-hotel-ajustes.sql` — PENDIENTE DE EJECUTAR**: tabla
+- ✅ **`sql/29-horas-hotel-ajustes.sql` — EJECUTADO el 2026-10-26**: tabla
   `horas_hotel_ajustes` para corregir a mano las horas facturables de un hotel, día a
   día, sin tocar los fichajes. Ver la sección "Corregir horas de un hotel" más abajo.
   **Escritura sólo para el dueño**; lectura para dueño y coordinadores.
