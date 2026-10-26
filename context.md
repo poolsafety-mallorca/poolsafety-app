@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-10-26 (v164 · sql/27, 28, 29 y 32 ejecutados — no queda ningún SQL pendiente)
-**Cache SW actual: `poolsafety-v164`**
+Última actualización: 2026-10-26 (v165 · el PDF de presupuesto ya lleva las fotos de uniformidad y mochila)
+**Cache SW actual: `poolsafety-v165`**
 
 ## ⚡ SQL EN SUPABASE · al día a 2026-10-26
 
@@ -563,9 +563,12 @@ de mayo a octubre de 10 a 18 extra desfibrilador 7 unidades 980 euros contrato»
 Ojo al tocar el parser: «servicio» y «extra» cortan los campos simples; sin ese
 corte, «precio hora quince con sesenta … de 10 a 18» se quedaba con el 10.
 
-Pendiente decidido NO hacer ahora: el PDF generado por la app es sólo texto, sin
-las fotos de uniformidad y botiquín que sí lleva la plantilla HTML. Meterlas
-obliga a subir las imágenes a `assets/` y a cachearlas en el SW.
+**Fotos (v165):** `assets/presu-uniformidad.jpg` y `assets/presu-socorrista.jpg`,
+cacheadas en el SW. `PSPdf.cargarImagen()` las pide con fetch al generar el PDF y
+las guarda en memoria; NO van empotradas en el JS para no engordar lo que
+descarga todo el mundo. Si no se pueden cargar, el documento sale sin ellas en
+vez de reventar. `generarPresupuesto()` es **async** por esto. jsPDF no traga
+WebP de forma fiable: las dos están convertidas a JPEG.
 
 ## 🚨 Bugs conocidos abiertos (no bloquean pero atender)
 - **Hotel de Artá con GPS impreciso**: puede necesitar radio 150m manual o corregir coords GPS del pin del hotel desde admin.

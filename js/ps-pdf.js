@@ -1350,11 +1350,44 @@ window.PSPdf = (function () {
      temporada, los turnos y la ocupación. Si alguien añade aquí un total,
      romperá lo que el documento promete.
      ========================================================================== */
+  /* Las fotos del presupuesto viven en assets/ y se cargan en el momento de
+     generar el PDF, no empotradas en este fichero: así no engordan el JS que
+     descarga todo el mundo en cada visita. Se cachean en memoria para no
+     volver a pedirlas. Si no se pueden cargar (sin red, fichero movido), el
+     documento sale sin ellas en vez de reventar: un presupuesto sin foto se
+     puede mandar; uno que no se genera, no. */
+  const _imgCache = {};
+  async function cargarImagen(ruta) {
+    if (_imgCache[ruta] !== undefined) return _imgCache[ruta];
+    try {
+      const r = await fetch(ruta);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const blob = await r.blob();
+      const dataUrl = await new Promise((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(fr.result);
+        fr.onerror = rej;
+        fr.readAsDataURL(blob);
+      });
+      _imgCache[ruta] = dataUrl;
+      return dataUrl;
+    } catch (err) {
+      console.warn('[pdf] no se pudo cargar', ruta, err.message);
+      _imgCache[ruta] = null;
+      return null;
+    }
+  }
+
   const ROJO = [185, 28, 28];
   const GRIS = [92, 85, 83];
 
-  function generarPresupuesto(p) {
+  async function generarPresupuesto(p) {
     const doc = nuevoPdf();
+    // Se piden antes de dibujar: si tardan, que tarde el botón, no el papel.
+    const [imgUnif, imgSoc] = await Promise.all([
+      cargarImagen('assets/presu-uniformidad.jpg'),
+      cargarImagen('assets/presu-socorrista.jpg')
+    ]);
     const W = 210, M = 16, ANCHO = W - M * 2;
     let y = 0;
 
@@ -1570,7 +1603,44 @@ window.PSPdf = (function () {
      'Medios materiales para el desarrollo de las actividades programadas.',
      'Manutención del socorrista.'].forEach(vineta);
 
-    h2('3 · Dotación del botiquín · Decreto 53/1995');
+    /* ---------------- 4 · EQUIPO Y MATERIAL ---------------- */
+    doc.addPage(); pagina();
+    h2('3 · Equipo y material incluidos');
+
+    // Las dos fotos a la MISMA altura: una es apaisada y la otra vertical, y
+    // alineadas por altura es como no cantan puestas una al lado de la otra.
+    const ALTO_F = 52;
+    if (imgUnif || imgSoc) {
+      const anchoUnif = ALTO_F * (1100 / 778);   // panel de uniformidad
+      const anchoSoc  = ALTO_F * (720 / 900);    // socorrista con la mochila
+      let xf = M;
+      if (imgUnif) {
+        try {
+          doc.addImage(imgUnif, 'JPEG', xf, y, anchoUnif, ALTO_F);
+          doc.setDrawColor(222, 214, 212); doc.rect(xf, y, anchoUnif, ALTO_F);
+          xf += anchoUnif + 4;
+        } catch (e) { console.warn('[pdf] uniformidad:', e.message); }
+      }
+      if (imgSoc) {
+        try {
+          doc.addImage(imgSoc, 'JPEG', xf, y, anchoSoc, ALTO_F);
+          doc.setDrawColor(222, 214, 212); doc.rect(xf, y, anchoSoc, ALTO_F);
+        } catch (e) { console.warn('[pdf] socorrista:', e.message); }
+      }
+      y += ALTO_F + 5;
+
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.4);
+      doc.text('Uniformidad completa.', M, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(doc.splitTextToSize('Camiseta técnica, sudadera, bañador, pantalón, gorra y botella. Identificación «Socorrista · Lifeguard» visible a distancia.', anchoUnif - 2), M, y + 3.6);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Botiquín de socorrista.', M + anchoUnif + 4, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(doc.splitTextToSize('Mochila roja identificada y señalizada, de transporte rápido al punto del incidente.', ANCHO - anchoUnif - 6), M + anchoUnif + 4, y + 3.6);
+      y += 14;
+    }
+
+    h2('Dotación del botiquín · Decreto 53/1995');
     [['Curas', 'Gasas estériles, vendas elásticas y cohesivas, esparadrapo hipoalergénico, apósitos surtidos, algodón hidrófilo, suturas adhesivas.'],
      ['Antisépticos y lavado', 'Povidona yodada, clorhexidina, alcohol 96°, agua oxigenada, suero fisiológico.'],
      ['Protección', 'Guantes de nitrilo y guantes estériles.'],
@@ -1684,7 +1754,7 @@ window.PSPdf = (function () {
   }
 
   async function descargarPresupuesto(p) {
-    const doc = generarPresupuesto(p);
+    const doc = await generarPresupuesto(p);
     await guardarPdf(doc, `PoolSafety-presupuesto-${String(p.numero || '').replace(/\s+/g, '')}.pdf`);
   }
 
