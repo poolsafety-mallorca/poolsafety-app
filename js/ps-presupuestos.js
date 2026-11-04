@@ -82,14 +82,37 @@ window.PSPresup = (function () {
     }
   }
 
+  // PS_SESSION guarda `empresa_id`, NO `empresaId`. Leer el camelCase daba
+  // siempre null, y como la policy de insert exige
+  // `empresa_id = auth_empresa()`, la base de datos rechazaba el guardado:
+  // no se guardaba ni un presupuesto, y por eso la lista salía vacía.
+  let empresaCache = null;
+  async function empresaActual() {
+    const psSes = window.PS_SESSION || {};
+    if (psSes.empresa_id) return psSes.empresa_id;
+    if (empresaCache) return empresaCache;
+    try {
+      const { data } = await sb().from('usuarios')
+        .select('empresa_id').eq('id', psSes.userId).single();
+      empresaCache = (data || {}).empresa_id || null;
+    } catch (_) { empresaCache = null; }
+    return empresaCache;
+  }
+
   async function siguienteNumero() {
     try {
       const { data, error } = await sb().rpc('siguiente_numero_presupuesto');
       if (!error && data) return data;
     } catch (_) {}
+    // Respaldo si la RPC no está: el siguiente al MAYOR number del año, no
+    // "cuántos hay + 1" — contar se repite en cuanto se borra alguno.
     const anio = new Date().getFullYear();
-    const n = lista.filter(p => (p.numero || '').startsWith('PRE-' + anio)).length + 1;
-    return `PRE-${anio}-${String(n).padStart(4, '0')}`;
+    const re = new RegExp('^PRE-' + anio + '-(\\d+)$');
+    const ultimo = lista.reduce((max, p) => {
+      const m = re.exec(p.numero || '');
+      return m ? Math.max(max, parseInt(m[1], 10)) : max;
+    }, 0);
+    return `PRE-${anio}-${String(ultimo + 1).padStart(4, '0')}`;
   }
 
   async function guardar() {
@@ -116,16 +139,44 @@ window.PSPresup = (function () {
         if (!data || !data.length) { toast('No se guardó: 0 filas. ¿Sigues siendo administrador?'); return false; }
         actual = data[0];
       } else {
-        fila.empresa_id = psSes.empresaId || null;
+        const empresaId = await empresaActual();
+        if (!empresaId) {
+          toast('No se ha podido identificar tu empresa. Cierra sesión, vuelve a entrar e inténtalo otra vez.');
+          return false;
+        }
+        fila.empresa_id = empresaId;
         fila.creado_por = psSes.userId || null;
-        const { data, error } = await sb().from('presupuestos').insert(fila).select();
-        if (error) throw error;
-        actual = (data || [])[0] || actual;
+
+        // El número definitivo se pide JUSTO ahora, no al abrir el formulario:
+        // así va correlativo de verdad según se guardan, aunque se dejen
+        // borradores a medias o se abran dos a la vez.
+        let intento = 0, data = null;
+        while (intento < 3) {
+          fila.numero = await siguienteNumero();
+          const r = await sb().from('presupuestos').insert(fila).select();
+          if (!r.error) { data = r.data; break; }
+          // idx_presupuestos_numero es único por (empresa_id, numero): si dos
+          // guardados caen a la vez, se reintenta con el siguiente libre.
+          if (/duplicate key|already exists|23505/i.test(r.error.message || '')) { intento++; continue; }
+          throw r.error;
+        }
+        if (!data) { toast('No se pudo asignar número al presupuesto. Inténtalo otra vez.'); return false; }
+        if (!data.length) { toast('No se guardó: 0 filas. ¿Sigues siendo administrador?'); return false; }
+        actual = data[0];
       }
       await cargar();
       toast('✓ Presupuesto guardado');
       return true;
-    } catch (err) { toast('Error guardando: ' + err.message); return false; }
+    } catch (err) {
+      const m = err.message || '';
+      // El rechazo de RLS llega con un texto que no dice nada al usuario.
+      if (/row-level security|violates row-level/i.test(m)) {
+        toast('La base de datos ha rechazado el guardado: tu usuario no consta como administrador de la empresa. Avisa al desarrollador.');
+      } else {
+        toast('Error guardando: ' + m);
+      }
+      return false;
+    }
   }
 
   async function borrar(id) {
