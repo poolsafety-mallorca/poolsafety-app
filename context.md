@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-10-26 (v166 · los extras del presupuesto dicen cómo se cobran: gratis, por hora, por servicio, al mes o pago único)
-**Cache SW actual: `poolsafety-v166`**
+Última actualización: 2026-11-06 (v167 · los presupuestos no se guardaban: `empresaId` en camelCase donde la sesión guarda `empresa_id`)
+**Cache SW actual: `poolsafety-v167`**
 
 ## ⚡ SQL EN SUPABASE · al día a 2026-10-26
 
@@ -583,6 +583,38 @@ las guarda en memoria; NO van empotradas en el JS para no engordar lo que
 descarga todo el mundo. Si no se pueden cargar, el documento sale sin ellas en
 vez de reventar. `generarPresupuesto()` es **async** por esto. jsPDF no traga
 WebP de forma fiable: las dos están convertidas a JPEG.
+
+**⚠️ NUNCA SE GUARDÓ NINGUNO (del 2026-10-26 al 2026-11-06 · corregido en v167).**
+`guardar()` ponía `fila.empresa_id = psSes.empresaId`, pero `PS_SESSION` guarda
+**`empresa_id`**, no `empresaId` (se construye así en `js/auth-guard.js`). Se
+enviaba la empresa en null, y la policy de insert de sql/32 exige
+`empresa_id = auth_empresa()`: la base de datos rechazaba cada fila con *"new row
+violates row-level security policy"*. El fallo venía **en el commit que creó la
+pantalla**, así que la sección no guardó ni un presupuesto en toda su vida. Dos
+síntomas de una sola causa: lista siempre vacía, y la numeración atascada en
+0001 porque el respaldo contaba lo almacenado.
+
+**Es la SEGUNDA vez que pasa lo mismo** (la primera, `socorrista.js` con
+`revisiones_diarias`). Antes de leer un campo de `PS_SESSION`, mira cómo se
+escribe en `js/auth-guard.js`: son `userId`, `email`, `rol`, `nombre` y
+**`empresa_id`** — el único en snake_case, justo el que se presta al despiste.
+JavaScript no avisa: un campo que no existe da `undefined`, no un error.
+
+Lo que se corrigió, además del nombre: la empresa se resuelve con
+`empresaActual()` (con respaldo contra `usuarios` si la sesión viniera
+incompleta), el número se pide **al insertar** y no al abrir el formulario —con
+reintento si choca con `idx_presupuestos_numero`—, el respaldo de numeración usa
+el **máximo** del año en vez de contar filas (contar se repetía al borrar
+alguno), y el rechazo de RLS se traduce a un mensaje que el usuario entiende.
+
+**Recuperación:** no hubo. Un rechazo de RLS no deja rastro: no hay fila a
+medias ni papelera, y la pantalla no guarda borradores en el móvil. Los dos
+presupuestos de Ona Hotels del 27/10/2026 se rehicieron a mano **desde los PDFs
+que conservaba el cliente** (el PDF se genera de lo que hay en pantalla, sin
+pasar por la base de datos — por eso salían documentos perfectos mientras no se
+guardaba nada). Ambos PDFs llevaban impreso `PRE-2026-0001`: la prueba de que
+ninguno llegó a escribirse, porque el índice único por (empresa_id, numero) no
+habría dejado pasar el segundo.
 
 ## 🚨 Bugs conocidos abiertos (no bloquean pero atender)
 - **Hotel de Artá con GPS impreciso**: puede necesitar radio 150m manual o corregir coords GPS del pin del hotel desde admin.
