@@ -4,12 +4,12 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-11-06 (v167 · los presupuestos no se guardaban: `empresaId` en camelCase donde la sesión guarda `empresa_id`)
-**Cache SW actual: `poolsafety-v167`**
+Última actualización: 2026-11-11 (v168 · tipo de trabajador en los presupuestos, con su precio/hora y el trabajo que hace cada perfil)
+**Cache SW actual: `poolsafety-v168`**
 
-## ⚡ SQL EN SUPABASE · al día a 2026-10-26
+## ⚡ SQL EN SUPABASE · al día a 2026-11-11
 
-**No queda ninguno pendiente.** Si añades un fichero nuevo, márcalo ⏳ aquí hasta
+**⏳ QUEDA UNO PENDIENTE: `sql/33-presupuestos-tipos-trabajador.sql`.** Si añades un fichero nuevo, márcalo ⏳ aquí hasta
 que el cliente lo ejecute, y pásale el SQL para copiar y pegar: él no entra al repo.
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
 Ejecutar con **Role postgres** en el SQL Editor de Supabase.
@@ -30,6 +30,15 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/20-revisiones-diarias.sql` — auditoría revisiones botiquín/DESA/oxígeno
 - ✅ `sql/21-rls-correturnos-inventario.sql` — correturnos leen/escriben inventario del hotel donde fichan
 - ✅ `sql/22-diagnostico-reparar-unidades.sql` — reparar Botiquín 2/3 sin items (Cala Gran)
+- ⏳ **`sql/33-presupuestos-tipos-trabajador.sql` — PENDIENTE.** Añade la columna
+  `precios_tipo jsonb` a `presupuestos`: un precio/hora por cada tipo de trabajador.
+  El tipo y la descripción del trabajo NO necesitan columna (van dentro de
+  `servicios`, que ya es jsonb). `precio_hora` sigue siendo **el precio del
+  socorrista**, que es lo que siempre ha significado, así que no hay nada que
+  migrar. Mientras no se ejecute, la app **guarda igual** pero pierde el precio de
+  los perfiles que no son socorrista, y lo avisa al guardar: se hizo así a
+  propósito para no repetir el fallo de v167, donde una pega al guardar dejaba al
+  cliente sin poder guardar NADA.
 - ✅ **`sql/32-presupuestos.sql` — EJECUTADO el 2026-10-26.** Tabla `presupuestos`
   para la sección nueva. **Sólo el dueño** (aquí hay precios: el coordinador no
   entra). `servicios` y `extras` van en jsonb porque son líneas que sólo tienen
@@ -615,6 +624,33 @@ pasar por la base de datos — por eso salían documentos perfectos mientras no 
 guardaba nada). Ambos PDFs llevaban impreso `PRE-2026-0001`: la prueba de que
 ninguno llegó a escribirse, porque el índice único por (empresa_id, numero) no
 habría dejado pasar el segundo.
+
+**Tipo de trabajador (v168 · sql/33):** cada línea de «Servicios a cubrir» lleva
+`tipo` (socorrista, monitor, supervisor, coordinador o vigilante), `socorristas`
+—que ahora es **la cantidad de ese perfil**, el nombre se mantiene para no migrar
+nada— y `trabajo`, un texto libre con lo que hace ese perfil. Al elegir el tipo se
+rellena una sugerencia que se puede reescribir; la del supervisor es literal del
+cliente: *cubrir todos los turnos de comida con el fin de no dejar ninguna piscina
+vacía*. Las líneas guardadas antes no llevan `tipo` y `tipoDe()` las lee como
+socorrista, así que los dos presupuestos de Ona Hotels se siguen abriendo e
+imprimiendo igual que antes.
+
+**Precio por perfil:** `precio_hora` ES el del socorrista (el PDF lo imprime así
+desde el principio); los demás van en `precios_tipo` (jsonb `{tipo: precio}`,
+sql/33). El formulario sólo pide el precio de los tipos **que se están usando**, y
+`guardar()` no deja guardar si falta alguno: un hueco en esa tabla se ve en el
+papel que recibe el hotel. En el PDF, con un solo perfil se mantiene el recuadro
+rojo grande de siempre; con varios pasa a tabla. **Sigue sin imprimirse ningún
+total**, que es la regla de arriba.
+
+`ORDEN_TIPOS`/`NOMBRE_TIPO`/`tipoDePdf()` están **duplicados en `ps-pdf.js`** a
+propósito, igual que `modoExtra()`: ese módulo genera PDFs sin que el panel esté
+cargado. **Si añades un tipo, añádelo en los dos sitios** — hay una comprobación
+en las pruebas que verifica que las dos listas coinciden.
+
+El dictado por voz NO reconoce todavía el tipo de trabajador: lo que dicte sale
+como socorrista y se cambia con el desplegable. No se tocó el parser a propósito,
+que es frágil (ver el aviso de arriba sobre «por servicio» y «por hora»).
 
 ## 🚨 Bugs conocidos abiertos (no bloquean pero atender)
 - **Hotel de Artá con GPS impreciso**: puede necesitar radio 150m manual o corregir coords GPS del pin del hotel desde admin.
