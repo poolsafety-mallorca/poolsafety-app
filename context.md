@@ -9,7 +9,7 @@
 
 ## ⚡ SQL EN SUPABASE · al día a 2026-11-11
 
-**⏳ QUEDA UNO PENDIENTE: `sql/33-presupuestos-tipos-trabajador.sql`.** Si añades un fichero nuevo, márcalo ⏳ aquí hasta
+**No queda ninguno pendiente.** Si añades un fichero nuevo, márcalo ⏳ aquí hasta
 que el cliente lo ejecute, y pásale el SQL para copiar y pegar: él no entra al repo.
 Estado a fecha 2026-08-20. Todos son idempotentes (`create if not exists` / `if not exists`).
 Ejecutar con **Role postgres** en el SQL Editor de Supabase.
@@ -30,15 +30,16 @@ Ejecutar con **Role postgres** en el SQL Editor de Supabase.
 - ✅ `sql/20-revisiones-diarias.sql` — auditoría revisiones botiquín/DESA/oxígeno
 - ✅ `sql/21-rls-correturnos-inventario.sql` — correturnos leen/escriben inventario del hotel donde fichan
 - ✅ `sql/22-diagnostico-reparar-unidades.sql` — reparar Botiquín 2/3 sin items (Cala Gran)
-- ⏳ **`sql/33-presupuestos-tipos-trabajador.sql` — PENDIENTE.** Añade la columna
+- ✅ **`sql/33-presupuestos-tipos-trabajador.sql` — EJECUTADO el 2026-11-11.** Añade la columna
   `precios_tipo jsonb` a `presupuestos`: un precio/hora por cada tipo de trabajador.
   El tipo y la descripción del trabajo NO necesitan columna (van dentro de
   `servicios`, que ya es jsonb). `precio_hora` sigue siendo **el precio del
   socorrista**, que es lo que siempre ha significado, así que no hay nada que
-  migrar. Mientras no se ejecute, la app **guarda igual** pero pierde el precio de
-  los perfiles que no son socorrista, y lo avisa al guardar: se hizo así a
-  propósito para no repetir el fallo de v167, donde una pega al guardar dejaba al
-  cliente sin poder guardar NADA.
+  migrar. Si alguna vez faltara la columna (base nueva, restauración), la app
+  **guarda igual** y sólo pierde el precio de los perfiles que no son socorrista,
+  avisando al guardar: se hizo así a propósito para no repetir el fallo de v167,
+  donde una pega al guardar dejaba al cliente sin poder guardar NADA. Si ese
+  aviso llega a salir, es que la columna no está.
 - ✅ **`sql/32-presupuestos.sql` — EJECUTADO el 2026-10-26.** Tabla `presupuestos`
   para la sección nueva. **Sólo el dueño** (aquí hay precios: el coordinador no
   entra). `servicios` y `extras` van en jsonb porque son líneas que sólo tienen
