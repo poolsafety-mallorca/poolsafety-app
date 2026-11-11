@@ -48,6 +48,45 @@ window.PSPresup = (function () {
     return 'contrato';
   }
 
+  /* Tipos de trabajador. `trabajo` es sólo la sugerencia que se rellena sola
+     al elegir el tipo: siempre se puede reescribir, es un campo libre.
+     OJO: las líneas guardadas antes de esto no llevan `tipo`, así que
+     `tipoDe()` las lee como socorrista y los presupuestos viejos se abren
+     igual que siempre. */
+  const TIPOS = [
+    { v:'socorrista',  lab:'Socorrista',  plural:'Socorristas',
+      trabajo:'Vigilancia y rescate en la lámina de agua durante todo el horario de apertura, con revisión diaria de botiquín y material.' },
+    { v:'monitor',     lab:'Monitor',     plural:'Monitores',
+      trabajo:'Actividades acuáticas dirigidas y apoyo al socorrista de puesto.' },
+    { v:'supervisor',  lab:'Supervisor',  plural:'Supervisores',
+      trabajo:'Cubrir todos los turnos de comida con el fin de no dejar ninguna piscina vacía.' },
+    { v:'coordinador', lab:'Coordinador', plural:'Coordinadores',
+      trabajo:'Coordinación del equipo en la isla, sustituciones y enlace permanente con Dirección.' },
+    { v:'vigilante',   lab:'Vigilante',   plural:'Vigilantes',
+      trabajo:'Control de acceso y aforo de la zona de baño.' }
+  ];
+  function tipoDe(s) {
+    const v = (s && s.tipo) || 'socorrista';
+    return TIPOS.some(t => t.v === v) ? v : 'socorrista';
+  }
+  const tipoLab = (v, n) => {
+    const t = TIPOS.find(x => x.v === v) || TIPOS[0];
+    return (n === 1) ? t.lab : t.plural;
+  };
+  /* Precio/hora de un tipo. `precio_hora` ES el del socorrista: es lo que ha
+     significado siempre y lo que imprime el PDF, así que no se toca. Los
+     demás tipos viven en `precios_tipo`. */
+  function precioTipo(pr, v) {
+    if (v === 'socorrista') return pr.precio_hora;
+    const m = pr.precios_tipo || {};
+    return m[v] == null ? null : m[v];
+  }
+  /* Tipos realmente usados en este presupuesto, en el orden del catálogo. */
+  function tiposEnUso(pr) {
+    const usados = new Set((pr.servicios || []).map(tipoDe));
+    return TIPOS.filter(t => usados.has(t.v)).map(t => t.v);
+  }
+
   const EXTRAS_SUGERIDOS = [
     { concepto: 'Desfibrilador (DESA)',        detalle: 'Equipo homologado por establecimiento. Baterías y parches incluidos durante toda la vigencia del contrato.', modo: 'contrato' },
     { concepto: 'Formación en DESA',           detalle: 'Uso del desfibrilador y primeros auxilios para personal del hotel.', modo: 'incluido' },
@@ -59,7 +98,7 @@ window.PSPresup = (function () {
   const vacio = () => ({
     numero: '', fecha: new Date().toISOString().slice(0,10), validez_dias: 30,
     estado: 'borrador', cliente_nombre: '', cliente_att: '', cliente_direccion: '',
-    cliente_cif: '', cliente_instalaciones: '', precio_hora: null, iva_pct: 21,
+    cliente_cif: '', cliente_instalaciones: '', precio_hora: null, iva_pct: 21, precios_tipo: {},
     servicios: [], extras: [], notas: ''
   });
 
@@ -115,11 +154,33 @@ window.PSPresup = (function () {
     return `PRE-${anio}-${String(ultimo + 1).padStart(4, '0')}`;
   }
 
+  /* sql/33 añade la columna `precios_tipo`. Si el cliente todavía no lo ha
+     ejecutado, la columna no existe y el guardado fallaría entero. Antes que
+     volver a dejarle sin poder guardar NADA —que es justo el fallo que se
+     acaba de corregir—, se guarda sin esa columna y se avisa. Lo único que
+     se pierde hasta que ejecute el SQL es el precio de los tipos que no son
+     socorrista; todo lo demás se guarda igual. */
+  let faltaSQL33 = false;
+  const faltaColumnaPrecios = (err) => {
+    const m = (err && err.message) || '';
+    return /precios_tipo/i.test(m) && /(column|schema cache|does not exist)/i.test(m);
+  };
+
   async function guardar() {
     if (!esAdmin()) { toast('Solo el administrador puede crear presupuestos'); return false; }
     const p = actual;
     if (!p.cliente_nombre || !p.cliente_nombre.trim()) { toast('Falta el nombre del cliente'); return false; }
     if (p.precio_hora == null || isNaN(p.precio_hora)) { toast('Falta el precio por hora'); return false; }
+    // Si hay un supervisor en la lista pero nadie le ha puesto precio, el PDF
+    // saldría con un hueco delante del cliente. Mejor avisar al guardar.
+    const sinPrecio = tiposEnUso(p).filter(v => {
+      const x = precioTipo(p, v);
+      return x == null || isNaN(x);
+    });
+    if (sinPrecio.length) {
+      toast('Falta el precio por hora de: ' + sinPrecio.map(v => tipoLab(v, 2).toLowerCase()).join(', '));
+      return false;
+    }
 
     const psSes = window.PS_SESSION || {};
     const fila = {
@@ -132,12 +193,17 @@ window.PSPresup = (function () {
       servicios: p.servicios || [], extras: p.extras || [],
       notas: p.notas || null, updated_at: new Date().toISOString()
     };
+    if (!faltaSQL33) fila.precios_tipo = p.precios_tipo || {};
     try {
       if (p.id) {
-        const { data, error } = await sb().from('presupuestos').update(fila).eq('id', p.id).select();
-        if (error) throw error;
-        if (!data || !data.length) { toast('No se guardó: 0 filas. ¿Sigues siendo administrador?'); return false; }
-        actual = data[0];
+        let r = await sb().from('presupuestos').update(fila).eq('id', p.id).select();
+        if (r.error && faltaColumnaPrecios(r.error)) {
+          faltaSQL33 = true; delete fila.precios_tipo;
+          r = await sb().from('presupuestos').update(fila).eq('id', p.id).select();
+        }
+        if (r.error) throw r.error;
+        if (!r.data || !r.data.length) { toast('No se guardó: 0 filas. ¿Sigues siendo administrador?'); return false; }
+        actual = r.data[0];
       } else {
         const empresaId = await empresaActual();
         if (!empresaId) {
@@ -153,7 +219,11 @@ window.PSPresup = (function () {
         let intento = 0, data = null;
         while (intento < 3) {
           fila.numero = await siguienteNumero();
-          const r = await sb().from('presupuestos').insert(fila).select();
+          let r = await sb().from('presupuestos').insert(fila).select();
+          if (r.error && faltaColumnaPrecios(r.error)) {
+            faltaSQL33 = true; delete fila.precios_tipo;
+            r = await sb().from('presupuestos').insert(fila).select();
+          }
           if (!r.error) { data = r.data; break; }
           // idx_presupuestos_numero es único por (empresa_id, numero): si dos
           // guardados caen a la vez, se reintenta con el siguiente libre.
@@ -165,7 +235,9 @@ window.PSPresup = (function () {
         actual = data[0];
       }
       await cargar();
-      toast('✓ Presupuesto guardado');
+      toast(faltaSQL33
+        ? '✓ Guardado, pero falta ejecutar sql/33 en Supabase: el precio de los perfiles que no son socorrista no se ha guardado. Avisa al desarrollador.'
+        : '✓ Presupuesto guardado');
       return true;
     } catch (err) {
       const m = err.message || '';
@@ -455,14 +527,52 @@ window.PSPresup = (function () {
   }
 
   function filaServicio(s, i) {
+    const tv = tipoDe(s);
     return `<tr>
       <td><input class="in" data-s="${i}" data-k="instalacion" value="${esc(s.instalacion)}" placeholder="Hotel · Piscina"></td>
       <td><input class="in" data-s="${i}" data-k="periodo" value="${esc(s.periodo)}" placeholder="01/05 – 31/10" style="width:120px"></td>
       <td><input class="in" data-s="${i}" data-k="horario" value="${esc(s.horario)}" placeholder="10:00–18:00" style="width:110px"></td>
+      <td><select class="in" data-s="${i}" data-k="tipo" style="width:124px">
+        ${TIPOS.map(t => `<option value="${t.v}"${t.v===tv?' selected':''}>${esc(t.lab)}</option>`).join('')}
+      </select></td>
       <td><input class="in" type="number" min="1" data-s="${i}" data-k="socorristas" value="${s.socorristas||1}" style="width:70px"></td>
       <td><button class="btn-icon" data-qs="${i}" title="Quitar" style="width:28px;height:28px;background:#FEF2F2;color:#DC2626;border:none;border-radius:6px;cursor:pointer;">✕</button></td>
+    </tr>
+    <tr>
+      <td colspan="6" style="padding-top:0;border-top:none;">
+        <input class="in" data-s="${i}" data-k="trabajo" value="${esc(s.trabajo||'')}"
+               placeholder="Trabajo a realizar por ${esc(tipoLab(tv,1).toLowerCase())} — sale tal cual en el presupuesto"
+               style="width:100%;font-size:12.5px;">
+      </td>
     </tr>`;
   }
+  /* Sólo pide precio de los tipos que de verdad se usan en este presupuesto:
+     si no hay ningún supervisor, no tiene sentido pedir su precio/hora. */
+  function precioTipoHTML(pr) {
+    const usados = tiposEnUso(pr);
+    if (!usados.length) {
+      return `<p class="small text-muted" style="margin:4px 0 0;">
+        Añade primero un servicio y aquí aparecerá el precio/hora de cada tipo de trabajador.</p>`;
+    }
+    const filas = usados.map(v => {
+      const t = TIPOS.find(x => x.v === v);
+      const val = precioTipo(pr, v);
+      return `<tr>
+        <td><b>${esc(t.plural)}</b></td>
+        <td><input class="in" type="number" step="0.01" min="0"
+             ${v === 'socorrista' ? 'data-p="precio_hora"' : `data-pt="${v}"`}
+             value="${val == null ? '' : val}" placeholder="0,00" style="width:110px"> €/h</td>
+      </tr>`;
+    }).join('');
+    return `<div style="overflow-x:auto"><table class="tb">
+        <thead><tr><th>Tipo de trabajador</th><th>Precio por hora</th></tr></thead>
+        <tbody>${filas}</tbody>
+      </table></div>
+      <p class="small text-muted" style="margin:7px 0 0;">
+        Sigue sin haber ningún importe total: se factura sobre las horas realmente
+        prestadas de cada perfil, al precio/hora que pongas aquí.</p>`;
+  }
+
   function filaExtra(e, i) {
     return `<tr>
       <td><input class="in" data-e="${i}" data-k="concepto" value="${esc(e.concepto)}" placeholder="Concepto"></td>
@@ -529,10 +639,19 @@ window.PSPresup = (function () {
 
         <h4>Servicios a cubrir</h4>
         <div style="overflow-x:auto"><table class="tb">
-          <thead><tr><th>Instalación</th><th>Periodo</th><th>Horario</th><th>Socorristas</th><th></th></tr></thead>
+          <thead><tr><th>Instalación</th><th>Periodo</th><th>Horario</th><th>Tipo</th><th>Cantidad</th><th></th></tr></thead>
           <tbody id="pSvc">${(p.servicios||[]).map(filaServicio).join('')}</tbody>
         </table></div>
         <button class="btn btn-outline btn-sm" id="pAddSvc" style="margin-top:6px">+ Añadir servicio</button>
+        <p class="small text-muted" style="margin:7px 0 0;">
+          Debajo de cada línea puedes describir <b>el trabajo que hace ese perfil</b>. Sale tal cual
+          en el presupuesto. Al elegir el tipo se rellena una sugerencia, pero puedes reescribirla.
+          Si una línea no es de una piscina concreta (un supervisor que cubre varias), escribe en
+          Instalación lo que quieras: «Todas las piscinas», «Zona norte»…
+        </p>
+
+        <h4>Precio por hora de cada tipo</h4>
+        ${precioTipoHTML(p)}
 
         <h4>Extras (opcionales)</h4>
         <div style="overflow-x:auto"><table class="tb">
@@ -596,7 +715,33 @@ window.PSPresup = (function () {
       };
     });
 
-    $('pAddSvc').onclick = () => { p.servicios.push({instalacion:'',periodo:'',horario:'',socorristas:1}); render(); };
+    // Precio/hora de los tipos que no son socorrista (el del socorrista va por
+    // data-p, porque es la columna `precio_hora` de siempre).
+    document.querySelectorAll('[data-pt]').forEach(el => {
+      el.onchange = () => {
+        if (!p.precios_tipo) p.precios_tipo = {};
+        const v = el.value === '' ? null : parseFloat(el.value);
+        if (v == null) delete p.precios_tipo[el.dataset.pt];
+        else p.precios_tipo[el.dataset.pt] = v;
+      };
+    });
+    // Cambiar el tipo repinta: cambia qué precios se piden y, si el trabajo
+    // estaba vacío, se rellena con la sugerencia de ese perfil.
+    document.querySelectorAll('[data-s][data-k="tipo"]').forEach(el => {
+      el.onchange = () => {
+        const i = parseInt(el.dataset.s);
+        p.servicios[i].tipo = el.value;
+        const sug = TIPOS.find(t => t.v === el.value);
+        if (sug && !(p.servicios[i].trabajo || '').trim()) p.servicios[i].trabajo = sug.trabajo;
+        render();
+      };
+    });
+
+    $('pAddSvc').onclick = () => {
+      p.servicios.push({instalacion:'',periodo:'',horario:'',socorristas:1,
+                        tipo:'socorrista', trabajo:TIPOS[0].trabajo});
+      render();
+    };
     $('pAddExt').onclick = () => { p.extras.push({concepto:'',detalle:'',uds:1,precio:null,modo:'contrato'}); render(); };
     $('pSugExt').onchange = (e) => {
       const i = e.target.value; if (i === '') return;
@@ -694,6 +839,7 @@ window.PSPresup = (function () {
   }
 
   return { cargar, guardar, borrar, siguienteNumero, vacio, interpretar, dictar, MODOS, modoDe,
+           TIPOS, tipoDe, tipoLab, precioTipo, tiposEnUso,
            pararDictado, hayVoz, sinTildes, aNumero,
            get lista(){ return lista; }, get faltaSQL(){ return faltaSQL; },
            get actual(){ return actual; }, set actual(v){ actual = v; },

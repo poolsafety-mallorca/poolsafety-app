@@ -1395,6 +1395,28 @@ window.PSPdf = (function () {
     return 'contrato';
   }
 
+  /* Tipos de trabajador. Duplicado a propósito respecto a ps-presupuestos.js,
+     igual que modoExtra(): este módulo genera PDFs sin que el panel de
+     presupuestos tenga que estar cargado. Si añades un tipo, añádelo en los
+     dos sitios. Las líneas guardadas antes de esto no llevan `tipo`, así que
+     se leen como socorrista y los presupuestos viejos salen igual que antes. */
+  const ORDEN_TIPOS = ['socorrista', 'monitor', 'supervisor', 'coordinador', 'vigilante'];
+  const NOMBRE_TIPO = {
+    socorrista:  ['Socorrista',  'Socorristas'],
+    monitor:     ['Monitor',     'Monitores'],
+    supervisor:  ['Supervisor',  'Supervisores'],
+    coordinador: ['Coordinador', 'Coordinadores'],
+    vigilante:   ['Vigilante',   'Vigilantes']
+  };
+  function tipoDePdf(s) {
+    const v = (s && s.tipo) || 'socorrista';
+    return NOMBRE_TIPO[v] ? v : 'socorrista';
+  }
+  function TIPO_LAB(v, n) {
+    const par = NOMBRE_TIPO[v] || NOMBRE_TIPO.socorrista;
+    return (n === 1) ? par[0] : par[1];
+  }
+
   const ROJO = [185, 28, 28];
   const GRIS = [92, 85, 83];
 
@@ -1676,18 +1698,41 @@ window.PSPdf = (function () {
     doc.addPage(); pagina();
     h2('4 · Servicios presupuestados');
     const svc = (p.servicios || []);
-    tabla(['Instalación', 'Periodo', 'Horario', 'Socorristas'],
-      svc.length ? svc.map(s => [s.instalacion || '—', s.periodo || '—', s.horario || '—', String(s.socorristas || 1)])
-                 : [['(sin servicios)', '', '', '']],
-      [72, 36, 36, -34]);
-    const totalSoc = svc.reduce((a, s) => a + (parseInt(s.socorristas) || 0), 0);
+    tabla(['Instalación', 'Periodo', 'Horario', 'Tipo', 'Cantidad'],
+      svc.length ? svc.map(s => [s.instalacion || '—', s.periodo || '—', s.horario || '—',
+                                 TIPO_LAB(tipoDePdf(s), parseInt(s.socorristas) || 1),
+                                 String(s.socorristas || 1)])
+                 : [['(sin servicios)', '', '', '', '']],
+      [58, 30, 30, 32, -28]);
+
+    // Desglose por perfil en vez de un número suelto: con varios tipos, un
+    // «7» a secas no dice nada. Sigue sin imprimirse ningún importe.
+    const porTipo = {};
+    svc.forEach(s => {
+      const v = tipoDePdf(s);
+      porTipo[v] = (porTipo[v] || 0) + (parseInt(s.socorristas) || 0);
+    });
+    const desglose = ORDEN_TIPOS.filter(v => porTipo[v])
+      .map(v => porTipo[v] + ' ' + TIPO_LAB(v, porTipo[v]).toLowerCase());
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-    doc.text('Servicios a cubrir', M, y);
-    doc.text(String(totalSoc), W - M, y, { align: 'right' });
+    doc.text('Personal a destinar', M, y);
+    doc.text(desglose.length ? desglose.join('  ·  ') : '—', W - M, y, { align: 'right' });
     y += 6;
 
+    // Qué hace cada perfil. Sólo sale si se ha escrito algo: un apartado
+    // vacío en un presupuesto que va a un hotel queda peor que no ponerlo.
+    const conTrabajo = svc.filter(s => (s.trabajo || '').trim());
+    if (conTrabajo.length) {
+      recuadro('Trabajo a realizar por cada perfil', conTrabajo.map(s => {
+        const n = parseInt(s.socorristas) || 1;
+        const quien = n + ' ' + TIPO_LAB(tipoDePdf(s), n).toLowerCase();
+        const donde = (s.instalacion || '').trim();
+        return quien + (donde ? ' · ' + donde : '') + ': ' + s.trabajo.trim();
+      }));
+    }
+
     recuadro('Cómo se factura', [
-      'Se indica el número de socorristas por instalación y el precio/hora del servicio. Este presupuesto no fija un importe total: el horario real varía según temporada, turnos y ocupación.',
+      'Se indica el número de trabajadores de cada perfil por instalación y el precio/hora de cada uno. Este presupuesto no fija un importe total: el horario real varía según temporada, turnos y ocupación.',
       'Se factura mensualmente sobre las horas realmente prestadas, al precio/hora pactado, cerrando el cómputo el último día de cada mes.',
       'Cada hora queda registrada con el fichaje del socorrista en el puesto, y Dirección dispone del parte de horas del mes para conciliarlo con la factura.'
     ]);
@@ -1715,23 +1760,44 @@ window.PSPdf = (function () {
     /* ---------------- 5 · PRECIO Y CONDICIONES ---------------- */
     doc.addPage(); pagina();
     h2('6 · Precio del servicio');
-    doc.setDrawColor(ROJO[0], ROJO[1], ROJO[2]); doc.setLineWidth(0.7);
-    doc.setFillColor(ROJO[0], ROJO[1], ROJO[2]);
-    doc.rect(M, y - 4, 62, 26, 'F');
-    doc.rect(M, y - 4, ANCHO, 26); doc.setLineWidth(0.2);
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
-    doc.text('PRECIO HORA SOCORRISTA', M + 5, y + 2);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(21);
-    doc.text(eur(p.precio_hora) + ' /h', M + 5, y + 13);
-    doc.setTextColor(40, 36, 35);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6);
-    doc.text(doc.splitTextToSize(
-      'IVA no incluido. Al precio/hora se le aplicará el IVA vigente para servicios de socorrismo, actualmente del ' +
-      (p.iva_pct == null ? 21 : p.iva_pct) + ' %. Este presupuesto no fija un importe total: se factura mensualmente sobre las horas realmente prestadas. Los extras contratados se facturan aparte.',
-      ANCHO - 72), M + 67, y + 2);
-    doc.setTextColor(0, 0, 0);
-    y += 30;
+
+    // Un precio por perfil. Cuando sólo hay socorristas se mantiene el
+    // recuadro grande de siempre: es el caso normal y se lee de un vistazo.
+    const usados = ORDEN_TIPOS.filter(v => (p.servicios || []).some(s => tipoDePdf(s) === v));
+    const precioDe = (v) => (v === 'socorrista')
+      ? p.precio_hora
+      : ((p.precios_tipo || {})[v]);
+    const ivaTxt = 'IVA no incluido. A cada precio/hora se le aplicará el IVA vigente para servicios de ' +
+      'socorrismo, actualmente del ' + (p.iva_pct == null ? 21 : p.iva_pct) + ' %. Este presupuesto no fija ' +
+      'un importe total: se factura mensualmente sobre las horas realmente prestadas de cada perfil. ' +
+      'Los extras contratados se facturan aparte.';
+
+    if (usados.length <= 1) {
+      doc.setDrawColor(ROJO[0], ROJO[1], ROJO[2]); doc.setLineWidth(0.7);
+      doc.setFillColor(ROJO[0], ROJO[1], ROJO[2]);
+      doc.rect(M, y - 4, 62, 26, 'F');
+      doc.rect(M, y - 4, ANCHO, 26); doc.setLineWidth(0.2);
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2);
+      doc.text(t('PRECIO HORA ' + TIPO_LAB(usados[0] || 'socorrista', 1)).toUpperCase(), M + 5, y + 2);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(21);
+      doc.text(eur(precioDe(usados[0] || 'socorrista')) + ' /h', M + 5, y + 13);
+      doc.setTextColor(40, 36, 35);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6);
+      doc.text(doc.splitTextToSize(ivaTxt, ANCHO - 72), M + 67, y + 2);
+      doc.setTextColor(0, 0, 0);
+      y += 30;
+    } else {
+      tabla(['Perfil', 'Precio por hora'],
+        usados.map(v => [TIPO_LAB(v, 2), eur(precioDe(v)) + ' /h']),
+        [ANCHO - 46, -46]);
+      y += 2;
+      doc.setTextColor(40, 36, 35);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6);
+      const ls = doc.splitTextToSize(t(ivaTxt), ANCHO);
+      doc.text(ls, M, y); y += ls.length * 3.9 + 4;
+      doc.setTextColor(0, 0, 0);
+    }
 
     const dea = extras.find(e => /desa|desfibril/i.test(e.concepto || ''));
     const form = extras.find(e => /formaci/i.test(e.concepto || ''));
@@ -1754,7 +1820,7 @@ window.PSPdf = (function () {
       doc.setTextColor(0, 0, 0);
     }
     legal('Facturación sobre horas reales',
-      'Este presupuesto no recoge un número cerrado de horas ni un importe total: fija el número de socorristas por instalación y el precio/hora del servicio. La facturación se emitirá mensualmente sobre las horas efectivamente prestadas, al precio/hora pactado, cerrándose el cómputo el último día de cada mes. Las variaciones de horario por temporada, turnos u ocupación se reflejarán en la factura del mes correspondiente. El cliente dispondrá del detalle de horas por instalación y jornada.');
+      'Este presupuesto no recoge un número cerrado de horas ni un importe total: fija el número de trabajadores de cada perfil por instalación y el precio/hora de cada perfil. La facturación se emitirá mensualmente sobre las horas efectivamente prestadas, al precio/hora pactado, cerrándose el cómputo el último día de cada mes. Las variaciones de horario por temporada, turnos u ocupación se reflejarán en la factura del mes correspondiente. El cliente dispondrá del detalle de horas por instalación y jornada.');
     legal('Revisión del precio',
       'El precio por hora establecido en el contrato quedará modificado porcentualmente al alza por cualquier aumento salarial que se produzca como consecuencia del incremento del Salario Mínimo Interprofesional, o bien por la aplicación de un nuevo Convenio Colectivo del sector, desde el mes de su aplicación; quedando facultada cualquiera de las partes para resolver el contrato sin penalización alguna en caso de desacuerdo con el nuevo precio hora, en cuyo caso deberá preavisarse con quince días de antelación a la fecha prevista de resolución. El precio se incrementará anualmente de acuerdo con el porcentaje en que se vea incrementado el Salario Mínimo Interprofesional o, en su defecto, el IPC.');
 
