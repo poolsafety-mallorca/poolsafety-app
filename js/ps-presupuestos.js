@@ -87,6 +87,60 @@ window.PSPresup = (function () {
     return TIPOS.filter(t => usados.has(t.v)).map(t => t.v);
   }
 
+  /* ------------------------------------------------------------------
+     APRENDER LAS FUNCIONES DE CADA PERFIL
+     El cliente escribe una vez qué hace un supervisor y a partir de ahí
+     quiere que salga solo. No hace falta ni tabla ni columna: `cargar()`
+     ya se trae los últimos 200 presupuestos con sus `servicios`, así que
+     la descripción se saca de ahí. Cero consultas extra — importante, que
+     la cuota de egress de Supabase ya dio un aviso.
+
+     Gana LA MÁS RECIENTE, no la más repetida: así, si corrige el texto una
+     vez, el siguiente presupuesto ya sale corregido. Con la más repetida
+     habría que escribirla varias veces para que cambiara.
+
+     `fecha` no sirve para ordenar: es la fecha del presupuesto y varios
+     caen el mismo día. Se usa `updated_at`, que es la hora real de la
+     última edición.
+     ------------------------------------------------------------------ */
+  const cuando = (pr) => Date.parse(pr.updated_at || pr.created_at || pr.fecha || 0) || 0;
+  /* Para comparar nombres de instalación: sin tildes, sin mayúsculas y con los
+     espacios de dentro colapsados. «Hotel  Palmira» y «hotel palmira» son el
+     mismo sitio, y escribir dos espacios sin querer es facilísimo. */
+  const claveInst = (x) => sinTildes(x || '').trim().replace(/\s+/g, ' ');
+
+  function trabajoAprendido(tipoV, instalacion) {
+    const cands = [];
+    (lista || []).forEach(pr => {
+      (pr.servicios || []).forEach(sv => {
+        const txt = (sv.trabajo || '').trim();
+        if (txt && tipoDe(sv) === tipoV) {
+          cands.push({ txt: txt, inst: claveInst(sv.instalacion), t: cuando(pr) });
+        }
+      });
+    });
+    if (!cands.length) return null;
+    cands.sort((a, b) => b.t - a.t);
+    // Si ya hay escrito algo para ESTA misma instalación, eso manda: el
+    // trabajo del socorrista del Luna Park puede no ser el del Palmira.
+    const inst = claveInst(instalacion);
+    if (inst) {
+      const mismo = cands.find(c => c.inst === inst);
+      if (mismo) return mismo.txt;
+    }
+    return cands[0].txt;
+  }
+
+  /* Lo que se pone en el campo al elegir un perfil: primero lo aprendido de
+     presupuestos anteriores y, si es la primera vez, el texto de partida del
+     catálogo. Devuelve también de dónde salió, para poder decírselo. */
+  function sugerenciaTrabajo(tipoV, instalacion) {
+    const ap = trabajoAprendido(tipoV, instalacion);
+    if (ap) return { txt: ap, aprendido: true };
+    const t = TIPOS.find(x => x.v === tipoV) || TIPOS[0];
+    return { txt: t.trabajo, aprendido: false };
+  }
+
   const EXTRAS_SUGERIDOS = [
     { concepto: 'Desfibrilador (DESA)',        detalle: 'Equipo homologado por establecimiento. Baterías y parches incluidos durante toda la vigencia del contrato.', modo: 'contrato' },
     { concepto: 'Formación en DESA',           detalle: 'Uso del desfibrilador y primeros auxilios para personal del hotel.', modo: 'incluido' },
@@ -645,9 +699,14 @@ window.PSPresup = (function () {
         <button class="btn btn-outline btn-sm" id="pAddSvc" style="margin-top:6px">+ Añadir servicio</button>
         <p class="small text-muted" style="margin:7px 0 0;">
           Debajo de cada línea puedes describir <b>el trabajo que hace ese perfil</b>. Sale tal cual
-          en el presupuesto. Al elegir el tipo se rellena una sugerencia, pero puedes reescribirla.
-          Si una línea no es de una piscina concreta (un supervisor que cubre varias), escribe en
-          Instalación lo que quieras: «Todas las piscinas», «Zona norte»…
+          en el presupuesto. Si una línea no es de una piscina concreta (un supervisor que cubre
+          varias), escribe en Instalación lo que quieras: «Todas las piscinas», «Zona norte»…
+        </p>
+        <p class="small" style="margin:5px 0 0;color:#166534;">
+          💡 <b>Se va aprendiendo solo.</b> Al elegir un perfil se rellena con lo que escribiste
+          la última vez para ese mismo perfil en otro presupuesto, y si ya habías escrito algo
+          para esa misma instalación, usa eso. La primera vez sale un texto de partida.
+          Reescríbelo cuando quieras: lo que escribas manda, y a partir de ahí será lo que salga.
         </p>
 
         <h4>Precio por hora de cada tipo</h4>
@@ -726,20 +785,34 @@ window.PSPresup = (function () {
       };
     });
     // Cambiar el tipo repinta: cambia qué precios se piden y, si el trabajo
-    // estaba vacío, se rellena con la sugerencia de ese perfil.
+    // estaba vacío, se rellena con lo aprendido de presupuestos anteriores.
+    // Sólo si está vacío: lo que haya escrito a mano no se toca nunca.
     document.querySelectorAll('[data-s][data-k="tipo"]').forEach(el => {
       el.onchange = () => {
         const i = parseInt(el.dataset.s);
         p.servicios[i].tipo = el.value;
-        const sug = TIPOS.find(t => t.v === el.value);
-        if (sug && !(p.servicios[i].trabajo || '').trim()) p.servicios[i].trabajo = sug.trabajo;
+        if (!(p.servicios[i].trabajo || '').trim()) {
+          p.servicios[i].trabajo = sugerenciaTrabajo(el.value, p.servicios[i].instalacion).txt;
+        }
         render();
+      };
+    });
+    // Al escribir la instalación, si el trabajo sigue vacío se vuelve a mirar:
+    // puede haber una descripción aprendida para ESE hotel en concreto.
+    document.querySelectorAll('[data-s][data-k="instalacion"]').forEach(el => {
+      el.onchange = () => {
+        const i = parseInt(el.dataset.s);
+        p.servicios[i].instalacion = el.value;
+        if (!(p.servicios[i].trabajo || '').trim()) {
+          p.servicios[i].trabajo = sugerenciaTrabajo(tipoDe(p.servicios[i]), el.value).txt;
+          render();
+        }
       };
     });
 
     $('pAddSvc').onclick = () => {
       p.servicios.push({instalacion:'',periodo:'',horario:'',socorristas:1,
-                        tipo:'socorrista', trabajo:TIPOS[0].trabajo});
+                        tipo:'socorrista', trabajo:sugerenciaTrabajo('socorrista','').txt});
       render();
     };
     $('pAddExt').onclick = () => { p.extras.push({concepto:'',detalle:'',uds:1,precio:null,modo:'contrato'}); render(); };
@@ -839,7 +912,7 @@ window.PSPresup = (function () {
   }
 
   return { cargar, guardar, borrar, siguienteNumero, vacio, interpretar, dictar, MODOS, modoDe,
-           TIPOS, tipoDe, tipoLab, precioTipo, tiposEnUso,
+           TIPOS, tipoDe, tipoLab, precioTipo, tiposEnUso, trabajoAprendido, sugerenciaTrabajo,
            pararDictado, hayVoz, sinTildes, aNumero,
            get lista(){ return lista; }, get faltaSQL(){ return faltaSQL; },
            get actual(){ return actual; }, set actual(v){ actual = v; },

@@ -4,8 +4,8 @@
 > Al terminar cambios significativos, **ACTUALIZA este archivo en el mismo commit**.
 > Es lo primero que lees al retomar el proyecto en una nueva sesión.
 
-Última actualización: 2026-11-11 (v168 · tipo de trabajador en los presupuestos, con su precio/hora y el trabajo que hace cada perfil)
-**Cache SW actual: `poolsafety-v168`**
+Última actualización: 2026-11-11 (v169 · las funciones de cada perfil se aprenden solas de los presupuestos anteriores)
+**Cache SW actual: `poolsafety-v169`**
 
 ## ⚡ SQL EN SUPABASE · al día a 2026-11-11
 
@@ -647,6 +647,28 @@ total**, que es la regla de arriba.
 propósito, igual que `modoExtra()`: ese módulo genera PDFs sin que el panel esté
 cargado. **Si añades un tipo, añádelo en los dos sitios** — hay una comprobación
 en las pruebas que verifica que las dos listas coinciden.
+
+**Las funciones se aprenden solas (v169):** al elegir un perfil, el campo
+«trabajo» se rellena con lo que el cliente escribió **la última vez** para ese
+mismo perfil, sacado de `lista` — los 200 presupuestos que `cargar()` ya se trae.
+**Sin tabla, sin columna y sin una sola consulta extra**, que la cuota de egress
+ya dio un aviso en su día (ver más arriba). Si además hay algo escrito para esa
+**misma instalación**, gana eso: el socorrista del Luna Park no hace lo mismo que
+el del Palmira.
+
+Gana **la más reciente, no la más repetida**: así corregir el texto una vez basta
+para que el siguiente presupuesto salga ya corregido. Con «la más usada» habría
+que escribirlo varias veces para que cambiara. Se ordena por `updated_at`, NO por
+`fecha`: `fecha` es la del presupuesto y varios caen el mismo día.
+
+Sólo rellena si el campo está **vacío**: lo que el cliente escriba a mano no se
+pisa nunca. Los textos de `TIPOS[].trabajo` quedan como punto de partida para la
+primera vez que se usa un perfil. Las líneas guardadas antes de v168 no llevan
+`tipo`, así que enseñan como socorrista.
+
+`claveInst()` normaliza el nombre de la instalación (sin tildes, sin mayúsculas y
+colapsando espacios de dentro): «Hotel  Palmira» con dos espacios es el mismo
+sitio que «hotel palmira». Eso salió de una prueba que falló, no de la cabeza.
 
 El dictado por voz NO reconoce todavía el tipo de trabajador: lo que dicte sale
 como socorrista y se cambia con el desplegable. No se tocó el parser a propósito,
